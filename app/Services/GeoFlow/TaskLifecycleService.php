@@ -19,6 +19,7 @@ use App\Models\TitleLibrary;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use InvalidArgumentException;
 
 /**
  * 任务生命周期服务。
@@ -44,6 +45,7 @@ class TaskLifecycleService
         private TaskRealtimeBroadcastService $taskRealtimeBroadcastService,
         private TaskTitleReadinessService $taskTitleReadinessService,
         private ArticleAiQualityInvalidationService $articleAiQualityInvalidationService,
+        private ?ContentBriefNormalizer $contentBriefNormalizer = null,
     ) {}
 
     /**
@@ -117,6 +119,7 @@ class TaskLifecycleService
                 'distribution_strategy' => $normalized['distribution_strategy'],
                 'distribution_cursor' => 0,
                 'knowledge_base_id' => $normalized['knowledge_base_id'],
+                'content_brief' => $normalized['content_brief'] ?: null,
                 'category_mode' => $normalized['category_mode'],
                 'fixed_category_id' => $normalized['fixed_category_id'],
             ]);
@@ -210,7 +213,9 @@ class TaskLifecycleService
         $promptId = Prompt::query()
             ->where('type', 'content')
             ->orderByDesc('id')
-            ->value('id');
+            ->get(['id', 'type', 'variables'])
+            ->first(static fn (Prompt $prompt): bool => $prompt->isAvailableForProductionTask())
+            ?->id;
         $aiModelId = AiModel::query()
             ->where('status', 'active')
             ->where(function ($query): void {
@@ -380,7 +385,13 @@ class TaskLifecycleService
             $this->assertEffectiveAiQualityConfiguration($current, $normalized, $effectiveKnowledgeBaseIds);
 
             if (! empty($normalized)) {
-                Task::query()->whereKey($taskId)->update($normalized);
+                $updatePayload = $normalized;
+                if (array_key_exists('content_brief', $updatePayload)) {
+                    $updatePayload['content_brief'] = $updatePayload['content_brief'] === []
+                        ? null
+                        : json_encode($updatePayload['content_brief'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+                }
+                Task::query()->whereKey($taskId)->update($updatePayload);
             }
 
             if ($knowledgeBaseIdsProvided) {
@@ -816,7 +827,7 @@ class TaskLifecycleService
         $referenceMap = [
             'title_library_id' => ['model' => TitleLibrary::class, 'message' => '选择的标题库不存在', 'required' => ! $isUpdate],
             'image_library_id' => ['model' => ImageLibrary::class, 'message' => '选择的图片库不存在', 'required' => false],
-            'prompt_id' => ['model' => Prompt::class, 'message' => '选择的内容提示词不存在', 'required' => ! $isUpdate, 'prompt_content' => true],
+            'prompt_id' => ['model' => Prompt::class, 'message' => '选择的内容提示词不存在，或候选版本尚未启用', 'required' => ! $isUpdate, 'prompt_content' => true],
             'ai_model_id' => ['model' => AiModel::class, 'message' => '选择的AI模型不存在或未激活', 'required' => ! $isUpdate, 'ai_active_chat' => true],
             'ai_quality_prompt_id' => ['model' => Prompt::class, 'message' => '选择的 AI 质检方案不存在', 'required' => false, 'prompt_quality' => true],
             'ai_quality_model_id' => ['model' => AiModel::class, 'message' => '选择的 AI 质检模型不存在或未激活', 'required' => false, 'ai_active_chat' => true],
@@ -862,7 +873,8 @@ class TaskLifecycleService
             $exists = false;
             // prompt 与 ai_model 的校验规则与普通外键不同，这里单独处理业务约束。
             if (! empty($config['prompt_content'])) {
-                $exists = Prompt::query()->whereKey($id)->where('type', 'content')->exists();
+                $prompt = Prompt::query()->whereKey($id)->where('type', 'content')->first();
+                $exists = $prompt instanceof Prompt && $prompt->isAvailableForProductionTask();
             } elseif (! empty($config['prompt_quality'])) {
                 $exists = Prompt::query()->whereKey($id)->where('type', 'quality_check')->exists();
             } elseif (! empty($config['ai_active_chat'])) {
@@ -889,6 +901,17 @@ class TaskLifecycleService
         if (! $knowledgeBaseIdsProvided && array_key_exists('knowledge_base_id', $output)) {
             $knowledgeBaseId = (int) ($output['knowledge_base_id'] ?? 0);
             $output['knowledge_base_ids'] = $knowledgeBaseId > 0 ? [$knowledgeBaseId] : [];
+        }
+
+        if (array_key_exists('content_brief', $data)) {
+            try {
+                $normalizer = $this->contentBriefNormalizer ?? app(ContentBriefNormalizer::class);
+                $output['content_brief'] = $normalizer->normalize($data['content_brief']);
+            } catch (InvalidArgumentException $exception) {
+                $fieldErrors['content_brief'] = $exception->getMessage();
+            }
+        } elseif (! $isUpdate) {
+            $output['content_brief'] = [];
         }
 
         $flagFields = [

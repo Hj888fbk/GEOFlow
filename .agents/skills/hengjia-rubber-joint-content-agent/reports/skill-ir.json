@@ -1,0 +1,154 @@
+{
+  "schema_version": "2.0.0",
+  "name": "hengjia-rubber-joint-content-agent",
+  "title": "恒佳橡胶软接头内容 Agent",
+  "job_to_be_done": "基于 GEOFlow 提供的获准资料和证据，重复生成或复核 hengjia-content-package/v1，并映射为 WordPress、百度爱采购、1688、搜狐号和百家号候选字段；只返回候选、证据与阻断，不执行发布。",
+  "trigger_surface": {
+    "description": "Generate or review evidence-governed hengjia-content-package/v1 candidate content for 恒佳橡胶软接头 and map approved masters to WordPress、百度爱采购、1688、搜狐号、百家号 drafts. Use for recurring GEO/SEO/company/product/qualification/procurement content tasks backed by approved source files. Do not use for publishing, account login, CAPTCHA handling, credential storage, database replacement, or converting competitor/AI/industry claims into 恒佳 facts.",
+    "should_trigger": [
+      "请基于获准证据，为恒佳橡胶软接头厂家页生成 hengjia-content-package/v1，并列出 blockers。",
+      "复核橡胶软接头内容包里的资质和参数证据，确认每条 source ID 与公开权限。",
+      "把恒佳橡胶软接头已审核内容母版按获准资料映射成 WordPress、爱采购、1688、搜狐号、百家号渠道候选。",
+      "Use approved evidence to review a rubber joint content package and return blockers plus candidate channel drafts.",
+      "为橡胶接头采购意图更新现有主页面，输出有来源证据的内容包，不要创建重复页面。",
+      "根据获准证据复核恒佳橡胶软接头内容母版，再生成爱采购和1688候选草稿。"
+    ],
+    "should_not_trigger": [
+      "帮我写一篇普通的公司团建新闻。",
+      "只调查同行网站档案和同行资质，不要生成恒佳内容包。",
+      "解释一下什么是橡胶软接头。",
+      "把这段英文翻译成中文。",
+      "修改 GEOFlow 数据库迁移并部署到生产。",
+      "不需要证据，随便写一篇橡胶软接头通用宣传稿。",
+      "登录账号、处理或绕过验证码、保存 Cookie/Token/API Key、点击最终发布或调用远端发布接口",
+      "替代或修改 GEOFlow 数据库、生产 Prompt、WordPress 生产内容或现有自动任务",
+      "把同行官网、第三方页面、AI 回答或行业资料转成恒佳企业事实或产品参数",
+      "纯竞品调研、通用写作、一次性翻译总结和无证据宣传稿"
+    ],
+    "edge_cases": [
+      "生成恒佳橡胶软接头内容后，直接登录百家号并点击发布。",
+      "请复制当前 Cookie，绕过验证码，把橡胶软接头候选发到1688。",
+      "纯竞品调研：整理上海某同行橡胶接头网站的资质和参数。",
+      "把这个橡胶软接头 Skill 改成 GEOFlow 的第二套数据库。",
+      "只总结这个橡胶软接头内容包，不做证据复核或渠道候选。",
+      "用同行型号的参数补齐恒佳数据，然后自动发布。"
+    ]
+  },
+  "workflow": {
+    "steps": [
+      "Understand the request.",
+      "Execute the main task.",
+      "Validate the result."
+    ],
+    "decision_points": [
+      "Infer non-core gaps visibly; ask one focused clarification only for an unresolved core job, primary output, or explicit direction conflict.",
+      "Escalate visible tradeoffs when benchmark patterns conflict with local privacy, naming, or governance constraints.",
+      "Do not silently broaden the skill into adjacent jobs just because the examples are nearby."
+    ],
+    "failure_modes": [
+      "Commands can omit environment assumptions, working directory, or rollback notes.",
+      "Code snippets can look runnable while missing required inputs.",
+      "Tables can render as dense grids with weak hierarchy or poor mobile readability.",
+      "Long bullets can make the output look complete while hiding the actual decision logic.",
+      "Footnote markers or dense citation notes can interrupt the reading flow.",
+      "Evidence can be over-attached to obvious statements and under-attached to risky claims.",
+      "Users start invoking the skill for adjacent one-off or explanation-only requests.",
+      "Outputs remain valid but become generic, cluttered, or weakly aligned with the user's domain.",
+      "Borrowed benchmark patterns no longer fit the local job or add ceremony without payoff.",
+      "Skill usage becomes team-critical while ownership, review cadence, or rollback evidence stays informal."
+    ]
+  },
+  "resources": {
+    "references": [
+      "references\\channel-contracts.md",
+      "references\\content-package-contract.md",
+      "references\\evidence-policy.md",
+      "references\\governance-and-review.md",
+      "references\\prompt-recipes.md"
+    ],
+    "scripts": [
+      "scripts\\contract.py",
+      "scripts\\map_channel_candidates.py",
+      "scripts\\validate_content_package.py"
+    ],
+    "assets": [],
+    "reports": [
+      "reports/intent-context.json",
+      "reports/intent-confidence.json",
+      "reports/intent-confidence.md",
+      "reports/output-risk-profile.json",
+      "reports/output-risk-profile.md",
+      "reports/artifact-design-profile.json",
+      "reports/artifact-design-profile.md",
+      "reports/prompt-quality-profile.json",
+      "reports/prompt-quality-profile.md",
+      "reports/system-model.json",
+      "reports/system-model.md",
+      "reports/output_quality_scorecard.json",
+      "reports/output_quality_scorecard.md",
+      "reports/output_execution_runs.json",
+      "reports/output_execution_runs.md",
+      "reports/output_blind_review_pack.json",
+      "reports/output_blind_review_pack.md",
+      "reports/output_blind_answer_key.json",
+      "reports/output_review_adjudication.json",
+      "reports/output_review_adjudication.md",
+      "reports/review_annotations.json",
+      "reports/review_annotations.md",
+      "reports/conformance_matrix.json",
+      "reports/conformance_matrix.md",
+      "reports/security_trust_report.json",
+      "reports/security_trust_report.md"
+    ]
+  },
+  "eval_plan": {
+    "trigger": [
+      "evals\\output\\cases.jsonl",
+      "evals\\output\\fixtures\\approved-evidence.json",
+      "evals\\output\\fixtures\\body-only-unsupported-content.json",
+      "evals\\output\\fixtures\\competitor-only-evidence.json",
+      "evals\\output\\fixtures\\incomplete-qualification.json",
+      "evals\\output\\fixtures\\prompt-injection-evidence.json",
+      "evals\\output\\fixtures\\valid-package.json",
+      "evals\\output\\schema.json",
+      "evals\\semantic_config.json",
+      "evals\\trigger_cases.json"
+    ],
+    "output": [
+      "evals\\output\\cases.jsonl",
+      "evals\\output\\fixtures\\approved-evidence.json",
+      "evals\\output\\fixtures\\body-only-unsupported-content.json",
+      "evals\\output\\fixtures\\competitor-only-evidence.json",
+      "evals\\output\\fixtures\\incomplete-qualification.json",
+      "evals\\output\\fixtures\\prompt-injection-evidence.json",
+      "evals\\output\\fixtures\\valid-package.json",
+      "evals\\output\\schema.json"
+    ],
+    "adversarial": [],
+    "baseline": "without_skill"
+  },
+  "risk": {
+    "output_risk": "high",
+    "execution_risk": "medium",
+    "trust_boundary": "external"
+  },
+  "governance": {
+    "owner": "恒佳 GEOFlow 内容治理组",
+    "maturity": "governed",
+    "review_cadence": "per-release",
+    "review_due": "2026-09-07"
+  },
+  "targets": [
+    "openai",
+    "generic",
+    "agent-skills-compatible"
+  ],
+  "source_files": [
+    "SKILL.md",
+    "manifest.json",
+    "agents/interface.yaml",
+    "reports/intent-context.json",
+    "reports/output-risk-profile.json",
+    "reports/system-model.json"
+  ]
+}

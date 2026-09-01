@@ -46,6 +46,9 @@ class WorkerExecutionService
         private readonly TaskTitleReadinessService $taskTitleReadinessService,
         private readonly ArticleAiQualityPolicyResolver $articleAiQualityPolicyResolver,
         private readonly ArticleAiQualityInspectionService $articleAiQualityInspectionService,
+        private readonly ContentBriefNormalizer $contentBriefNormalizer,
+        private readonly ContentStructureProfileCatalog $contentStructureProfiles,
+        private readonly HengjiaNativeContentPolicy $hengjiaNativeContentPolicy,
     ) {}
 
     /**
@@ -84,22 +87,100 @@ class WorkerExecutionService
             ];
         }
 
+        $prompt = $task->prompt_id ? Prompt::query()->find((int) $task->prompt_id) : null;
+        if ($prompt instanceof Prompt && ! $prompt->isAvailableForProductionTask()) {
+            return [
+                'article_id' => null,
+                'title' => '',
+                'message' => '任务绑定的向导提示词仍是候选版本；请先启用该版本，或改选已有生产提示词。',
+                'meta' => [
+                    'task_id' => (int) $task->id,
+                    'action' => 'noop',
+                    'reason_code' => 'candidate_prompt_not_active',
+                    'requires_input' => true,
+                    'prompt_snapshot' => $this->promptSnapshot($prompt, null),
+                ],
+            ];
+        }
+
         $titleRow = $this->pickTitle($task);
         $author = $this->pickAuthor($task);
         $category = $this->pickCategory($task);
-        $prompt = $task->prompt_id ? Prompt::query()->find((int) $task->prompt_id) : null;
 
         $keyword = (string) ($titleRow->keyword ?? '');
         $knowledgeBundle = $this->resolveKnowledgeContext($task, (string) $titleRow->title, $keyword);
         $knowledgeContext = $knowledgeBundle['context'];
         $generationEvidenceSnapshot = $this->generationEvidenceSnapshot($knowledgeBundle['evidence']);
-        $contentPrompt = $this->buildContentPrompt((string) $titleRow->title, $keyword, $prompt?->content, $knowledgeContext);
+        $contentBrief = $this->hengjiaNativeContentPolicy->enabledFor($task)
+            ? $this->contentBriefNormalizer->normalize($task->content_brief ?? [])
+            : [];
+        $structureProfile = $contentBrief !== [] ? $this->contentStructureProfiles->resolve($contentBrief) : null;
+        $relevantImages = $contentBrief !== []
+            ? $this->selectRelevantTaskImages($task, (string) $titleRow->title, $keyword, $contentBrief)
+            : null;
+        if (is_array($relevantImages) && ($relevantImages['blocked'] ?? false)) {
+            $imageBlockCode = trim((string) ($relevantImages['reason_code'] ?? '')) ?: 'matching_image_missing';
+            $generationSnapshot = $this->generationSnapshot(
+                $task,
+                $titleRow,
+                $prompt,
+                $author,
+                $contentBrief,
+                $structureProfile,
+                $knowledgeContext,
+                $generationEvidenceSnapshot,
+                $relevantImages,
+                '',
+            );
+
+            return [
+                'article_id' => null,
+                'title' => (string) $titleRow->title,
+                'message' => $this->imageBlockMessage($imageBlockCode),
+                'meta' => [
+                    'task_id' => (int) $task->id,
+                    'action' => 'noop',
+                    'reason_code' => $imageBlockCode,
+                    'requires_input' => true,
+                    'title_snapshot' => $this->titleSnapshot($titleRow),
+                    'prompt_snapshot' => $this->promptSnapshot($prompt, null),
+                    'content_brief_snapshot' => $contentBrief,
+                    'structure_snapshot' => $structureProfile,
+                    'image_snapshot' => $this->imageSelectionSnapshot($relevantImages),
+                    'generation_snapshot' => $generationSnapshot,
+                ],
+            ];
+        }
+        $runtimeContext = $contentBrief !== []
+            ? $this->buildEnhancedRuntimeContext($task, $contentBrief, $structureProfile, $author, $relevantImages)
+            : [];
+        $contentPrompt = $this->buildContentPrompt(
+            (string) $titleRow->title,
+            $keyword,
+            $prompt?->content,
+            $knowledgeContext,
+            $runtimeContext,
+        );
         $generation = $this->generateContentWithModelSelection($task, $contentPrompt);
         $aiModel = $generation['model'];
         $generatedContent = $generation['content'];
-        $imageResult = $this->insertTaskImagesIntoContent($task, $generatedContent);
+        $imageResult = $contentBrief !== [] && is_array($relevantImages)
+            ? $this->insertSelectedImagesIntoContent($generatedContent, $relevantImages['images'])
+            : $this->insertTaskImagesIntoContent($task, $generatedContent);
         $content = $imageResult['content'];
         $selectedImages = $imageResult['images'];
+        $generationSnapshot = $this->generationSnapshot(
+            $task,
+            $titleRow,
+            $prompt,
+            $author,
+            $contentBrief,
+            $structureProfile,
+            $knowledgeContext,
+            $generationEvidenceSnapshot,
+            $relevantImages,
+            $contentPrompt,
+        );
         $excerpt = $this->buildExcerpt($content);
         $qualityPolicy = null;
         $articleId = DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $selectedImages, &$qualityPolicy, $generationEvidenceSnapshot): int {
@@ -218,6 +299,7 @@ class WorkerExecutionService
                 'used_model_id' => (int) $aiModel->id,
                 'used_model_name' => (string) $aiModel->name,
                 'model_attempts' => $generation['attempts'],
+                'generation_snapshot' => $generationSnapshot,
                 'ai_quality' => [
                     'required' => (bool) (is_array($qualityPolicy) && ($qualityPolicy['required'] ?? false)),
                     'check_id' => $qualityCheck?->id,
@@ -561,9 +643,10 @@ class WorkerExecutionService
     /**
      * 构造正文提示词：优先精确替换变量；无变量的自定义提示词自动补齐任务上下文。
      */
-    private function buildContentPrompt(string $title, string $keyword, ?string $promptContent, string $knowledgeContext): string
+    /** @param array<string,mixed> $runtimeContext */
+    private function buildContentPrompt(string $title, string $keyword, ?string $promptContent, string $knowledgeContext, array $runtimeContext = []): string
     {
-        return $this->articleContentPromptRenderer->renderForWorker($title, $keyword, $promptContent, $knowledgeContext);
+        return $this->articleContentPromptRenderer->renderForWorker($title, $keyword, $promptContent, $knowledgeContext, $runtimeContext);
     }
 
     /**
@@ -772,6 +855,369 @@ class WorkerExecutionService
     {
         return (int) ($row->embedding_model_id ?? 0) > 0
             && (int) ($row->embedding_dimensions ?? 0) > 0;
+    }
+
+    /**
+     * 为白名单影子任务补齐领域上下文；旧任务不会调用本方法。
+     *
+     * @param  array<string,mixed>  $contentBrief
+     * @param  array<string,mixed>|null  $structureProfile
+     * @param  array<string,mixed>|null  $imageSelection
+     * @return array<string,string>
+     */
+    private function buildEnhancedRuntimeContext(
+        Task $task,
+        array $contentBrief,
+        ?array $structureProfile,
+        Author $author,
+        ?array $imageSelection,
+    ): array {
+        $questions = array_values(array_filter(array_map(
+            static fn (mixed $question): string => trim(is_string($question) || is_numeric($question) ? (string) $question : ''),
+            is_array($contentBrief['buyer_questions'] ?? null) ? $contentBrief['buyer_questions'] : [],
+        )));
+        $mediaLines = [];
+        foreach (($imageSelection['matches'] ?? []) as $match) {
+            if (! is_array($match)) {
+                continue;
+            }
+
+            $label = trim((string) ($match['original_name'] ?? ''));
+            $tags = array_values(array_filter(array_map('strval', (array) ($match['tags'] ?? []))));
+            $matchedTerms = array_values(array_filter(array_map('strval', (array) ($match['matched_terms'] ?? []))));
+            $mediaLines[] = '- '.($label !== '' ? $label : '图库图片')
+                .($tags !== [] ? '；标签：'.implode('、', $tags) : '')
+                .($matchedTerms !== [] ? '；匹配：'.implode('、', $matchedTerms) : '');
+        }
+
+        return array_filter([
+            'product' => trim((string) ($contentBrief['product_key'] ?? '')),
+            'page_role' => trim((string) ($structureProfile['label'] ?? $contentBrief['page_role'] ?? '')),
+            'audience' => trim((string) ($contentBrief['audience'] ?? '')),
+            'decision_stage' => trim((string) ($contentBrief['decision_stage'] ?? '')),
+            'buyer_questions' => $questions !== [] ? implode("\n", array_map(static fn (string $item): string => '- '.$item, $questions)) : '',
+            'procurement_direction' => trim((string) ($contentBrief['procurement_direction'] ?? '')),
+            'desired_action' => trim((string) ($contentBrief['desired_action'] ?? '')),
+            'author' => trim((string) $author->name).(trim((string) ($author->bio ?? '')) !== '' ? "\n作者简介：".trim((string) $author->bio) : ''),
+            'structure' => trim((string) ($structureProfile['instruction'] ?? '')),
+            'media_context' => implode("\n", $mediaLines),
+            'domain_rules' => $this->hengjiaNativeContentPolicy->generationRules($task),
+        ], static fn (string $value): bool => trim($value) !== '');
+    }
+
+    /**
+     * 按产品、标题关键词和图片标签稳定选图。零匹配时在模型调用前阻断。
+     *
+     * @param  array<string,mixed>  $contentBrief
+     * @return array{
+     *   blocked:bool,reason_code:?string,mode:string,library_id:int,requested_count:int,
+     *   terms:list<string>,images:list<Image>,matches:list<array<string,mixed>>
+     * }
+     */
+    private function selectRelevantTaskImages(Task $task, string $title, string $keyword, array $contentBrief): array
+    {
+        $libraryId = (int) ($task->image_library_id ?? 0);
+        $imageCount = max(0, (int) ($task->image_count ?? 0));
+        $terms = $this->imageSearchTerms($contentBrief, $title, $keyword);
+        $base = [
+            'blocked' => true,
+            'reason_code' => null,
+            'mode' => 'product_tag_match',
+            'library_id' => $libraryId,
+            'requested_count' => $imageCount,
+            'terms' => $terms,
+            'images' => [],
+            'matches' => [],
+        ];
+
+        if ($libraryId <= 0) {
+            return array_replace($base, ['reason_code' => 'image_library_missing']);
+        }
+        if ($imageCount <= 0) {
+            return array_replace($base, ['reason_code' => 'image_count_missing']);
+        }
+        if ($terms === []) {
+            return array_replace($base, ['reason_code' => 'image_keywords_missing']);
+        }
+
+        $candidates = Image::query()
+            ->where('library_id', $libraryId)
+            ->whereNotNull('file_path')
+            ->orderBy('id')
+            ->get(['id', 'file_path', 'filename', 'file_name', 'original_name', 'tags']);
+        $scored = [];
+        foreach ($candidates as $image) {
+            $tags = $this->imageTags($image);
+            $tagText = mb_strtolower(implode(' ', $tags), 'UTF-8');
+            $nameText = mb_strtolower(implode(' ', array_filter([
+                (string) ($image->filename ?? ''),
+                (string) ($image->file_name ?? ''),
+                (string) ($image->original_name ?? ''),
+            ])), 'UTF-8');
+            $score = 0;
+            $matchedTerms = [];
+            foreach ($terms as $term) {
+                $needle = mb_strtolower($term, 'UTF-8');
+                $tagMatch = $tagText !== '' && str_contains($tagText, $needle);
+                $nameMatch = $nameText !== '' && str_contains($nameText, $needle);
+                if (! $tagMatch && ! $nameMatch) {
+                    continue;
+                }
+
+                $score += ($tagMatch ? 4 : 0) + ($nameMatch ? 2 : 0) + min(3, max(0, mb_strlen($needle, 'UTF-8') - 1));
+                $matchedTerms[] = $term;
+            }
+            if ($score <= 0) {
+                continue;
+            }
+
+            $scored[] = [
+                'image' => $image,
+                'score' => $score,
+                'matched_terms' => array_values(array_unique($matchedTerms)),
+                'tags' => $tags,
+            ];
+        }
+
+        usort($scored, static function (array $left, array $right): int {
+            $scoreOrder = ((int) $right['score']) <=> ((int) $left['score']);
+
+            return $scoreOrder !== 0
+                ? $scoreOrder
+                : ((int) $left['image']->id <=> (int) $right['image']->id);
+        });
+        $selected = array_slice($scored, 0, $imageCount);
+        if ($selected === []) {
+            return array_replace($base, ['reason_code' => 'matching_image_missing']);
+        }
+
+        return array_replace($base, [
+            'blocked' => false,
+            'reason_code' => null,
+            'images' => array_values(array_map(static fn (array $item): Image => $item['image'], $selected)),
+            'matches' => array_values(array_map(static fn (array $item): array => [
+                'image_id' => (int) $item['image']->id,
+                'original_name' => (string) ($item['image']->original_name ?? ''),
+                'score' => (int) $item['score'],
+                'matched_terms' => $item['matched_terms'],
+                'tags' => $item['tags'],
+            ], $selected)),
+        ]);
+    }
+
+    private function imageBlockMessage(string $reasonCode): string
+    {
+        return match ($reasonCode) {
+            'image_library_missing' => '任务尚未选择图片库，已在模型调用前安全停止',
+            'image_count_missing' => '任务尚未设置需要插入的图片数量，已在模型调用前安全停止',
+            'image_keywords_missing' => '任务缺少可用于选图的产品或图片关键词，已在模型调用前安全停止',
+            default => '未找到与产品或图片关键词匹配的图片，任务等待补充图库标签或图片',
+        };
+    }
+
+    /** @param array<string,mixed> $contentBrief @return list<string> */
+    private function imageSearchTerms(array $contentBrief, string $title, string $keyword): array
+    {
+        $sources = [];
+        foreach ((array) ($contentBrief['image_keywords'] ?? []) as $value) {
+            $sources[] = $value;
+        }
+        $sources[] = $contentBrief['product_key'] ?? '';
+        $sources[] = $keyword;
+        $sources[] = $title;
+
+        $terms = [];
+        foreach ($sources as $source) {
+            $source = trim(is_string($source) || is_numeric($source) ? (string) $source : '');
+            if ($source === '') {
+                continue;
+            }
+
+            $pieces = preg_split('/[\s,，;；、|\/\\()（）\[\]【】:_-]+/u', $source) ?: [];
+            array_unshift($pieces, $source);
+            foreach ($pieces as $piece) {
+                $piece = trim((string) $piece);
+                if (mb_strlen($piece, 'UTF-8') < 2) {
+                    continue;
+                }
+                $terms[mb_strtolower($piece, 'UTF-8')] = $piece;
+            }
+        }
+
+        return array_values($terms);
+    }
+
+    /** @return list<string> */
+    private function imageTags(Image $image): array
+    {
+        $raw = trim((string) ($image->tags ?? ''));
+        if ($raw === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        $values = is_array($decoded) ? array_values($decoded) : (preg_split('/[\r\n,，;；、|]+/u', $raw) ?: []);
+        $tags = [];
+        foreach ($values as $value) {
+            $value = trim(is_string($value) || is_numeric($value) ? (string) $value : '');
+            if ($value !== '') {
+                $tags[$value] = true;
+            }
+        }
+
+        return array_keys($tags);
+    }
+
+    /**
+     * @param  list<Image>  $images
+     * @return array{content:string,images:list<Image>}
+     */
+    private function insertSelectedImagesIntoContent(string $content, array $images): array
+    {
+        $markdownBlocks = [];
+        $inserted = [];
+        foreach ($images as $image) {
+            if (! $image instanceof Image) {
+                continue;
+            }
+            $path = trim((string) ($image->file_path ?? ''));
+            if ($path === '') {
+                continue;
+            }
+
+            $path = ImageUrlNormalizer::toPublicUrl($path);
+            $alt = ImageUrlNormalizer::readableAlt((string) ($image->original_name ?? ''));
+            $markdownBlocks[] = '!['.($alt !== '' ? $alt : 'image').']('.$path.')';
+            $inserted[] = $image;
+        }
+
+        if ($markdownBlocks !== []) {
+            $content = $this->insertImagesByParagraphInterval($content, $markdownBlocks);
+        }
+
+        return ['content' => $content, 'images' => $inserted];
+    }
+
+    /** @return array<string,mixed> */
+    private function titleSnapshot(Title $title): array
+    {
+        $payload = [
+            'id' => (int) $title->id,
+            'title' => (string) $title->title,
+            'keyword' => (string) ($title->keyword ?? ''),
+        ];
+        $payload['sha256'] = $this->hashJson($payload);
+
+        return $payload;
+    }
+
+    /** @return array<string,mixed>|null */
+    private function promptSnapshot(?Prompt $prompt, ?string $compiledPrompt): ?array
+    {
+        if (! $prompt) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $prompt->id,
+            'name' => (string) $prompt->name,
+            'type' => (string) $prompt->type,
+            'template_sha256' => hash('sha256', (string) $prompt->content),
+            'compiled_sha256' => $compiledPrompt !== null && $compiledPrompt !== '' ? hash('sha256', $compiledPrompt) : null,
+            'builder_schema' => $prompt->isGuidedContentPrompt() ? Prompt::BUILDER_SCHEMA : null,
+            'builder_status' => $prompt->builderStatus(),
+        ];
+    }
+
+    /** @param array<string,mixed>|null $selection @return array<string,mixed>|null */
+    private function imageSelectionSnapshot(?array $selection): ?array
+    {
+        if ($selection === null) {
+            return null;
+        }
+
+        $matches = [];
+        $imagesById = collect($selection['images'] ?? [])->keyBy(static fn (mixed $image): int => $image instanceof Image ? (int) $image->id : 0);
+        foreach (($selection['matches'] ?? []) as $match) {
+            if (! is_array($match)) {
+                continue;
+            }
+            $imageId = (int) ($match['image_id'] ?? 0);
+            $image = $imagesById->get($imageId);
+            $matches[] = [
+                'image_id' => $imageId,
+                'original_name' => (string) ($match['original_name'] ?? ''),
+                'score' => (int) ($match['score'] ?? 0),
+                'matched_terms' => array_values(array_map('strval', (array) ($match['matched_terms'] ?? []))),
+                'tags' => array_values(array_map('strval', (array) ($match['tags'] ?? []))),
+                'path_sha256' => $image instanceof Image ? hash('sha256', (string) ($image->file_path ?? '')) : null,
+            ];
+        }
+
+        return [
+            'mode' => (string) ($selection['mode'] ?? ''),
+            'blocked' => (bool) ($selection['blocked'] ?? false),
+            'reason_code' => $selection['reason_code'] ?? null,
+            'library_id' => (int) ($selection['library_id'] ?? 0),
+            'requested_count' => (int) ($selection['requested_count'] ?? 0),
+            'terms' => array_values(array_map('strval', (array) ($selection['terms'] ?? []))),
+            'matches' => $matches,
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $contentBrief
+     * @param  array<string,mixed>|null  $structureProfile
+     * @param  list<array<string,mixed>>  $evidenceSnapshot
+     * @param  array<string,mixed>|null  $imageSelection
+     * @return array<string,mixed>
+     */
+    private function generationSnapshot(
+        Task $task,
+        Title $title,
+        ?Prompt $prompt,
+        Author $author,
+        array $contentBrief,
+        ?array $structureProfile,
+        string $knowledgeContext,
+        array $evidenceSnapshot,
+        ?array $imageSelection,
+        string $compiledPrompt,
+    ): array {
+        $knowledgeBaseIds = $this->resolveTaskKnowledgeBaseIds($task);
+
+        return [
+            'schema' => 'geoflow-native-generation-snapshot/v1',
+            'enhanced_native_flow' => $contentBrief !== [],
+            'generated_at' => now()->toIso8601String(),
+            'task_id' => (int) $task->id,
+            'title' => $this->titleSnapshot($title),
+            'prompt' => $this->promptSnapshot($prompt, $compiledPrompt),
+            'content_brief' => [
+                'value' => $contentBrief,
+                'sha256' => $this->hashJson($contentBrief),
+            ],
+            'structure' => $structureProfile,
+            'author' => [
+                'id' => (int) $author->id,
+                'name' => (string) $author->name,
+                'bio_sha256' => hash('sha256', (string) ($author->bio ?? '')),
+                'bio_excerpt' => mb_substr(trim((string) ($author->bio ?? '')), 0, 240, 'UTF-8'),
+            ],
+            'knowledge' => [
+                'knowledge_base_ids' => $knowledgeBaseIds,
+                'context_sha256' => hash('sha256', $knowledgeContext),
+                'context_length' => mb_strlen($knowledgeContext, 'UTF-8'),
+                'chunks' => $evidenceSnapshot,
+            ],
+            'images' => $this->imageSelectionSnapshot($imageSelection),
+        ];
+    }
+
+    /** @param array<mixed> $value */
+    private function hashJson(array $value): string
+    {
+        return hash('sha256', json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
     }
 
     /**

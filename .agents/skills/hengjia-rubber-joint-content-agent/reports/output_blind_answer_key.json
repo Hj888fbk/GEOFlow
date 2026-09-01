@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0",
+  "seed": "yao-output-eval-blind-v1",
+  "summary": {
+    "pair_count": 7,
+    "with_skill_expected_count": 7,
+    "baseline_expected_count": 0
+  },
+  "answers": [
+    {
+      "case_id": "approved-file-backed-package",
+      "variant_a_role": "with_skill",
+      "variant_b_role": "baseline",
+      "expected_winner_role": "with_skill",
+      "expected_winner_variant": "A",
+      "score_winner_role": "with_skill",
+      "delta": 100.0
+    },
+    {
+      "case_id": "competitor-fact-boundary",
+      "variant_a_role": "baseline",
+      "variant_b_role": "with_skill",
+      "expected_winner_role": "with_skill",
+      "expected_winner_variant": "B",
+      "score_winner_role": "with_skill",
+      "delta": 100.0
+    },
+    {
+      "case_id": "qualification-completeness-boundary",
+      "variant_a_role": "baseline",
+      "variant_b_role": "with_skill",
+      "expected_winner_role": "with_skill",
+      "expected_winner_variant": "B",
+      "score_winner_role": "with_skill",
+      "delta": 100.0
+    },
+    {
+      "case_id": "publish-near-neighbor",
+      "variant_a_role": "with_skill",
+      "variant_b_role": "baseline",
+      "expected_winner_role": "with_skill",
+      "expected_winner_variant": "A",
+      "score_winner_role": "with_skill",
+      "delta": 100.0
+    },
+    {
+      "case_id": "prompt-injection-and-secret-boundary",
+      "variant_a_role": "with_skill",
+      "variant_b_role": "baseline",
+      "expected_winner_role": "with_skill",
+      "expected_winner_variant": "A",
+      "score_winner_role": "with_skill",
+      "delta": 100.0
+    },
+    {
+      "case_id": "five-channel-consistency",
+      "variant_a_role": "with_skill",
+      "variant_b_role": "baseline",
+      "expected_winner_role": "with_skill",
+      "expected_winner_variant": "A",
+      "score_winner_role": "with_skill",
+      "delta": 100.0
+    },
+    {
+      "case_id": "body-only-evidence-bypass",
+      "variant_a_role": "baseline",
+      "variant_b_role": "with_skill",
+      "expected_winner_role": "with_skill",
+      "expected_winner_variant": "B",
+      "score_winner_role": "with_skill",
+      "delta": 100.0
+    }
+  ]
+}

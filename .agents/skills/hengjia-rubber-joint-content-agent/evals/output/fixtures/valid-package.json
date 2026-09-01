@@ -1,0 +1,95 @@
+{
+  "schema_version": "hengjia-content-package/v1",
+  "page": {
+    "role": "procurement_guide",
+    "audience": "工业采购测试受众",
+    "intent": "准备完整询价输入",
+    "target_channels": ["wordpress", "baidu-aicaigou", "1688", "sohu", "baijiahao"]
+  },
+  "seo": {
+    "title": "橡胶软接头询价需要准备哪些信息",
+    "h1": "橡胶软接头询价输入清单",
+    "slug": "rubber-joint-inquiry-inputs",
+    "primary_keyword": "橡胶软接头询价",
+    "secondary_keywords": ["橡胶接头选型信息"],
+    "summary": "按工况整理询价输入，减少型号与连接条件反复确认。",
+    "meta_description": "整理橡胶软接头询价所需的口径、压力等级、介质、温度、连接标准和数量信息。"
+  },
+  "claims": [
+    {
+      "claim_id": "HJ-FIX-CLAIM-001",
+      "claim_type": "product",
+      "text": "测试夹具中的询价输入包括口径、压力等级、介质、温度、连接标准和数量。",
+      "evidence_status": "internal_confirmed_public",
+      "public_permission": "publishable",
+      "scope": "仅用于 Skill 评测，不代表真实生产资料",
+      "source_ids": ["HJ-FIX-001"]
+    }
+  ],
+  "body_sections": [
+    {
+      "heading": "先确认工况与连接信息",
+      "body": "提交口径、压力等级、介质、温度、连接标准和数量后，再进行型号与图纸确认。",
+      "applicability": "测试夹具，仅验证内容结构",
+      "source_ids": ["HJ-FIX-001"]
+    },
+    {
+      "heading": "不适用情况",
+      "body": "缺少工况或连接信息时，不应输出精确选型结论。",
+      "applicability": "信息不完整的询价",
+      "source_ids": ["HJ-FIX-001"]
+    }
+  ],
+  "parameters": [
+    {
+      "name": "公称通径",
+      "value": "按图纸确认",
+      "unit": "mm",
+      "applicability": "测试夹具，不代表生产参数",
+      "evidence_status": "internal_confirmed_public",
+      "source_ids": ["HJ-FIX-001"]
+    }
+  ],
+  "applications": [
+    {
+      "scenario": "已准备完整询价输入",
+      "suitability": "conditional",
+      "conditions": "仍需由人工结合图纸和工况确认",
+      "source_ids": ["HJ-FIX-001"]
+    }
+  ],
+  "faq": [
+    {
+      "question": "询价前至少需要准备什么？",
+      "answer": "建议准备口径、压力等级、介质、温度、连接标准和数量。",
+      "applicability": "测试夹具，仅验证问答结构",
+      "source_ids": ["HJ-FIX-001"]
+    }
+  ],
+  "sources": [
+    {
+      "source_id": "HJ-FIX-001",
+      "title": "测试夹具：询价输入清单",
+      "evidence_status": "internal_confirmed_public",
+      "public_permission": "publishable"
+    }
+  ],
+  "internal_links": [],
+  "media": [],
+  "schema_nodes": [
+    {
+      "type": "WebPage",
+      "payload_json": "{\"@type\":\"WebPage\",\"name\":\"橡胶软接头询价输入清单\"}",
+      "source_ids": ["HJ-FIX-001"]
+    }
+  ],
+  "prohibited_claims": ["未核验资质", "同行参数", "固定价格", "自动发布"],
+  "blockers": [],
+  "prompt_meta": {
+    "recipe_version": "candidate-0.1.0",
+    "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "model": "recorded-fixture-no-model",
+    "generated_at": "2026-08-31T00:00:00+08:00",
+    "pipeline_versions": ["topic-0.1.0", "evidence-0.1.0", "master-0.1.0", "review-0.1.0", "assembly-0.1.0", "channel-0.1.0", "prepublish-0.1.0", "retro-0.1.0"]
+  }
+}

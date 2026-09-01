@@ -1,0 +1,43 @@
+{
+  "name": "hengjia-rubber-joint-content-agent",
+  "version": "0.1.0-candidate.2",
+  "license": "AGPL-3.0-only",
+  "owner": "恒佳 GEOFlow 内容治理组",
+  "updated_at": "2026-08-31",
+  "review_due": "2026-09-07",
+  "status": "experimental",
+  "maturity_tier": "governed",
+  "lifecycle_stage": "governed",
+  "context_budget_tier": "governed",
+  "review_cadence": "per-release",
+  "skill_archetype": "governed-domain-content-candidate",
+  "skill_ir_source": "skill-ir/hengjia-rubber-joint-content-agent.json",
+  "release_readiness": "governed_candidate",
+  "production_ready": false,
+  "target_platforms": [
+    "openai",
+    "generic",
+    "agent-skills-compatible"
+  ],
+  "factory_components": [
+    "references",
+    "scripts",
+    "evals",
+    "reports",
+    "tests",
+    "security"
+  ],
+  "output_contract": {
+    "primary": "hengjia-content-package/v1",
+    "secondary": "hengjia-channel-candidates/v1",
+    "publication_state": "candidate_only"
+  },
+  "rollback_boundary": "Remove or disable this Skill directory only; no database migration, production prompt replacement, website write, account action, or external publication is authorized.",
+  "missing_evidence": [
+    "provider-backed model output evaluation",
+    "human blind A/B review decisions",
+    "one-week shadow run",
+    "production WordPress readback",
+    "external platform operator acceptance"
+  ]
+}

@@ -28,6 +28,16 @@ class ManualPublicationAccount extends Model
 
     public const PLATFORM_CUSTOM = 'custom';
 
+    public const PLATFORM_WORDPRESS = 'wordpress';
+
+    public const PLATFORM_BAIDU_AICAIGOU = 'baidu_aicaigou';
+
+    public const PLATFORM_1688 = '1688';
+
+    public const PLATFORM_SOHU = 'sohu';
+
+    public const PLATFORM_BAIJIAHAO = 'baijiahao';
+
     public const PLATFORMS = [
         self::PLATFORM_ZHIHU,
         self::PLATFORM_XIAOHONGSHU,
@@ -38,6 +48,11 @@ class ManualPublicationAccount extends Model
         self::PLATFORM_REDDIT,
         self::PLATFORM_X,
         self::PLATFORM_LINKEDIN,
+        self::PLATFORM_WORDPRESS,
+        self::PLATFORM_BAIDU_AICAIGOU,
+        self::PLATFORM_1688,
+        self::PLATFORM_SOHU,
+        self::PLATFORM_BAIJIAHAO,
         self::PLATFORM_CUSTOM,
     ];
 
@@ -54,7 +69,27 @@ class ManualPublicationAccount extends Model
         'notes',
         'is_active',
         'created_by_admin_id',
+        'platform_adapter_id',
+        'distribution_channel_id',
+        'connection_mode',
+        'subject_name',
+        'brand_voice',
+        'person_voice',
+        'content_types',
+        'authorization_status',
+        'login_status',
+        'external_account_hash',
+        'capability_snapshot',
+        'adapter_version',
+        'publishing_rules',
+        'last_verified_at',
+        'authorization_expires_at',
+        'disabled_at',
+        'last_error_code',
+        'last_error_message',
     ];
+
+    protected $hidden = ['external_account_hash'];
 
     protected function casts(): array
     {
@@ -62,6 +97,14 @@ class ManualPublicationAccount extends Model
             'persona_id' => 'integer',
             'is_active' => 'boolean',
             'created_by_admin_id' => 'integer',
+            'platform_adapter_id' => 'integer',
+            'distribution_channel_id' => 'integer',
+            'content_types' => 'array',
+            'capability_snapshot' => 'array',
+            'publishing_rules' => 'array',
+            'last_verified_at' => 'datetime',
+            'authorization_expires_at' => 'datetime',
+            'disabled_at' => 'datetime',
         ];
     }
 
@@ -78,6 +121,26 @@ class ManualPublicationAccount extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(Admin::class, 'created_by_admin_id');
+    }
+
+    public function adapter(): BelongsTo
+    {
+        return $this->belongsTo(PlatformAdapter::class, 'platform_adapter_id');
+    }
+
+    public function distributionChannel(): BelongsTo
+    {
+        return $this->belongsTo(DistributionChannel::class);
+    }
+
+    public function channelVariants(): HasMany
+    {
+        return $this->hasMany(ChannelVariant::class);
+    }
+
+    public function isEnabled(): bool
+    {
+        return $this->is_active && $this->disabled_at === null;
     }
 
     public function platformLabelKey(): string

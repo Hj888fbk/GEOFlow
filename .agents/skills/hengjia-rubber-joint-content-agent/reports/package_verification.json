@@ -1,0 +1,97 @@
+{
+  "ok": true,
+  "schema_version": "2.0",
+  "generated_at": "2026-08-31",
+  "skill_dir": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent",
+  "package_dir": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\packages-candidate-refresh",
+  "summary": {
+    "target_count": 2,
+    "adapter_count": 2,
+    "archive_present": true,
+    "archive_sha256": "cf386a4c480a240ba4a153c31fda103e373ba716c791990e231532f140498939",
+    "archive_entry_count": 29,
+    "nested_skill_entry_count": 0,
+    "failure_count": 0,
+    "warning_count": 0
+  },
+  "checks": [
+    {
+      "id": "package-manifest",
+      "status": "pass",
+      "detail": "Package manifest exists: D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\packages-candidate-refresh\\manifest.json"
+    },
+    {
+      "id": "generic-adapter",
+      "status": "pass",
+      "detail": "Adapter exists for target: generic"
+    },
+    {
+      "id": "openai-adapter",
+      "status": "pass",
+      "detail": "Adapter exists for target: openai"
+    },
+    {
+      "id": "archive-safe-paths",
+      "status": "pass",
+      "detail": "Archive has no absolute or parent-traversal entries"
+    },
+    {
+      "id": "archive-entry-hengjia-rubber-joint-content-agent/SKILL.md",
+      "status": "pass",
+      "detail": "Archive contains hengjia-rubber-joint-content-agent/SKILL.md"
+    },
+    {
+      "id": "archive-entry-hengjia-rubber-joint-content-agent/manifest.json",
+      "status": "pass",
+      "detail": "Archive contains hengjia-rubber-joint-content-agent/manifest.json"
+    },
+    {
+      "id": "archive-entry-hengjia-rubber-joint-content-agent/agents/interface.yaml",
+      "status": "pass",
+      "detail": "Archive contains hengjia-rubber-joint-content-agent/agents/interface.yaml"
+    },
+    {
+      "id": "archive-single-skill-entrypoint",
+      "status": "pass",
+      "detail": "Archive exposes only the root SKILL.md entrypoint"
+    },
+    {
+      "id": "archive-excludes-generated",
+      "status": "pass",
+      "detail": "Archive excludes local caches, platform noise, .yao state, external submission drafts, local evidence pointers, generated dist/, .previews/, and tests/tmp* contents"
+    },
+    {
+      "id": "archive-portable-evidence-index",
+      "status": "pass",
+      "detail": "Archive includes a self-contained portable evidence pointer and verified report index"
+    },
+    {
+      "id": "registry-name-match",
+      "status": "pass",
+      "detail": "Registry package name matches package manifest"
+    },
+    {
+      "id": "registry-version-match",
+      "status": "pass",
+      "detail": "Registry package version matches package manifest"
+    },
+    {
+      "id": "registry-compat-generic",
+      "status": "pass",
+      "detail": "Registry compatibility is reviewable for target: generic"
+    },
+    {
+      "id": "registry-compat-openai",
+      "status": "pass",
+      "detail": "Registry compatibility is reviewable for target: openai"
+    }
+  ],
+  "failures": [],
+  "warnings": [],
+  "artifacts": {
+    "manifest": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\packages-candidate-refresh\\manifest.json",
+    "archive": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\packages-candidate-refresh\\hengjia-rubber-joint-content-agent.zip",
+    "json": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\package_verification.json",
+    "markdown": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\package_verification.md"
+  }
+}

@@ -22,6 +22,7 @@ class ArticleDistribution extends Model
         'last_attempt_at',
         'last_error_message',
         'payload_hash',
+        'channel_variant_id',
     ];
 
     protected function casts(): array
@@ -33,6 +34,7 @@ class ArticleDistribution extends Model
             'next_retry_at' => 'datetime',
             'last_attempt_at' => 'datetime',
             'remote_meta' => 'array',
+            'channel_variant_id' => 'integer',
         ];
     }
 
@@ -61,5 +63,10 @@ class ArticleDistribution extends Model
     public function logs(): HasMany
     {
         return $this->hasMany(DistributionLog::class, 'article_distribution_id');
+    }
+
+    public function channelVariant(): BelongsTo
+    {
+        return $this->belongsTo(ChannelVariant::class);
     }
 }

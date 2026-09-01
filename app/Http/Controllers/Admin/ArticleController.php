@@ -1237,14 +1237,16 @@ class ArticleController extends Controller
 
         try {
             $contentPrompts = Prompt::query()
-                ->select(['id', 'name'])
+                ->select(['id', 'name', 'type', 'variables'])
                 ->where('type', 'content')
                 ->orderBy('name')
                 ->get()
+                ->filter(static fn (Prompt $prompt): bool => $prompt->isAvailableForProductionTask())
                 ->map(fn (Prompt $prompt): array => [
                     'id' => (int) $prompt->id,
                     'name' => (string) $prompt->name,
                 ])
+                ->values()
                 ->all();
         } catch (QueryException) {
             $contentPrompts = [];

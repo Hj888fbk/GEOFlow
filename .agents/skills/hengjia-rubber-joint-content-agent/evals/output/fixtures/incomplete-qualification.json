@@ -1,0 +1,16 @@
+{
+  "fixture_label": "file-backed fixture",
+  "fixture_only": true,
+  "source_id": "QUAL-FIX-001",
+  "claim_type": "qualification",
+  "evidence_status": "internal_confirmed_public",
+  "public_permission": "internal_only",
+  "qualification": {
+    "qualification_name": "测试证书名称",
+    "issuer": "测试签发机构",
+    "certification_scope": "待核验",
+    "applicable_products": "待核验",
+    "issued_at": "2026-01-01"
+  },
+  "missing_evidence": ["certificate_number", "valid_until", "official_lookup_url", "file_sha256", "reviewer"]
+}

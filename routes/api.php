@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V1\BrowserSessionController;
 use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\JobController;
 use App\Http\Controllers\Api\V1\MaterialController;
+use App\Http\Controllers\Api\V1\PlatformAccountController;
 use App\Http\Controllers\Api\V1\TaskController;
 use Illuminate\Support\Facades\Route;
 
@@ -116,6 +117,11 @@ Route::prefix('v1')
             Route::delete('materials/{type}/{id}/items', [MaterialController::class, 'destroyItems'])
                 ->whereNumber('id')
                 ->middleware('api.scope:materials:write');
+
+            Route::get('platforms', [PlatformAccountController::class, 'platforms'])
+                ->middleware('api.scope:platform-accounts:read');
+            Route::get('platform-accounts', [PlatformAccountController::class, 'index'])
+                ->middleware('api.scope:platform-accounts:read');
 
             // articles:* — 文章 CRUD、审核、发布、软删
             Route::get('articles', [ArticleController::class, 'index'])->middleware('api.scope:articles:read');

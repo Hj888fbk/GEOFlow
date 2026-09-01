@@ -1,0 +1,29 @@
+interface:
+  display_name: "恒佳橡胶软接头内容 Agent"
+  short_description: "生成并复核有证据边界的五渠道候选内容"
+  default_prompt: "Use $hengjia-rubber-joint-content-agent to generate or review an evidence-governed hengjia-content-package/v1 candidate. Never publish; return blockers and missing evidence explicitly."
+compatibility:
+  canonical_format: "agent-skills"
+  adapter_targets:
+    - "openai"
+    - "generic"
+  activation:
+    mode: "manual"
+    paths: []
+  execution:
+    context: "inline"
+    shell: "powershell"
+  trust:
+    source_tier: "local"
+    remote_inline_execution: "forbid"
+    remote_metadata_policy: "deny-unapproved-content"
+  degradation:
+    openai: "candidate JSON plus deterministic local validation; no publish adapter"
+    generic: "neutral source contract plus deterministic local validation; no publish adapter"
+permissions:
+  network: "forbidden"
+  account_login: "forbidden"
+  browser_automation: "forbidden"
+  publication: "forbidden"
+  file_read: "explicit approved inputs only"
+  file_write: "stdout or caller-selected candidate artifacts only"

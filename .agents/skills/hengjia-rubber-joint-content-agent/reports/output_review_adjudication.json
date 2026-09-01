@@ -1,0 +1,366 @@
+{
+  "schema_version": "1.0",
+  "ok": true,
+  "summary": {
+    "pair_count": 7,
+    "judgment_count": 0,
+    "pending_count": 7,
+    "agreement_count": 0,
+    "disagreement_count": 0,
+    "invalid_decision_count": 0,
+    "answer_revealed_count": 0,
+    "pending_answer_hidden_count": 7,
+    "agreement_rate": null,
+    "needs_review": true,
+    "reviewer_metadata_present": false,
+    "reason_required": true,
+    "blind_review_attested": false,
+    "blind_review_completed_before_answer_key": false,
+    "answer_key_not_opened_before_decisions": false,
+    "raw_content_excluded_attested": true,
+    "reviewer_reason_required_attested": true,
+    "ready_for_human_evidence": false,
+    "failure_count": 0,
+    "reviewer_checklist_count": 7,
+    "reviewer_checklist_pending_count": 7,
+    "reviewer_checklist_invalid_count": 0,
+    "reviewer_checklist_ready_count": 0
+  },
+  "reviewer": "",
+  "reviewed_at": "",
+  "review_integrity": {
+    "blind_pack_sha256": "ac007ecfc6323e548a2dda12294c1e82c70c281d596649d8aa0003115a359702",
+    "case_count": 7,
+    "case_ids": [
+      "approved-file-backed-package",
+      "competitor-fact-boundary",
+      "qualification-completeness-boundary",
+      "publish-near-neighbor",
+      "prompt-injection-and-secret-boundary",
+      "five-channel-consistency",
+      "body-only-evidence-bypass"
+    ],
+    "prompt_sha256_by_case": {
+      "approved-file-backed-package": "e30bc3b5e25c5a0787bbec744fe0d99c5e8cdbb425b138f278f2b4f0f9f486e8",
+      "competitor-fact-boundary": "4188561d75ab66b226b9e759e27639a2484700b3dfe076b9cec83d5aa102b639",
+      "qualification-completeness-boundary": "d3e491d929b5c3203e08d529af867a2d3557486e7b3240825a5fc7a2631b8bd0",
+      "publish-near-neighbor": "fcaeb5c0ddce9197e0b14659879e6ef2b228067dbbbb1e4ebe42d0f2e7b31f76",
+      "prompt-injection-and-secret-boundary": "2888d5cae2b54e9ad1e4e936e8d52cfc48e7283aacf66eb01d6f5427a90be77a",
+      "five-channel-consistency": "bdfa43e6273ac2627556921475de1ee2fd46c1e2f8193c431a83059c699b0421",
+      "body-only-evidence-bypass": "5c6945ad618b8a9b4d1e50adad0205b6bd7be425c66fa934c97967047eb85dee"
+    }
+  },
+  "reviewer_attestation": {
+    "blind_review_completed_before_answer_key": false,
+    "answer_key_not_opened_before_decisions": false,
+    "raw_content_excluded": true,
+    "reviewer_reason_required": true
+  },
+  "artifacts": {
+    "blind_pack": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_blind_review_pack.json",
+    "answer_key": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_blind_answer_key.json",
+    "decisions": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_review_decisions.json",
+    "json": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_review_adjudication.json",
+    "markdown": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_review_adjudication.md"
+  },
+  "template_written": false,
+  "pairs": [
+    {
+      "case_id": "approved-file-backed-package",
+      "status": "pending",
+      "expected_winner_variant": "",
+      "expected_revealed": false,
+      "reviewer_winner_variant": "",
+      "confidence": null,
+      "reason": "",
+      "prompt_sha256": "e30bc3b5e25c5a0787bbec744fe0d99c5e8cdbb425b138f278f2b4f0f9f486e8"
+    },
+    {
+      "case_id": "competitor-fact-boundary",
+      "status": "pending",
+      "expected_winner_variant": "",
+      "expected_revealed": false,
+      "reviewer_winner_variant": "",
+      "confidence": null,
+      "reason": "",
+      "prompt_sha256": "4188561d75ab66b226b9e759e27639a2484700b3dfe076b9cec83d5aa102b639"
+    },
+    {
+      "case_id": "qualification-completeness-boundary",
+      "status": "pending",
+      "expected_winner_variant": "",
+      "expected_revealed": false,
+      "reviewer_winner_variant": "",
+      "confidence": null,
+      "reason": "",
+      "prompt_sha256": "d3e491d929b5c3203e08d529af867a2d3557486e7b3240825a5fc7a2631b8bd0"
+    },
+    {
+      "case_id": "publish-near-neighbor",
+      "status": "pending",
+      "expected_winner_variant": "",
+      "expected_revealed": false,
+      "reviewer_winner_variant": "",
+      "confidence": null,
+      "reason": "",
+      "prompt_sha256": "fcaeb5c0ddce9197e0b14659879e6ef2b228067dbbbb1e4ebe42d0f2e7b31f76"
+    },
+    {
+      "case_id": "prompt-injection-and-secret-boundary",
+      "status": "pending",
+      "expected_winner_variant": "",
+      "expected_revealed": false,
+      "reviewer_winner_variant": "",
+      "confidence": null,
+      "reason": "",
+      "prompt_sha256": "2888d5cae2b54e9ad1e4e936e8d52cfc48e7283aacf66eb01d6f5427a90be77a"
+    },
+    {
+      "case_id": "five-channel-consistency",
+      "status": "pending",
+      "expected_winner_variant": "",
+      "expected_revealed": false,
+      "reviewer_winner_variant": "",
+      "confidence": null,
+      "reason": "",
+      "prompt_sha256": "bdfa43e6273ac2627556921475de1ee2fd46c1e2f8193c431a83059c699b0421"
+    },
+    {
+      "case_id": "body-only-evidence-bypass",
+      "status": "pending",
+      "expected_winner_variant": "",
+      "expected_revealed": false,
+      "reviewer_winner_variant": "",
+      "confidence": null,
+      "reason": "",
+      "prompt_sha256": "5c6945ad618b8a9b4d1e50adad0205b6bd7be425c66fa934c97967047eb85dee"
+    }
+  ],
+  "reviewer_checklist": [
+    {
+      "case_id": "approved-file-backed-package",
+      "readiness": "awaiting-decision",
+      "blocking_reason": "Reviewer has not selected A or B yet; answer key remains hidden.",
+      "status": "pending",
+      "reviewer_winner_variant": "",
+      "answer_key_visible": false,
+      "prompt_sha256": "e30bc3b5e25c5a0787bbec744fe0d99c5e8cdbb425b138f278f2b4f0f9f486e8",
+      "blind_pack_path": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_blind_review_pack.json",
+      "decisions_path": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_review_decisions.json",
+      "commands": {
+        "prepare_review_kit": "python3 scripts/yao.py output-review-kit --self",
+        "write_template": "python3 scripts/adjudicate_output_review.py --write-template",
+        "import_decisions": "python3 scripts/yao.py output-review-import --input <reviewer-decisions.json> --blind-review-attested --run-adjudication --self",
+        "adjudicate": "python3 scripts/yao.py output-review --self",
+        "refresh_review_studio": "python3 scripts/yao.py review-studio . --self"
+      },
+      "required_fields": {
+        "winner_variant": "A or B after reading only the blind review pack.",
+        "confidence": "Optional number from 0 to 1.",
+        "reason": "Required rationale; do not reveal baseline or with-skill labels before adjudication.",
+        "reviewer": "Human reviewer name or review group at the decision-file top level.",
+        "reviewed_at": "Review date or timestamp at the decision-file top level.",
+        "reviewer_attestation.blind_review_completed_before_answer_key": "True only after the reviewer has completed choices before opening the answer key.",
+        "reviewer_attestation.answer_key_not_opened_before_decisions": "True only when the answer key was not opened before decisions were recorded."
+      },
+      "privacy_contract": [
+        "Do not paste raw private user data into the decision reason.",
+        "Do not open the answer key before reviewer choices are recorded.",
+        "Leave winner_variant blank when the reviewer is not ready to decide."
+      ]
+    },
+    {
+      "case_id": "competitor-fact-boundary",
+      "readiness": "awaiting-decision",
+      "blocking_reason": "Reviewer has not selected A or B yet; answer key remains hidden.",
+      "status": "pending",
+      "reviewer_winner_variant": "",
+      "answer_key_visible": false,
+      "prompt_sha256": "4188561d75ab66b226b9e759e27639a2484700b3dfe076b9cec83d5aa102b639",
+      "blind_pack_path": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_blind_review_pack.json",
+      "decisions_path": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_review_decisions.json",
+      "commands": {
+        "prepare_review_kit": "python3 scripts/yao.py output-review-kit --self",
+        "write_template": "python3 scripts/adjudicate_output_review.py --write-template",
+        "import_decisions": "python3 scripts/yao.py output-review-import --input <reviewer-decisions.json> --blind-review-attested --run-adjudication --self",
+        "adjudicate": "python3 scripts/yao.py output-review --self",
+        "refresh_review_studio": "python3 scripts/yao.py review-studio . --self"
+      },
+      "required_fields": {
+        "winner_variant": "A or B after reading only the blind review pack.",
+        "confidence": "Optional number from 0 to 1.",
+        "reason": "Required rationale; do not reveal baseline or with-skill labels before adjudication.",
+        "reviewer": "Human reviewer name or review group at the decision-file top level.",
+        "reviewed_at": "Review date or timestamp at the decision-file top level.",
+        "reviewer_attestation.blind_review_completed_before_answer_key": "True only after the reviewer has completed choices before opening the answer key.",
+        "reviewer_attestation.answer_key_not_opened_before_decisions": "True only when the answer key was not opened before decisions were recorded."
+      },
+      "privacy_contract": [
+        "Do not paste raw private user data into the decision reason.",
+        "Do not open the answer key before reviewer choices are recorded.",
+        "Leave winner_variant blank when the reviewer is not ready to decide."
+      ]
+    },
+    {
+      "case_id": "qualification-completeness-boundary",
+      "readiness": "awaiting-decision",
+      "blocking_reason": "Reviewer has not selected A or B yet; answer key remains hidden.",
+      "status": "pending",
+      "reviewer_winner_variant": "",
+      "answer_key_visible": false,
+      "prompt_sha256": "d3e491d929b5c3203e08d529af867a2d3557486e7b3240825a5fc7a2631b8bd0",
+      "blind_pack_path": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_blind_review_pack.json",
+      "decisions_path": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_review_decisions.json",
+      "commands": {
+        "prepare_review_kit": "python3 scripts/yao.py output-review-kit --self",
+        "write_template": "python3 scripts/adjudicate_output_review.py --write-template",
+        "import_decisions": "python3 scripts/yao.py output-review-import --input <reviewer-decisions.json> --blind-review-attested --run-adjudication --self",
+        "adjudicate": "python3 scripts/yao.py output-review --self",
+        "refresh_review_studio": "python3 scripts/yao.py review-studio . --self"
+      },
+      "required_fields": {
+        "winner_variant": "A or B after reading only the blind review pack.",
+        "confidence": "Optional number from 0 to 1.",
+        "reason": "Required rationale; do not reveal baseline or with-skill labels before adjudication.",
+        "reviewer": "Human reviewer name or review group at the decision-file top level.",
+        "reviewed_at": "Review date or timestamp at the decision-file top level.",
+        "reviewer_attestation.blind_review_completed_before_answer_key": "True only after the reviewer has completed choices before opening the answer key.",
+        "reviewer_attestation.answer_key_not_opened_before_decisions": "True only when the answer key was not opened before decisions were recorded."
+      },
+      "privacy_contract": [
+        "Do not paste raw private user data into the decision reason.",
+        "Do not open the answer key before reviewer choices are recorded.",
+        "Leave winner_variant blank when the reviewer is not ready to decide."
+      ]
+    },
+    {
+      "case_id": "publish-near-neighbor",
+      "readiness": "awaiting-decision",
+      "blocking_reason": "Reviewer has not selected A or B yet; answer key remains hidden.",
+      "status": "pending",
+      "reviewer_winner_variant": "",
+      "answer_key_visible": false,
+      "prompt_sha256": "fcaeb5c0ddce9197e0b14659879e6ef2b228067dbbbb1e4ebe42d0f2e7b31f76",
+      "blind_pack_path": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_blind_review_pack.json",
+      "decisions_path": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_review_decisions.json",
+      "commands": {
+        "prepare_review_kit": "python3 scripts/yao.py output-review-kit --self",
+        "write_template": "python3 scripts/adjudicate_output_review.py --write-template",
+        "import_decisions": "python3 scripts/yao.py output-review-import --input <reviewer-decisions.json> --blind-review-attested --run-adjudication --self",
+        "adjudicate": "python3 scripts/yao.py output-review --self",
+        "refresh_review_studio": "python3 scripts/yao.py review-studio . --self"
+      },
+      "required_fields": {
+        "winner_variant": "A or B after reading only the blind review pack.",
+        "confidence": "Optional number from 0 to 1.",
+        "reason": "Required rationale; do not reveal baseline or with-skill labels before adjudication.",
+        "reviewer": "Human reviewer name or review group at the decision-file top level.",
+        "reviewed_at": "Review date or timestamp at the decision-file top level.",
+        "reviewer_attestation.blind_review_completed_before_answer_key": "True only after the reviewer has completed choices before opening the answer key.",
+        "reviewer_attestation.answer_key_not_opened_before_decisions": "True only when the answer key was not opened before decisions were recorded."
+      },
+      "privacy_contract": [
+        "Do not paste raw private user data into the decision reason.",
+        "Do not open the answer key before reviewer choices are recorded.",
+        "Leave winner_variant blank when the reviewer is not ready to decide."
+      ]
+    },
+    {
+      "case_id": "prompt-injection-and-secret-boundary",
+      "readiness": "awaiting-decision",
+      "blocking_reason": "Reviewer has not selected A or B yet; answer key remains hidden.",
+      "status": "pending",
+      "reviewer_winner_variant": "",
+      "answer_key_visible": false,
+      "prompt_sha256": "2888d5cae2b54e9ad1e4e936e8d52cfc48e7283aacf66eb01d6f5427a90be77a",
+      "blind_pack_path": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_blind_review_pack.json",
+      "decisions_path": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_review_decisions.json",
+      "commands": {
+        "prepare_review_kit": "python3 scripts/yao.py output-review-kit --self",
+        "write_template": "python3 scripts/adjudicate_output_review.py --write-template",
+        "import_decisions": "python3 scripts/yao.py output-review-import --input <reviewer-decisions.json> --blind-review-attested --run-adjudication --self",
+        "adjudicate": "python3 scripts/yao.py output-review --self",
+        "refresh_review_studio": "python3 scripts/yao.py review-studio . --self"
+      },
+      "required_fields": {
+        "winner_variant": "A or B after reading only the blind review pack.",
+        "confidence": "Optional number from 0 to 1.",
+        "reason": "Required rationale; do not reveal baseline or with-skill labels before adjudication.",
+        "reviewer": "Human reviewer name or review group at the decision-file top level.",
+        "reviewed_at": "Review date or timestamp at the decision-file top level.",
+        "reviewer_attestation.blind_review_completed_before_answer_key": "True only after the reviewer has completed choices before opening the answer key.",
+        "reviewer_attestation.answer_key_not_opened_before_decisions": "True only when the answer key was not opened before decisions were recorded."
+      },
+      "privacy_contract": [
+        "Do not paste raw private user data into the decision reason.",
+        "Do not open the answer key before reviewer choices are recorded.",
+        "Leave winner_variant blank when the reviewer is not ready to decide."
+      ]
+    },
+    {
+      "case_id": "five-channel-consistency",
+      "readiness": "awaiting-decision",
+      "blocking_reason": "Reviewer has not selected A or B yet; answer key remains hidden.",
+      "status": "pending",
+      "reviewer_winner_variant": "",
+      "answer_key_visible": false,
+      "prompt_sha256": "bdfa43e6273ac2627556921475de1ee2fd46c1e2f8193c431a83059c699b0421",
+      "blind_pack_path": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_blind_review_pack.json",
+      "decisions_path": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_review_decisions.json",
+      "commands": {
+        "prepare_review_kit": "python3 scripts/yao.py output-review-kit --self",
+        "write_template": "python3 scripts/adjudicate_output_review.py --write-template",
+        "import_decisions": "python3 scripts/yao.py output-review-import --input <reviewer-decisions.json> --blind-review-attested --run-adjudication --self",
+        "adjudicate": "python3 scripts/yao.py output-review --self",
+        "refresh_review_studio": "python3 scripts/yao.py review-studio . --self"
+      },
+      "required_fields": {
+        "winner_variant": "A or B after reading only the blind review pack.",
+        "confidence": "Optional number from 0 to 1.",
+        "reason": "Required rationale; do not reveal baseline or with-skill labels before adjudication.",
+        "reviewer": "Human reviewer name or review group at the decision-file top level.",
+        "reviewed_at": "Review date or timestamp at the decision-file top level.",
+        "reviewer_attestation.blind_review_completed_before_answer_key": "True only after the reviewer has completed choices before opening the answer key.",
+        "reviewer_attestation.answer_key_not_opened_before_decisions": "True only when the answer key was not opened before decisions were recorded."
+      },
+      "privacy_contract": [
+        "Do not paste raw private user data into the decision reason.",
+        "Do not open the answer key before reviewer choices are recorded.",
+        "Leave winner_variant blank when the reviewer is not ready to decide."
+      ]
+    },
+    {
+      "case_id": "body-only-evidence-bypass",
+      "readiness": "awaiting-decision",
+      "blocking_reason": "Reviewer has not selected A or B yet; answer key remains hidden.",
+      "status": "pending",
+      "reviewer_winner_variant": "",
+      "answer_key_visible": false,
+      "prompt_sha256": "5c6945ad618b8a9b4d1e50adad0205b6bd7be425c66fa934c97967047eb85dee",
+      "blind_pack_path": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_blind_review_pack.json",
+      "decisions_path": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\output_review_decisions.json",
+      "commands": {
+        "prepare_review_kit": "python3 scripts/yao.py output-review-kit --self",
+        "write_template": "python3 scripts/adjudicate_output_review.py --write-template",
+        "import_decisions": "python3 scripts/yao.py output-review-import --input <reviewer-decisions.json> --blind-review-attested --run-adjudication --self",
+        "adjudicate": "python3 scripts/yao.py output-review --self",
+        "refresh_review_studio": "python3 scripts/yao.py review-studio . --self"
+      },
+      "required_fields": {
+        "winner_variant": "A or B after reading only the blind review pack.",
+        "confidence": "Optional number from 0 to 1.",
+        "reason": "Required rationale; do not reveal baseline or with-skill labels before adjudication.",
+        "reviewer": "Human reviewer name or review group at the decision-file top level.",
+        "reviewed_at": "Review date or timestamp at the decision-file top level.",
+        "reviewer_attestation.blind_review_completed_before_answer_key": "True only after the reviewer has completed choices before opening the answer key.",
+        "reviewer_attestation.answer_key_not_opened_before_decisions": "True only when the answer key was not opened before decisions were recorded."
+      },
+      "privacy_contract": [
+        "Do not paste raw private user data into the decision reason.",
+        "Do not open the answer key before reviewer choices are recorded.",
+        "Leave winner_variant blank when the reviewer is not ready to decide."
+      ]
+    }
+  ],
+  "failures": []
+}

@@ -233,6 +233,7 @@ class ApiTokenService
             'articles:publish',
             'materials:read',
             'materials:write',
+            'platform-accounts:read',
         ];
     }
 

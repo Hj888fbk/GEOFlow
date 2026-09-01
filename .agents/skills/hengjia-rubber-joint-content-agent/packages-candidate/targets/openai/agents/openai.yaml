@@ -1,0 +1,32 @@
+interface:
+  display_name: 恒佳橡胶软接头内容 Agent
+  short_description: 生成并复核有证据边界的五渠道候选内容
+  default_prompt: Use $hengjia-rubber-joint-content-agent to generate or review an
+    evidence-governed hengjia-content-package/v1 candidate. Never publish; return
+    blockers and missing evidence explicitly.
+compatibility:
+  canonical_format: agent-skills
+  activation_mode: manual
+  execution_context: inline
+  shell: powershell
+  trust_level: local
+  remote_inline_execution: forbid
+  permission_contract:
+    review_required: false
+    declared_capabilities: []
+    native_enforcement: false
+    representation: targets/openai/agents/openai.yaml::compatibility.permission_contract
+      plus adapter.json
+  native_contract:
+    native_surface: OpenAI-style interface metadata plus neutral Agent Skills source
+    activation_policy: Use frontmatter description for catalog routing and targets/openai/agents/openai.yaml
+      for display name, default prompt, and compatibility metadata.
+    resource_strategy: Ship the neutral source tree and expose OpenAI-facing interface
+      metadata as a generated companion file.
+    permission_enforcement: metadata-only
+    review_artifacts:
+    - targets/openai/agents/openai.yaml
+    - targets/openai/adapter.json
+    - reports/review-studio.html
+  degradation_strategy: candidate JSON plus deterministic local validation; no publish
+    adapter

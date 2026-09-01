@@ -96,6 +96,8 @@ class ManualPublication extends Model
         'browser_last_seen_at',
         'completed_at',
         'revision',
+        'channel_variant_id',
+        'platform_adapter_id',
     ];
 
     protected function casts(): array
@@ -119,6 +121,8 @@ class ManualPublication extends Model
             'browser_claimed_at' => 'datetime',
             'browser_last_seen_at' => 'datetime',
             'revision' => 'integer',
+            'channel_variant_id' => 'integer',
+            'platform_adapter_id' => 'integer',
         ];
     }
 
@@ -169,6 +173,16 @@ class ManualPublication extends Model
     public function browserClaimToken(): BelongsTo
     {
         return $this->belongsTo(PersonalAccessToken::class, 'browser_claimed_by_token_id');
+    }
+
+    public function channelVariant(): BelongsTo
+    {
+        return $this->belongsTo(ChannelVariant::class);
+    }
+
+    public function platformAdapter(): BelongsTo
+    {
+        return $this->belongsTo(PlatformAdapter::class);
     }
 
     /**

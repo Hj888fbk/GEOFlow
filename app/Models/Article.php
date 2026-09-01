@@ -37,6 +37,9 @@ class Article extends Model
         'ai_quality_required_at_creation',
         'ai_quality_policy_snapshot',
         'generation_evidence_snapshot',
+        'content_master_id',
+        'content_package_version',
+        'content_package_hash',
     ];
 
     protected function casts(): array
@@ -54,6 +57,7 @@ class Article extends Model
             'ai_quality_required_at_creation' => 'boolean',
             'ai_quality_policy_snapshot' => 'array',
             'generation_evidence_snapshot' => 'array',
+            'content_master_id' => 'integer',
         ];
     }
 
@@ -116,6 +120,11 @@ class Article extends Model
     public function distributions(): HasMany
     {
         return $this->hasMany(ArticleDistribution::class, 'article_id');
+    }
+
+    public function contentMaster(): BelongsTo
+    {
+        return $this->belongsTo(ContentMaster::class);
     }
 
     public function hostedSiteAssignment(): HasOne

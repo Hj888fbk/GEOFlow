@@ -1,0 +1,15 @@
+{
+  "fixture_label": "file-backed fixture",
+  "fixture_only": true,
+  "sources": [
+    {
+      "source_id": "COMP-FIX-001",
+      "title": "测试夹具：同行产品页自述",
+      "is_approved": true,
+      "evidence_status": "competitor_self_claim",
+      "public_permission": "internal_only",
+      "scope": "只允许结构学习",
+      "claim": "同行页面展示了一组测试参数。"
+    }
+  ]
+}

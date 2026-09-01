@@ -17,6 +17,10 @@
             {!! __('admin.ai_prompts.help_banner', ['url' => route('admin.ai-special-prompts')]) !!}
         </div>
 
+        <div class="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 text-sm leading-6 text-green-900">
+            中文提示词向导沿用 GEOFlow 原生 Prompt。新向导先保存为候选，检查并显式启用后才会出现在 Task 下拉框；启用也不会自动替换已有任务。
+        </div>
+
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-lg font-medium text-gray-900">{{ __('admin.ai_prompts.list_title') }}</h3>
@@ -52,7 +56,7 @@
                                         <div>
                                             <div class="text-sm font-medium text-gray-900">{{ $prompt['name'] }}</div>
                                             <div class="text-sm text-gray-500 max-w-xs truncate">
-                                                {{ \Illuminate\Support\Str::limit($prompt['content'], 100) }}
+                                                {{ $prompt['guided'] ? $prompt['builder_summary'] : \Illuminate\Support\Str::limit($prompt['content'], 100) }}
                                             </div>
                                         </div>
                                     </td>
@@ -66,6 +70,15 @@
                                         </span>
                                         @if ($prompt['system_managed'])
                                             <span class="ml-1 inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">系统内置 · v{{ $prompt['system_version'] }}</span>
+                                        @endif
+                                        @if ($prompt['guided'])
+                                            <span @class([
+                                                'ml-1 inline-flex rounded-full px-2 py-1 text-xs font-semibold',
+                                                'bg-amber-100 text-amber-800' => $prompt['builder_status'] === \App\Models\Prompt::BUILDER_STATUS_CANDIDATE,
+                                                'bg-emerald-100 text-emerald-800' => $prompt['builder_status'] === \App\Models\Prompt::BUILDER_STATUS_ACTIVE,
+                                            ])>
+                                                向导{{ $prompt['builder_status'] === \App\Models\Prompt::BUILDER_STATUS_ACTIVE ? '已启用' : '候选' }}
+                                            </span>
                                         @endif
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -84,6 +97,14 @@
                                         <a href="{{ route('admin.ai-prompts.edit', ['promptId' => $prompt['id']]) }}" class="inline-flex min-h-10 items-center text-green-600 transition-[color,transform] duration-150 hover:text-green-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2">
                                             {{ __('admin.button.edit') }}
                                         </a>
+                                        @if ($prompt['guided'] && $prompt['builder_status'] === \App\Models\Prompt::BUILDER_STATUS_CANDIDATE)
+                                            <form method="POST" action="{{ route('admin.ai-prompts.activate', ['promptId' => $prompt['id']]) }}" class="inline-flex">
+                                                @csrf
+                                                <button type="submit" class="inline-flex min-h-10 items-center text-amber-700 transition-[color,transform] duration-150 hover:text-amber-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2">
+                                                    启用
+                                                </button>
+                                            </form>
+                                        @endif
                                         @if (! $prompt['system_managed'])
                                             <button type="button" onclick="deletePrompt({{ (int) $prompt['id'] }}, @js($prompt['name']))" class="min-h-10 text-red-600 transition-[color,transform] duration-150 hover:text-red-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2">
                                                 {{ __('admin.button.delete') }}

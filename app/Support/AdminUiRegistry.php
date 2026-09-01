@@ -35,6 +35,11 @@ final class AdminUiRegistry
                 'patterns' => ['admin.tasks.*'], 'recent_tone' => 'green',
             ],
             [
+                'key' => 'hengjia_content', 'group' => 'content', 'label_key' => 'hengjia_content.module',
+                'icon' => 'layers-3', 'route' => 'admin.hengjia-content.today', 'protected' => false,
+                'patterns' => ['admin.hengjia-content.*'], 'recent_tone' => 'blue',
+            ],
+            [
                 'key' => 'articles', 'group' => 'content', 'label_key' => 'admin.nav.articles',
                 'icon' => 'file-text', 'route' => 'admin.articles.index', 'protected' => false,
                 'patterns' => ['admin.articles.*', 'admin.manual-publications.*'], 'recent_tone' => 'violet',
@@ -99,6 +104,20 @@ final class AdminUiRegistry
         ];
     }
 
+    /** @return list<array{key:string,label_key:string,icon:string,route:string,patterns:list<string>}> */
+    private function hengjiaContentSections(): array
+    {
+        return [
+            ['key' => 'today', 'label_key' => 'hengjia_content.navigation.today', 'icon' => 'calendar-check-2', 'route' => 'admin.hengjia-content.today', 'patterns' => ['admin.hengjia-content.today']],
+            ['key' => 'tasks', 'label_key' => 'hengjia_content.navigation.tasks', 'icon' => 'clipboard-list', 'route' => 'admin.tasks.index', 'patterns' => ['admin.tasks.*']],
+            ['key' => 'evidence', 'label_key' => 'hengjia_content.navigation.evidence', 'icon' => 'shield-check', 'route' => 'admin.knowledge-bases.index', 'patterns' => ['admin.knowledge-bases.*']],
+            ['key' => 'studio', 'label_key' => 'hengjia_content.navigation.studio', 'icon' => 'file-pen-line', 'route' => 'admin.articles.index', 'patterns' => ['admin.articles.*']],
+            ['key' => 'publishing', 'label_key' => 'hengjia_content.navigation.publishing', 'icon' => 'send', 'route' => 'admin.manual-publications.index', 'patterns' => ['admin.manual-publications.*']],
+            ['key' => 'accounts', 'label_key' => 'hengjia_content.navigation.accounts', 'icon' => 'badge-check', 'route' => 'admin.manual-publications.settings.index', 'patterns' => ['admin.manual-publications.settings.*']],
+            ['key' => 'governance', 'label_key' => 'hengjia_content.navigation.governance', 'icon' => 'book-lock', 'route' => 'admin.ai-prompts', 'patterns' => ['admin.ai-prompts*']],
+        ];
+    }
+
     /** @return array<string, string|null> */
     private function groups(): array
     {
@@ -119,7 +138,7 @@ final class AdminUiRegistry
      * dynamic headings; list and form pages expose their existing H1 to screen
      * readers while the compact identity is shown in the topbar.
      *
-     * @return array<string, array{key:string,icon:string,body_heading:'content'|'hidden'}>
+     * @return array<string, array{key:string,icon:string,body_heading:'content'|'hidden',title_key?:string}>
      */
     private function pageIdentities(): array
     {
@@ -138,6 +157,15 @@ final class AdminUiRegistry
             'admin.tasks.jobs' => ['key' => 'task_jobs', 'icon' => 'list-checks', 'body_heading' => 'hidden'],
             'admin.tasks.create' => ['key' => 'task_create', 'icon' => 'workflow', 'body_heading' => 'hidden'],
             'admin.tasks.edit' => ['key' => 'task_edit', 'icon' => 'square-pen', 'body_heading' => 'hidden'],
+
+            'admin.hengjia-content.today' => ['key' => 'hengjia_content_today', 'title_key' => 'hengjia_content.pages.today.title', 'icon' => 'calendar-check-2', 'body_heading' => 'hidden'],
+            'admin.hengjia-content.tasks' => ['key' => 'hengjia_content_tasks', 'title_key' => 'hengjia_content.pages.tasks.title', 'icon' => 'clipboard-list', 'body_heading' => 'hidden'],
+            'admin.hengjia-content.evidence' => ['key' => 'hengjia_content_evidence', 'title_key' => 'hengjia_content.pages.evidence.title', 'icon' => 'shield-check', 'body_heading' => 'hidden'],
+            'admin.hengjia-content.studio' => ['key' => 'hengjia_content_studio', 'title_key' => 'hengjia_content.pages.studio.title', 'icon' => 'file-pen-line', 'body_heading' => 'hidden'],
+            'admin.hengjia-content.previews' => ['key' => 'hengjia_content_previews', 'title_key' => 'hengjia_content.pages.previews.title', 'icon' => 'panels-top-left', 'body_heading' => 'hidden'],
+            'admin.hengjia-content.publishing' => ['key' => 'hengjia_content_publishing', 'title_key' => 'hengjia_content.pages.publishing.title', 'icon' => 'send', 'body_heading' => 'hidden'],
+            'admin.hengjia-content.accounts' => ['key' => 'hengjia_content_accounts', 'title_key' => 'hengjia_content.pages.accounts.title', 'icon' => 'badge-check', 'body_heading' => 'hidden'],
+            'admin.hengjia-content.governance' => ['key' => 'hengjia_content_governance', 'title_key' => 'hengjia_content.pages.governance.title', 'icon' => 'book-lock', 'body_heading' => 'hidden'],
 
             'admin.articles.index' => ['key' => 'articles', 'icon' => 'file-text', 'body_heading' => 'hidden'],
             'admin.articles.create' => ['key' => 'article_create', 'icon' => 'file-plus-2', 'body_heading' => 'hidden'],
@@ -246,7 +274,7 @@ final class AdminUiRegistry
 
         return [
             'key' => $descriptor['key'],
-            'title' => __('admin_pages.'.$descriptor['key']),
+            'title' => __($descriptor['title_key'] ?? 'admin_pages.'.$descriptor['key']),
             'icon' => $descriptor['icon'],
             'body_heading' => $descriptor['body_heading'],
         ];
@@ -324,6 +352,29 @@ final class AdminUiRegistry
                 'route' => $item['route'],
                 'active' => Str::is($item['patterns'], $routeName),
             ])
+            ->values()
+            ->all();
+    }
+
+    /** @return list<array{key:string,label:string,icon:string,route:string,active:bool}> */
+    public function hengjiaContentNavigation(?string $routeName, bool $canManageAccounts = false): array
+    {
+        $routeName = (string) $routeName;
+
+        return collect($this->hengjiaContentSections())
+            ->map(static function (array $item) use ($routeName, $canManageAccounts): array {
+                $targetRoute = $item['key'] === 'accounts' && ! $canManageAccounts
+                    ? 'admin.manual-publications.index'
+                    : $item['route'];
+
+                return [
+                    'key' => $item['key'],
+                    'label' => __($item['label_key']),
+                    'icon' => $item['icon'],
+                    'route' => $targetRoute,
+                    'active' => Str::is($item['patterns'], $routeName),
+                ];
+            })
             ->values()
             ->all();
     }

@@ -39,8 +39,11 @@ class CatalogGeoFlowService
         $prompts = Prompt::query()
             ->where('type', 'content')
             ->orderBy('name')
-            ->get(['id', 'name', 'type'])
+            ->get(['id', 'name', 'type', 'variables'])
+            ->filter(static fn (Prompt $prompt): bool => $prompt->isAvailableForProductionTask())
             ->map(fn (Prompt $p) => $p->getAttributes())
+            ->map(static fn (array $prompt): array => array_intersect_key($prompt, array_flip(['id', 'name', 'type'])))
+            ->values()
             ->all();
 
         $titleLibraries = TitleLibrary::query()

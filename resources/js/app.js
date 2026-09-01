@@ -1,6 +1,7 @@
 import '../css/admin-ui-v3-stability.css';
 import './pwa';
 import './admin/ui-v3-shell';
+import './admin/section-navigation';
 import './admin/article-batch-export';
 import { loadAiSourceProvidersIndex } from './admin/ai-source-providers-loader';
 import { loadArticleAiQualityProgress } from './admin/article-ai-quality-progress-loader';
@@ -28,6 +29,7 @@ loadPageModule('[data-ai-source-providers-index]', () => loadAiSourceProvidersIn
 ));
 loadPageModule('[data-task-delete-dialog]', () => import('./admin/task-delete-dialog'));
 loadPageModule('[data-task-form]', () => import('./admin/task-form'));
+loadPageModule('[data-prompt-builder]', () => import('./admin/prompt-builder'));
 loadPageModule('[data-task-index-readiness-dialog]', () => import('./admin/task-index-readiness'));
 loadPageModule('[data-title-generation-progress]', () => loadTitleGenerationProgress(
     document.querySelector('[data-title-generation-progress]'),

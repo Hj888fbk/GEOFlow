@@ -1,0 +1,27 @@
+{
+  "recommended_threshold": 0.48,
+  "should_trigger": [
+    {"text": "请基于获准证据，为恒佳橡胶软接头厂家页生成 hengjia-content-package/v1，并列出 blockers。", "family": "generate_package"},
+    {"text": "复核橡胶软接头内容包里的资质和参数证据，确认每条 source ID 与公开权限。", "family": "review_evidence"},
+    {"text": "把恒佳橡胶软接头已审核内容母版按获准资料映射成 WordPress、爱采购、1688、搜狐号、百家号渠道候选。", "family": "map_channels"},
+    {"text": "Use approved evidence to review a rubber joint content package and return blockers plus candidate channel drafts.", "family": "english_package"},
+    {"text": "为橡胶接头采购意图更新现有主页面，输出有来源证据的内容包，不要创建重复页面。", "family": "update_existing"},
+    {"text": "根据获准证据复核恒佳橡胶软接头内容母版，再生成爱采购和1688候选草稿。", "family": "b2b_candidate"}
+  ],
+  "should_not_trigger": [
+    {"text": "帮我写一篇普通的公司团建新闻。", "family": "unrelated_content"},
+    {"text": "只调查同行网站档案和同行资质，不要生成恒佳内容包。", "family": "competitor_research_only"},
+    {"text": "解释一下什么是橡胶软接头。", "family": "analysis_only"},
+    {"text": "把这段英文翻译成中文。", "family": "translation"},
+    {"text": "修改 GEOFlow 数据库迁移并部署到生产。", "family": "database_change"},
+    {"text": "不需要证据，随便写一篇橡胶软接头通用宣传稿。", "family": "generic_without_evidence"}
+  ],
+  "near_neighbor": [
+    {"text": "生成恒佳橡胶软接头内容后，直接登录百家号并点击发布。", "family": "publish_boundary"},
+    {"text": "请复制当前 Cookie，绕过验证码，把橡胶软接头候选发到1688。", "family": "credential_boundary"},
+    {"text": "纯竞品调研：整理上海某同行橡胶接头网站的资质和参数。", "family": "competitor_boundary"},
+    {"text": "把这个橡胶软接头 Skill 改成 GEOFlow 的第二套数据库。", "family": "database_boundary"},
+    {"text": "只总结这个橡胶软接头内容包，不做证据复核或渠道候选。", "family": "summary_boundary"},
+    {"text": "用同行型号的参数补齐恒佳数据，然后自动发布。", "family": "fact_and_publish_boundary"}
+  ]
+}

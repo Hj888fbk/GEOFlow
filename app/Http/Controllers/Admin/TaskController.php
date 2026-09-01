@@ -15,6 +15,7 @@ use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\ContentStructureProfileCatalog;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\TaskDistributionChannelSelector;
 use App\Services\GeoFlow\TaskLifecycleService;
@@ -26,6 +27,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Throwable;
@@ -46,6 +48,7 @@ class TaskController extends Controller
         private readonly TaskMonitoringQueryService $taskMonitoringQueryService,
         private readonly DistributionOrchestrator $distributionOrchestrator,
         private readonly TaskTitleReadinessService $taskTitleReadinessService,
+        private readonly ContentStructureProfileCatalog $contentStructureProfiles,
     ) {}
 
     public function titleReadiness(TaskTitleReadinessRequest $request): JsonResponse
@@ -405,6 +408,7 @@ class TaskController extends Controller
                 'image_count' => (string) ($task['image_count'] ?? 0),
                 'knowledge_base_id' => (string) (($task['knowledge_base_id'] ?? '') ?: ''),
                 'knowledge_base_ids' => $this->taskKnowledgeBaseIds($taskId, isset($task['knowledge_base_id']) ? (int) $task['knowledge_base_id'] : null),
+                'content_brief' => is_array($task['content_brief'] ?? null) ? $task['content_brief'] : [],
                 'fixed_category_id' => (string) (($task['fixed_category_id'] ?? '') ?: ''),
                 'status' => (string) $taskModel->status,
                 'article_limit' => (string) ($task['article_limit'] ?? 10),
@@ -676,11 +680,13 @@ class TaskController extends Controller
             ->all();
 
         $prompts = Prompt::query()
-            ->select(['id', 'name'])
+            ->select(['id', 'name', 'type', 'variables'])
             ->where('type', 'content')
             ->orderByDesc('id')
             ->get()
+            ->filter(static fn (Prompt $row): bool => $row->isAvailableForProductionTask())
             ->map(static fn (Prompt $row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
+            ->values()
             ->all();
 
         $qualityPrompts = Prompt::query()
@@ -774,6 +780,10 @@ class TaskController extends Controller
             'authors' => $authors,
             'categories' => $categories,
             'distributionChannels' => $distributionChannels,
+            'contentBriefPageRoles' => $this->contentStructureProfiles->pageRoles(),
+            'contentBriefProfiles' => collect($this->contentStructureProfiles->profiles())
+                ->mapWithKeys(static fn (array $profile, string $key): array => [$key => (string) ($profile['label'] ?? $key)])
+                ->all(),
         ];
     }
 
@@ -900,6 +910,16 @@ class TaskController extends Controller
             'knowledge_base_id' => ['nullable', 'integer', 'min:1', 'exists:knowledge_bases,id'],
             'knowledge_base_ids' => ['nullable', 'array', 'max:5'],
             'knowledge_base_ids.*' => ['integer', 'min:1', 'distinct', 'exists:knowledge_bases,id'],
+            'content_brief' => ['nullable', 'array'],
+            'content_brief.product_key' => ['nullable', 'string', 'max:160'],
+            'content_brief.page_role' => ['nullable', 'string', Rule::in($this->contentStructureProfiles->pageRoleKeys())],
+            'content_brief.audience' => ['nullable', 'string', 'max:600'],
+            'content_brief.decision_stage' => ['nullable', 'string', 'max:160'],
+            'content_brief.buyer_questions' => ['nullable', 'string', 'max:3000'],
+            'content_brief.procurement_direction' => ['nullable', 'string', 'max:1200'],
+            'content_brief.structure_profile' => ['nullable', 'string', Rule::in($this->contentStructureProfiles->profileKeys())],
+            'content_brief.desired_action' => ['nullable', 'string', 'max:600'],
+            'content_brief.image_keywords' => ['nullable', 'string', 'max:2000'],
             'fixed_category_id' => ['nullable', 'integer', 'min:1'],
             'status' => ['required', 'string', 'in:active,paused'],
             'article_limit' => ['required', 'integer', 'min:1', 'max:99999'],
@@ -944,6 +964,7 @@ class TaskController extends Controller
             'author_id' => isset($payload['author_id']) && (int) $payload['author_id'] > 0 ? (int) $payload['author_id'] : null,
             'knowledge_base_id' => $knowledgeBaseIds[0] ?? null,
             'knowledge_base_ids' => $knowledgeBaseIds,
+            'content_brief' => is_array($payload['content_brief'] ?? null) ? $payload['content_brief'] : [],
             'fixed_category_id' => isset($payload['fixed_category_id']) ? (int) $payload['fixed_category_id'] : null,
             'status' => (string) $payload['status'],
             'publish_scope' => (string) ($payload['publish_scope'] ?? 'local_and_distribution'),

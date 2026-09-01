@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "ok": true,
+  "generated_at": "2026-08-31",
+  "skill_dir": ".",
+  "summary": {
+    "python_file_count": 4,
+    "script_file_count": 0,
+    "test_file_count": 0,
+    "internal_module_count": 1,
+    "cli_script_count": 2,
+    "command_handler_count": 0,
+    "entrypoint_command_handler_count": 0,
+    "command_module_count": 0,
+    "warn_line_threshold": 900,
+    "watch_line_threshold": 720,
+    "early_watch_line_threshold": 600,
+    "block_line_threshold": 1500,
+    "largest_file_lines": 466,
+    "watchlist_count": 0,
+    "early_watchlist_count": 0,
+    "hotspot_count": 0,
+    "blocker_count": 0,
+    "decision": "pass"
+  },
+  "largest_files": [
+    {
+      "path": "scripts\\contract.py",
+      "lines": 466,
+      "kind": "internal-module",
+      "severity": "pass",
+      "early_watch": false,
+      "recommendation": "Watch this file before adding new responsibilities; extract a helper module when one concern dominates."
+    },
+    {
+      "path": "scripts\\map_channel_candidates.py",
+      "lines": 200,
+      "kind": "cli-script",
+      "severity": "pass",
+      "early_watch": false,
+      "recommendation": "Watch this file before adding new responsibilities; extract a helper module when one concern dominates."
+    },
+    {
+      "path": "tests\\test_contract.py",
+      "lines": 143,
+      "kind": "test",
+      "severity": "pass",
+      "early_watch": false,
+      "recommendation": "Watch this file before adding new responsibilities; extract a helper module when one concern dominates."
+    },
+    {
+      "path": "scripts\\validate_content_package.py",
+      "lines": 37,
+      "kind": "cli-script",
+      "severity": "pass",
+      "early_watch": false,
+      "recommendation": "Watch this file before adding new responsibilities; extract a helper module when one concern dominates."
+    }
+  ],
+  "watchlist": [],
+  "early_watchlist": [],
+  "hotspots": [],
+  "actions": [],
+  "artifacts": {
+    "json": "reports/architecture_maintainability.json",
+    "markdown": "reports/architecture_maintainability.md"
+  }
+}

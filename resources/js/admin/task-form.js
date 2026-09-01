@@ -47,6 +47,13 @@ export function syncSelectableCardState(card, disabled) {
     card.classList.toggle('opacity-50', disabled);
 }
 
+export function suggestContentBriefProfile(pageRole, suggestions = {}) {
+    const role = String(pageRole || '').trim();
+    const profile = suggestions && typeof suggestions === 'object' ? suggestions[role] : '';
+
+    return typeof profile === 'string' ? profile : '';
+}
+
 function readJson(root, selector, fallback = {}) {
     const source = root.querySelector(selector);
     if (!source) return fallback;
@@ -56,6 +63,28 @@ function readJson(root, selector, fallback = {}) {
     } catch {
         return fallback;
     }
+}
+
+function initializeContentBrief(root, form) {
+    const pageRole = form.querySelector('[data-content-brief-page-role]');
+    const structureProfile = form.querySelector('[data-content-brief-structure-profile]');
+    if (!pageRole || !structureProfile) return;
+
+    const suggestions = readJson(root, '[data-content-brief-profile-suggestions]');
+    const applySuggestion = () => {
+        const suggested = suggestContentBriefProfile(pageRole.value, suggestions);
+        const mayReplace = structureProfile.value === '' || structureProfile.dataset.autoSuggested === 'true';
+        if (!suggested || !mayReplace) return;
+
+        structureProfile.value = suggested;
+        structureProfile.dataset.autoSuggested = 'true';
+    };
+
+    pageRole.addEventListener('change', applySuggestion);
+    structureProfile.addEventListener('change', () => {
+        structureProfile.dataset.autoSuggested = 'false';
+    });
+    applySuggestion();
 }
 
 function initializeLinkedFields(form, i18n) {
@@ -553,6 +582,7 @@ export function initializeTaskForm(root = document, options = {}) {
     if (!form) return;
     const i18n = readJson(root, '[data-task-form-i18n]');
     initializeLinkedFields(form, i18n);
+    initializeContentBrief(root, form);
     initializeReadinessCheck(
         root,
         form,

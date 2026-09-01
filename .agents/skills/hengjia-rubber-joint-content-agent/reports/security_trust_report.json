@@ -1,0 +1,154 @@
+{
+  "ok": true,
+  "skill_dir": "D:/Documents/恒佳geo/GEOFlow-main/.agents/skills/hengjia-rubber-joint-content-agent",
+  "summary": {
+    "scanned_files": 25,
+    "script_count": 3,
+    "internal_module_count": 1,
+    "secret_findings": 0,
+    "dependency_files": [],
+    "network_script_count": 0,
+    "network_policy_covered_count": 0,
+    "network_policy_missing_count": 0,
+    "file_write_script_count": 0,
+    "permission_required_count": 0,
+    "permission_approved_count": 0,
+    "permission_missing_count": 0,
+    "permission_invalid_count": 0,
+    "permission_expired_count": 0,
+    "help_smoke_checked_count": 2,
+    "help_smoke_failed_count": 0,
+    "interactive_script_count": 0,
+    "package_hash_scope": "source-contract-without-generated-reports",
+    "package_hash_file_count": 25,
+    "package_sha256": "0b291dd6a075a12d75f86e9f0ed6c2e0d85f20ac22aaede27f802bbbfe75dd84"
+  },
+  "failures": [],
+  "warnings": [
+    "No dependency or lock file detected"
+  ],
+  "secrets": [],
+  "scripts": [
+    {
+      "path": "scripts/contract.py",
+      "interface": "internal-module",
+      "interface_declared": true,
+      "interface_reason": "Imported by validate_content_package.py and map_channel_candidates.py.",
+      "has_argparse": false,
+      "has_main_guard": false,
+      "uses_input": false,
+      "uses_network": false,
+      "uses_file_write": false,
+      "uses_subprocess": false,
+      "network_urls": [],
+      "network_hosts": []
+    },
+    {
+      "path": "scripts/map_channel_candidates.py",
+      "interface": "cli",
+      "interface_declared": false,
+      "interface_reason": "Default CLI classification; add SCRIPT_INTERFACE for internal modules.",
+      "has_argparse": true,
+      "has_main_guard": true,
+      "uses_input": false,
+      "uses_network": false,
+      "uses_file_write": false,
+      "uses_subprocess": false,
+      "network_urls": [],
+      "network_hosts": []
+    },
+    {
+      "path": "scripts/validate_content_package.py",
+      "interface": "cli",
+      "interface_declared": false,
+      "interface_reason": "Default CLI classification; add SCRIPT_INTERFACE for internal modules.",
+      "has_argparse": true,
+      "has_main_guard": true,
+      "uses_input": false,
+      "uses_network": false,
+      "uses_file_write": false,
+      "uses_subprocess": false,
+      "network_urls": [],
+      "network_hosts": []
+    }
+  ],
+  "dependencies": {
+    "present": [],
+    "pinned": [],
+    "unpinned": []
+  },
+  "network_policy": {
+    "present": false,
+    "path": "security/network_policy.json",
+    "schema_version": "",
+    "network_script_count": 0,
+    "covered_scripts": [],
+    "missing_scripts": [],
+    "mismatches": [],
+    "default_policy": {}
+  },
+  "help_smoke": {
+    "enabled": true,
+    "timeout_seconds": 5.0,
+    "candidate_count": 2,
+    "checked_count": 2,
+    "passed_count": 2,
+    "failed_count": 0,
+    "skipped_count": 1,
+    "failed_scripts": [],
+    "results": [
+      {
+        "path": "scripts/map_channel_candidates.py",
+        "command": "python3 scripts/map_channel_candidates.py --help",
+        "returncode": 0,
+        "timed_out": false,
+        "passed": true,
+        "has_help_text": true,
+        "stdout_excerpt": "usage: map_channel_candidates.py [-h] [--as-of AS_OF] [--all-supported]\n                                 [--compact]\n                                 package\n\nBuild five-channel candidate payloads; never log in or publish.\n\npositional argum",
+        "stderr_excerpt": ""
+      },
+      {
+        "path": "scripts/validate_content_package.py",
+        "command": "python3 scripts/validate_content_package.py --help",
+        "returncode": 0,
+        "timed_out": false,
+        "passed": true,
+        "has_help_text": true,
+        "stdout_excerpt": "usage: validate_content_package.py [-h] [--as-of AS_OF] [--compact] package\n\nValidate a candidate Hengjia content package; never publish it.\n\npositional arguments:\n  package        Local JSON file to read.\n\noptions:\n  -h, --help     show th",
+        "stderr_excerpt": ""
+      }
+    ],
+    "skipped": [
+      {
+        "path": "scripts/contract.py",
+        "reason": "internal module"
+      }
+    ]
+  },
+  "permission_governance": {
+    "present": true,
+    "path": "security/permission_policy.json",
+    "schema_version": "1.0",
+    "reviewed_at": null,
+    "required_capabilities": [],
+    "approved_capabilities": [],
+    "missing_capabilities": [],
+    "invalid_capabilities": [],
+    "expired_capabilities": [],
+    "approval_count": 0,
+    "required_count": 0,
+    "missing_count": 0,
+    "invalid_count": 0,
+    "expired_count": 0,
+    "approvals": []
+  },
+  "trust_metadata": {
+    "source_tier": "local",
+    "remote_inline_execution": "forbid",
+    "remote_metadata_policy": "deny-unapproved-content"
+  },
+  "artifacts": {
+    "json": "D:/Documents/恒佳geo/GEOFlow-main/.agents/skills/hengjia-rubber-joint-content-agent/reports/security_trust_report.json",
+    "markdown": "D:/Documents/恒佳geo/GEOFlow-main/.agents/skills/hengjia-rubber-joint-content-agent/reports/security_trust_report.md"
+  }
+}

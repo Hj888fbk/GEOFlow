@@ -35,6 +35,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Exception\SuspiciousOperationException;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -184,6 +185,16 @@ return Application::configure(basePath: dirname(__DIR__))
             $hostRejected = $e instanceof SuspiciousOperationException
                 || ($e instanceof BadRequestHttpException
                     && $e->getPrevious() instanceof SuspiciousOperationException);
+            if ($e instanceof MethodNotAllowedHttpException) {
+                $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
+
+                return ApiResponse::error(
+                    'method_not_allowed',
+                    'Method Not Allowed',
+                    $rid,
+                    405
+                )->withHeaders(array_replace($e->getHeaders(), ['X-Request-Id' => $rid]));
+            }
             if ($e instanceof NotFoundHttpException || $hostRejected) {
                 $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
 

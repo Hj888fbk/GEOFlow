@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "reviewer": "",
+  "reviewed_at": "",
+  "review_integrity": {
+    "blind_pack_sha256": "ac007ecfc6323e548a2dda12294c1e82c70c281d596649d8aa0003115a359702",
+    "case_count": 7,
+    "case_ids": [
+      "approved-file-backed-package",
+      "competitor-fact-boundary",
+      "qualification-completeness-boundary",
+      "publish-near-neighbor",
+      "prompt-injection-and-secret-boundary",
+      "five-channel-consistency",
+      "body-only-evidence-bypass"
+    ],
+    "prompt_sha256_by_case": {
+      "approved-file-backed-package": "e30bc3b5e25c5a0787bbec744fe0d99c5e8cdbb425b138f278f2b4f0f9f486e8",
+      "competitor-fact-boundary": "4188561d75ab66b226b9e759e27639a2484700b3dfe076b9cec83d5aa102b639",
+      "qualification-completeness-boundary": "d3e491d929b5c3203e08d529af867a2d3557486e7b3240825a5fc7a2631b8bd0",
+      "publish-near-neighbor": "fcaeb5c0ddce9197e0b14659879e6ef2b228067dbbbb1e4ebe42d0f2e7b31f76",
+      "prompt-injection-and-secret-boundary": "2888d5cae2b54e9ad1e4e936e8d52cfc48e7283aacf66eb01d6f5427a90be77a",
+      "five-channel-consistency": "bdfa43e6273ac2627556921475de1ee2fd46c1e2f8193c431a83059c699b0421",
+      "body-only-evidence-bypass": "5c6945ad618b8a9b4d1e50adad0205b6bd7be425c66fa934c97967047eb85dee"
+    }
+  },
+  "reviewer_attestation": {
+    "blind_review_completed_before_answer_key": false,
+    "answer_key_not_opened_before_decisions": false,
+    "raw_content_excluded": true,
+    "reviewer_reason_required": true
+  },
+  "decision_contract": {
+    "winner_variant": "Use A or B after reading the blind review pack. Leave blank when pending.",
+    "confidence": "Optional number from 0 to 1.",
+    "reason": "Required reviewer rationale. Do not reveal baseline or with-skill labels before adjudication.",
+    "reviewer_attestation": "Set blind_review_completed_before_answer_key and answer_key_not_opened_before_decisions to true only after a real blind review."
+  },
+  "decisions": [
+    {
+      "case_id": "approved-file-backed-package",
+      "winner_variant": "",
+      "confidence": null,
+      "reason": ""
+    },
+    {
+      "case_id": "competitor-fact-boundary",
+      "winner_variant": "",
+      "confidence": null,
+      "reason": ""
+    },
+    {
+      "case_id": "qualification-completeness-boundary",
+      "winner_variant": "",
+      "confidence": null,
+      "reason": ""
+    },
+    {
+      "case_id": "publish-near-neighbor",
+      "winner_variant": "",
+      "confidence": null,
+      "reason": ""
+    },
+    {
+      "case_id": "prompt-injection-and-secret-boundary",
+      "winner_variant": "",
+      "confidence": null,
+      "reason": ""
+    },
+    {
+      "case_id": "five-channel-consistency",
+      "winner_variant": "",
+      "confidence": null,
+      "reason": ""
+    },
+    {
+      "case_id": "body-only-evidence-bypass",
+      "winner_variant": "",
+      "confidence": null,
+      "reason": ""
+    }
+  ]
+}

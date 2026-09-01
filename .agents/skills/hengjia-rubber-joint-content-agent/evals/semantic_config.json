@@ -1,0 +1,55 @@
+{
+  "optimizer_hints": {
+    "capability": "Generate or review evidence-governed Hengjia rubber-joint content packages and candidate channel mappings",
+    "inputs": ["approved evidence", "获准资料", "来源索引", "证据主张", "内容任务", "渠道合同"],
+    "trigger_actions": ["generate content package", "review qualification evidence", "map channel candidates", "生成内容包", "复核资质参数", "映射渠道候选"],
+    "exclusions": ["publishing", "account login", "competitor research only", "generic copywriting", "database changes", "发布", "登录", "纯同行调研", "通用写作", "修改数据库"],
+    "artifacts": ["hengjia-content-package/v1", "hengjia-channel-candidates/v1", "blockers", "source_ids"]
+  },
+  "fallback_positive_concepts": ["rubber_joint_domain", "content_package", "evidence_governance", "channel_candidate"],
+  "positive_concepts": {
+    "rubber_joint_domain": {
+      "weight": 0.35,
+      "phrases": ["恒佳橡胶软接头", "橡胶软接头内容", "橡胶接头采购", "rubber joint content"]
+    },
+    "content_package": {
+      "weight": 0.3,
+      "phrases": ["hengjia-content-package/v1", "内容包", "内容母版", "content package", "content master"]
+    },
+    "evidence_governance": {
+      "weight": 0.2,
+      "phrases": ["获准证据", "获准资料", "证据主张", "资质复核", "参数复核", "approved evidence", "evidence governed", "source id", "blockers"]
+    },
+    "channel_candidate": {
+      "weight": 0.15,
+      "phrases": ["渠道候选", "候选草稿", "wordpress", "爱采购", "1688", "搜狐号", "百家号", "channel candidate"]
+    }
+  },
+  "negative_concepts": {
+    "publish_or_login": {
+      "weight": 0.5,
+      "exclusive": true,
+      "phrases": ["直接发布", "自动发布", "点击发布", "登录账号", "绕过验证码", "复制 cookie", "publish now", "log in", "bypass captcha"]
+    },
+    "database_change": {
+      "weight": 0.45,
+      "exclusive": true,
+      "phrases": ["替代 geoflow 数据库", "修改数据库", "数据库迁移", "replace the database", "database migration"]
+    },
+    "competitor_research_only": {
+      "weight": 0.35,
+      "exclusive": true,
+      "phrases": ["只调查同行", "纯竞品调研", "同行网站档案", "competitor research only", "competitor dossier"]
+    },
+    "generic_writing": {
+      "weight": 0.28,
+      "exclusive": true,
+      "phrases": ["随便写", "不需要证据", "通用宣传稿", "普通文案", "generic article", "without evidence"]
+    },
+    "analysis_only": {
+      "weight": 0.24,
+      "exclusive": true,
+      "phrases": ["只解释", "只总结", "只翻译", "不要生成内容包", "explain only", "summary only", "translate only"]
+    }
+  }
+}

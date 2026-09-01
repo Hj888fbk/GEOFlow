@@ -1,0 +1,20 @@
+{
+  "schema_version": "2.0",
+  "generated_at": "2026-08-31",
+  "package_count": 1,
+  "packages": [
+    {
+      "name": "hengjia-rubber-joint-content-agent",
+      "version": "0.1.0-candidate.2",
+      "maturity": "governed",
+      "owner": "恒佳 GEOFlow 内容治理组",
+      "targets": [
+        "openai",
+        "generic",
+        "agent-skills-compatible"
+      ],
+      "package_metadata": "registry/packages/hengjia-rubber-joint-content-agent.json",
+      "package_sha256": "9d69c4931bfb7459a32d2508a6e83aaea25f010454a443965205cba0dc2bac78"
+    }
+  ]
+}

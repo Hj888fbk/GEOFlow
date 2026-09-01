@@ -7,8 +7,20 @@ import {
     deriveInlineTitleStats,
     initializeTaskForm,
     shouldSubmitImmediately,
+    suggestContentBriefProfile,
     syncSelectableCardState,
 } from '../../resources/js/admin/task-form.js';
+
+test('content brief structure suggestions are deterministic and keep unknown roles empty', () => {
+    const suggestions = {
+        product_page: 'product_page',
+        procurement_selection: 'procurement_selection',
+    };
+
+    assert.equal(suggestContentBriefProfile('product_page', suggestions), 'product_page');
+    assert.equal(suggestContentBriefProfile(' procurement_selection ', suggestions), 'procurement_selection');
+    assert.equal(suggestContentBriefProfile('unknown', suggestions), '');
+});
 
 test('derives inline title statistics from the selected library and persisted progress', () => {
     assert.deepEqual(

@@ -398,6 +398,7 @@ class TaskMonitoringQueryService
                 'knowledge_base_id' => $legacyKnowledgeBaseId,
                 'knowledge_base_ids' => $knowledgeBaseIds,
                 'knowledge_bases' => $knowledgeBases,
+                'content_brief' => is_array($task->content_brief) ? $task->content_brief : [],
                 'author_id' => $this->nullableInt($task->author_id),
                 'image_library_id' => $this->nullableInt($task->image_library_id),
                 'image_count' => (int) ($task->image_count ?? 0),

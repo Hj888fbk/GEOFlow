@@ -1,0 +1,55 @@
+{
+  "schema_version": "deterministic-trigger-fixture/v1",
+  "generated_at": "2026-08-31",
+  "evaluation_kind": "recorded deterministic fixture",
+  "model_executed": false,
+  "human_reviewed": false,
+  "source": {
+    "description_file": "evals/improved_description.txt",
+    "baseline_description_file": "evals/baseline_description.txt",
+    "cases_file": "evals/trigger_cases.json",
+    "semantic_config_file": "evals/semantic_config.json",
+    "threshold": 0.48
+  },
+  "summary": {
+    "total_cases": 18,
+    "correct_cases": 18,
+    "accuracy": 1.0,
+    "misroute_count": 0,
+    "ambiguous_case_count": 0,
+    "false_positives": 0,
+    "false_negatives": 0,
+    "precision": 1.0,
+    "recall": 1.0
+  },
+  "bucket_stats": {
+    "should_trigger": {
+      "total": 6,
+      "passed": 6,
+      "pass_rate": 1.0
+    },
+    "should_not_trigger": {
+      "total": 6,
+      "passed": 6,
+      "pass_rate": 1.0
+    },
+    "near_neighbor": {
+      "total": 6,
+      "passed": 6,
+      "pass_rate": 1.0
+    }
+  },
+  "comparison": {
+    "baseline_false_positives": 0,
+    "baseline_false_negatives": 0,
+    "improved_false_positives": 0,
+    "improved_false_negatives": 0
+  },
+  "ambiguous_cases": [],
+  "misroutes": [],
+  "limitations": [
+    "This scorecard records local deterministic trigger fixtures only.",
+    "It is not provider-backed model routing evidence or production telemetry.",
+    "Real runtime activation and missed-trigger evidence remain missing evidence."
+  ]
+}

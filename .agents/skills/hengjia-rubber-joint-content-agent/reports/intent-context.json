@@ -1,0 +1,58 @@
+{
+  "job": "基于 GEOFlow 提供的获准资料和证据，重复生成或复核 hengjia-content-package/v1，并映射为 WordPress、百度爱采购、1688、搜狐号和百家号候选字段；只返回候选、证据与阻断，不执行发布。",
+  "real_inputs": [
+    "GEOFlow 内容任务：产品、受众、采购意图、页面职责、关键词和目标渠道",
+    "获准来源索引与文件：source_id、SHA-256、证据状态、公开权限、审批状态和适用范围",
+    "已复核证据主张：公司、资质、产品、生产、检测、案例和图片权利",
+    "现有页面快照、页面地图、内链候选和五渠道字段合同"
+  ],
+  "primary_output": "一个 hengjia-content-package/v1 候选 JSON、确定性验证报告、hengjia-channel-candidates/v1 五渠道候选 JSON，以及来源 ID、blockers、missing evidence 和 not_published 状态。",
+  "description": "Generate or review evidence-governed hengjia-content-package/v1 candidate content for 恒佳橡胶软接头 and map approved masters to WordPress、百度爱采购、1688、搜狐号、百家号 drafts. Use for recurring GEO/SEO/company/product/qualification/procurement content tasks backed by approved source files. Do not use for publishing, account login, CAPTCHA handling, credential storage, database replacement, or converting competitor/AI/industry claims into 恒佳 facts.",
+  "exclusions": [
+    "登录账号、处理或绕过验证码、保存 Cookie/Token/API Key、点击最终发布或调用远端发布接口",
+    "替代或修改 GEOFlow 数据库、生产 Prompt、WordPress 生产内容或现有自动任务",
+    "把同行官网、第三方页面、AI 回答或行业资料转成恒佳企业事实或产品参数",
+    "纯竞品调研、通用写作、一次性翻译总结和无证据宣传稿"
+  ],
+  "constraints": [
+    "只有 public_record_verified 或 internal_confirmed_public 且 publishable 的获准主张可写成恒佳事实",
+    "资质与精确参数缺少任一必要证据时必须阻断",
+    "同一核心搜索意图只有一个主页面，优先更新现有页面",
+    "五渠道可调整表达，但主体、事实、参数、联系方式、来源和限定条件必须一致",
+    "Skill 只读明确输入并输出到标准输出或调用方指定候选文件，不使用网络、浏览器或账号能力"
+  ],
+  "standards": [
+    "触发评测覆盖正例、反例和 near-neighbor",
+    "输出评测至少五例并覆盖 file-backed fixture、near-neighbor 和 boundary",
+    "确定性脚本通过单元测试、Python 兼容、信任检查和帮助面 smoke test",
+    "recorded fixture、真实模型评测和真人盲评状态必须分开记录",
+    "未完成一周影子运行、生产回读和人工签字前不得标为 production-ready"
+  ],
+  "correction": "本次明确采用 Governed candidate，而不是 production-ready；GEOFlow 是唯一主系统，Skill 不建立第二套数据库。",
+  "user_references": [
+    "恒佳 GEOFlow 内容中台、领域 Agent 与可扩展账号系统计划",
+    "GEOFlow hengjia-content-package/v1 现有 Agent、验证器和五渠道适配器契约",
+    "yao-meta-skill Governed、Skill IR、Output Eval、Review Studio 与 Target Safety 规范"
+  ],
+  "skill_name": "hengjia-rubber-joint-content-agent",
+  "assumptions": [],
+  "clarification_state": {
+    "decision": "proceed",
+    "rounds_used": 0,
+    "max_rounds": 2,
+    "asked_ambiguities": [],
+    "resolved_ambiguities": [
+      "recurring_job",
+      "real_inputs",
+      "primary_output",
+      "exclusions",
+      "constraints",
+      "standards"
+    ],
+    "correction_pending": false,
+    "blocking_ambiguities": [],
+    "stop_reason": "clear",
+    "inference_quality": "high"
+  },
+  "language": "zh-CN"
+}

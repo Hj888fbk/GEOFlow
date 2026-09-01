@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "status": "governed_candidate_no_high_permission_runtime",
+  "reviewed_at": null,
+  "capabilities": {
+    "network": {
+      "decision": "denied",
+      "scope": "Bundled Skill scripts may not make outbound network requests.",
+      "reason": "The candidate operates only on operator-provided local fixtures and emits deterministic stdout.",
+      "evidence": [
+        "reports/security_trust_report.json"
+      ]
+    },
+    "file_write": {
+      "decision": "denied",
+      "scope": "Bundled Skill scripts may not write files or mutate GEOFlow, WordPress, account or platform state.",
+      "reason": "Validation and channel mapping are read-and-stdout operations; GEOFlow remains the only stateful content system.",
+      "evidence": [
+        "reports/security_trust_report.json"
+      ]
+    },
+    "subprocess": {
+      "decision": "denied",
+      "scope": "Bundled Skill scripts may not launch subprocesses or shells.",
+      "reason": "The candidate uses only Python standard-library parsing and validation in the current process.",
+      "evidence": [
+        "reports/security_trust_report.json"
+      ]
+    },
+    "interactive": {
+      "decision": "denied",
+      "scope": "Bundled Skill scripts may not control browsers, log in to accounts, handle CAPTCHA or click final publish actions.",
+      "reason": "All account and publication operations stay in governed GEOFlow or human-operated platform workflows.",
+      "evidence": [
+        "reports/security_trust_report.json"
+      ]
+    }
+  },
+  "notes": [
+    "Bundled scripts are local read-and-stdout tools only.",
+    "Network, subprocess, browser automation, account login, credential storage and publication are forbidden.",
+    "A future high-permission capability requires a separate human approval with scope, reason, expiry, evidence and target enforcement."
+  ],
+  "missing_evidence": [
+    "human security approval for any future high-permission adapter"
+  ]
+}

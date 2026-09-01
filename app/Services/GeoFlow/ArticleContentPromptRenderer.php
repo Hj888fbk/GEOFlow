@@ -4,14 +4,16 @@ namespace App\Services\GeoFlow;
 
 final class ArticleContentPromptRenderer
 {
-    public function renderForEditor(string $title, string $keyword, ?string $promptContent, string $knowledgeContext = ''): string
+    /** @param array<string,mixed> $runtimeContext */
+    public function renderForEditor(string $title, string $keyword, ?string $promptContent, string $knowledgeContext = '', array $runtimeContext = []): string
     {
-        return $this->render($title, $keyword, $promptContent, $knowledgeContext);
+        return $this->render($title, $keyword, $promptContent, $knowledgeContext, $runtimeContext);
     }
 
-    public function renderForWorker(string $title, string $keyword, ?string $promptContent, string $knowledgeContext = ''): string
+    /** @param array<string,mixed> $runtimeContext */
+    public function renderForWorker(string $title, string $keyword, ?string $promptContent, string $knowledgeContext = '', array $runtimeContext = []): string
     {
-        return $this->render($title, $keyword, $promptContent, $knowledgeContext);
+        return $this->render($title, $keyword, $promptContent, $knowledgeContext, $runtimeContext);
     }
 
     /**
@@ -22,6 +24,7 @@ final class ArticleContentPromptRenderer
         string $keyword,
         ?string $promptContent,
         string $knowledgeContext,
+        array $runtimeContext,
     ): string {
         $prompt = trim((string) $promptContent);
         $isFallbackPrompt = false;
@@ -31,18 +34,28 @@ final class ArticleContentPromptRenderer
         }
         $isEnglish = $this->isLikelyEnglishPrompt($prompt);
 
-        $hasExplicitContextVariables = $isFallbackPrompt || $this->promptHasKnownContextVariables($prompt);
-        $hasExplicitKnowledgeVariable = $this->promptHasContextVariable($prompt, 'knowledge');
-        $renderedPrompt = $this->renderPromptTemplate($prompt, [
+        $runtimeContext = $this->normalizeRuntimeContext($runtimeContext);
+        $context = array_merge([
             'title' => $title,
             'keyword' => $keyword,
             'knowledge' => $knowledgeContext,
-        ]);
+        ], $runtimeContext);
+        $hasExplicitContextVariables = $isFallbackPrompt || $this->promptHasKnownContextVariables($prompt);
+        $hasExplicitKnowledgeVariable = $this->promptHasContextVariable($prompt, 'knowledge');
+        $renderedPrompt = $this->renderPromptTemplate($prompt, $context);
 
         if (! $hasExplicitContextVariables) {
             $renderedPrompt = $this->appendSmartPromptContext($renderedPrompt, $title, $keyword, $knowledgeContext, $isEnglish);
         } elseif (! $hasExplicitKnowledgeVariable) {
             $renderedPrompt = $this->appendKnowledgeContext($renderedPrompt, $knowledgeContext, $isEnglish);
+        }
+        $missingRuntimeContext = array_filter(
+            $runtimeContext,
+            fn (string $value, string $name): bool => trim($value) !== '' && ! $this->promptHasContextVariable($prompt, $name),
+            ARRAY_FILTER_USE_BOTH,
+        );
+        if ($missingRuntimeContext !== []) {
+            $renderedPrompt = $this->appendRuntimeContext($renderedPrompt, $missingRuntimeContext, $isEnglish);
         }
 
         $finalInstructions = array_values(array_filter([
@@ -55,8 +68,10 @@ final class ArticleContentPromptRenderer
 
     private function promptHasKnownContextVariables(string $prompt): bool
     {
-        return preg_match('/\{\{\s*(title|keyword|knowledge)\s*\}\}/iu', $prompt) === 1
-            || preg_match('/\{\{#if\s+(title|keyword|knowledge)\s*\}\}/iu', $prompt) === 1;
+        $variables = implode('|', array_map(static fn (string $name): string => preg_quote($name, '/'), $this->knownContextNames()));
+
+        return preg_match('/\{\{\s*('.$variables.')\s*\}\}/iu', $prompt) === 1
+            || preg_match('/\{\{#if\s+('.$variables.')\s*\}\}/iu', $prompt) === 1;
     }
 
     private function promptHasContextVariable(string $prompt, string $name): bool
@@ -68,7 +83,7 @@ final class ArticleContentPromptRenderer
     }
 
     /**
-     * @param  array{title:string, keyword:string, knowledge:string}  $context
+     * @param  array<string,string>  $context
      */
     private function renderPromptTemplate(string $prompt, array $context): string
     {
@@ -92,21 +107,47 @@ final class ArticleContentPromptRenderer
     }
 
     /**
-     * @param  array{title:string, keyword:string, knowledge:string}  $context
+     * @param  array<string,string>  $context
      */
     private function promptContextValue(string $name, array $context): string
     {
-        return match (mb_strtolower($name, 'UTF-8')) {
-            'title' => $context['title'],
-            'keyword' => $context['keyword'],
-            'knowledge' => $context['knowledge'],
-            default => '',
-        };
+        return (string) ($context[mb_strtolower($name, 'UTF-8')] ?? '');
     }
 
     private function isKnownPromptContextName(string $name): bool
     {
-        return in_array(mb_strtolower($name, 'UTF-8'), ['title', 'keyword', 'knowledge'], true);
+        return in_array(mb_strtolower($name, 'UTF-8'), $this->knownContextNames(), true);
+    }
+
+    /** @return list<string> */
+    private function knownContextNames(): array
+    {
+        return [
+            'title', 'keyword', 'knowledge', 'product', 'page_role', 'audience', 'decision_stage',
+            'buyer_questions', 'procurement_direction', 'desired_action', 'author', 'structure',
+            'media_context', 'domain_rules',
+        ];
+    }
+
+    /** @param array<string,mixed> $context @return array<string,string> */
+    private function normalizeRuntimeContext(array $context): array
+    {
+        $normalized = [];
+        foreach ($this->knownContextNames() as $name) {
+            if (in_array($name, ['title', 'keyword', 'knowledge'], true) || ! array_key_exists($name, $context)) {
+                continue;
+            }
+            $value = $context[$name];
+            if (is_array($value)) {
+                $value = implode("\n", array_map(static fn (mixed $item): string => is_scalar($item) ? (string) $item : '', $value));
+            }
+            if (! is_scalar($value) && $value !== null) {
+                continue;
+            }
+            $normalized[$name] = trim((string) $value);
+        }
+
+        return $normalized;
     }
 
     private function appendSmartPromptContext(string $prompt, string $title, string $keyword, string $knowledgeContext, bool $isEnglish): string
@@ -153,6 +194,45 @@ final class ArticleContentPromptRenderer
         }
 
         return trim($prompt)."\n\n【参考知识】\n".$knowledgeContext;
+    }
+
+    /** @param array<string,string> $context */
+    private function appendRuntimeContext(string $prompt, array $context, bool $isEnglish): string
+    {
+        $labels = $isEnglish ? [
+            'product' => 'Product',
+            'page_role' => 'Page role',
+            'audience' => 'Audience',
+            'decision_stage' => 'Decision stage',
+            'buyer_questions' => 'Buyer questions',
+            'procurement_direction' => 'Procurement focus',
+            'desired_action' => 'Desired action',
+            'author' => 'Author identity',
+            'structure' => 'Content structure',
+            'media_context' => 'Approved media context',
+            'domain_rules' => 'Domain fact rules',
+        ] : [
+            'product' => '产品',
+            'page_role' => '页面职责',
+            'audience' => '目标受众',
+            'decision_stage' => '采购阶段',
+            'buyer_questions' => '采购问题',
+            'procurement_direction' => '采购关注',
+            'desired_action' => '目标动作',
+            'author' => '作者身份',
+            'structure' => '文章结构',
+            'media_context' => '可用媒体',
+            'domain_rules' => '领域事实规则',
+        ];
+        $lines = [$isEnglish ? 'Content planning context:' : '【内容策划上下文】'];
+        foreach ($context as $name => $value) {
+            if ($value === '') {
+                continue;
+            }
+            $lines[] = ($labels[$name] ?? $name).'：'.$value;
+        }
+
+        return trim($prompt)."\n\n".implode("\n", $lines);
     }
 
     private function finalPromptInstruction(bool $isEnglish): string

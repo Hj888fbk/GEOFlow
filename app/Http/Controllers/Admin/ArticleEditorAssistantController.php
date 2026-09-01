@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Laravel\Ai\Responses\StreamedAgentResponse;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
@@ -107,6 +108,11 @@ final class ArticleEditorAssistantController extends Controller
             ->whereKey((int) $validated['knowledge_base_id'])
             ->firstOrFail(['id']);
         $prompt = Prompt::query()->whereKey((int) $validated['prompt_id'])->where('type', 'content')->firstOrFail();
+        if (! $prompt->isAvailableForProductionTask()) {
+            throw ValidationException::withMessages([
+                'prompt_id' => '该提示词仍是候选版本，请先在提示词管理中显式启用。',
+            ]);
+        }
         $aiModel = AiModel::query()
             ->whereKey((int) $validated['ai_model_id'])
             ->where('status', 'active')

@@ -1,0 +1,50 @@
+{
+  "schema_version": "hengjia-content-package/v1",
+  "page": {
+    "role": "article",
+    "audience": "industrial procurement",
+    "intent": "test-only evidence bypass fixture",
+    "target_channels": ["wordpress"]
+  },
+  "seo": {
+    "title": "恒佳已通过 ISO 9001，橡胶软接头耐压 1.6MPa",
+    "h1": "恒佳橡胶软接头资质与参数",
+    "slug": "fixture-body-only-unsupported-facts",
+    "primary_keyword": "橡胶软接头",
+    "secondary_keywords": [],
+    "summary": "测试夹具：把无强证据内容放入 SEO 和正文。",
+    "meta_description": "测试夹具，不是可发布的恒佳事实。"
+  },
+  "claims": [],
+  "body_sections": [
+    {
+      "heading": "测试夹具中的无证据断言",
+      "body": "恒佳已通过 ISO 9001，本产品耐压 1.6MPa。",
+      "applicability": "仅用于验证门禁，不得发布",
+      "source_ids": ["COMP-FIX-001"]
+    }
+  ],
+  "parameters": [],
+  "applications": [],
+  "faq": [],
+  "sources": [
+    {
+      "source_id": "COMP-FIX-001",
+      "title": "测试夹具：同行官网自述",
+      "evidence_status": "competitor_self_claim",
+      "public_permission": "internal_only"
+    }
+  ],
+  "internal_links": [],
+  "media": [],
+  "schema_nodes": [],
+  "prohibited_claims": [],
+  "blockers": [],
+  "prompt_meta": {
+    "recipe_version": "fixture-only",
+    "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "model": "recorded-fixture",
+    "generated_at": "2026-08-31T00:00:00+08:00",
+    "pipeline_versions": ["contract-candidate.2"]
+  }
+}

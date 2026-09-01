@@ -19,6 +19,7 @@
     $menu = [
         'dashboard' => ['route' => 'admin.dashboard', 'name' => __('admin.nav.dashboard')],
         'analytics' => ['route' => 'admin.analytics', 'name' => __('admin.nav.analytics')],
+        'hengjia_content' => ['route' => 'admin.hengjia-content.today', 'name' => __('hengjia_content.module')],
         'tasks' => ['route' => 'admin.tasks.index', 'name' => __('admin.nav.tasks')],
         'distribution' => ['route' => 'admin.distribution.index', 'name' => __('admin.nav.distribution')],
         'articles' => ['route' => 'admin.articles.index', 'name' => __('admin.nav.articles')],
@@ -39,6 +40,14 @@
         'admin.analytics.ai-visibility' => 'analytics',
         'admin.analytics.leads' => 'analytics',
         'admin.analytics.distribution' => 'analytics',
+        'admin.hengjia-content.today' => 'hengjia_content',
+        'admin.hengjia-content.tasks' => 'hengjia_content',
+        'admin.hengjia-content.evidence' => 'hengjia_content',
+        'admin.hengjia-content.studio' => 'hengjia_content',
+        'admin.hengjia-content.previews' => 'hengjia_content',
+        'admin.hengjia-content.publishing' => 'hengjia_content',
+        'admin.hengjia-content.accounts' => 'hengjia_content',
+        'admin.hengjia-content.governance' => 'hengjia_content',
         'admin.system-updates.index' => 'dashboard',
         'admin.system-updates.check' => 'dashboard',
 		'admin.system-updates.updater.prepare' => 'dashboard',
@@ -274,7 +283,7 @@
         </div>
     </div>
 
-    <div id="mobile-menu" class="hidden md:hidden">
+    <div id="mobile-menu" class="hidden md:hidden" aria-label="{{ __('admin.ui_v3.primary_navigation') }}">
         <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-gray-50 border-t">
             @foreach ($menu as $key => $item)
                 <a href="{{ route($item['route']) }}"
@@ -286,7 +295,17 @@
     </div>
 </nav>
 <div class="md:hidden fixed top-4 right-4 z-50">
-    <button onclick="toggleMobileMenu()" class="bg-white p-2 rounded-md shadow-md" type="button">
+    <button
+        id="admin-mobile-menu-button"
+        onclick="toggleMobileMenu()"
+        class="bg-white p-2 rounded-md shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+        type="button"
+        aria-label="{{ __('admin.ui_v3.open_sidebar') }}"
+        aria-controls="mobile-menu"
+        aria-expanded="false"
+        data-open-label="{{ __('admin.ui_v3.open_sidebar') }}"
+        data-close-label="{{ __('admin.ui_v3.close_sidebar') }}"
+    >
         <i data-lucide="menu" class="w-5 h-5 text-gray-600"></i>
     </button>
 </div>
@@ -315,11 +334,27 @@
         }
     }
 
-    function toggleMobileMenu() {
+    function setMobileMenuOpen(isOpen, restoreFocus = false) {
         const menu = document.getElementById('mobile-menu');
-        if (menu) {
-            menu.classList.toggle('hidden');
+        const button = document.getElementById('admin-mobile-menu-button');
+        if (!menu || !button) {
+            return;
         }
+
+        menu.classList.toggle('hidden', !isOpen);
+        button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        button.setAttribute('aria-label', isOpen ? button.dataset.closeLabel : button.dataset.openLabel);
+
+        if (isOpen) {
+            window.requestAnimationFrame(() => menu.querySelector('a')?.focus());
+        } else if (restoreFocus) {
+            button.focus();
+        }
+    }
+
+    function toggleMobileMenu() {
+        const button = document.getElementById('admin-mobile-menu-button');
+        setMobileMenuOpen(button?.getAttribute('aria-expanded') !== 'true');
     }
 
     document.addEventListener('click', function (event) {
@@ -333,7 +368,19 @@
             notificationMenu.classList.add('hidden');
         }
         if (mobileMenu && !event.target.closest('[onclick="toggleMobileMenu()"]') && !mobileMenu.contains(event.target)) {
-            mobileMenu.classList.add('hidden');
+            setMobileMenuOpen(false);
+        }
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape') {
+            return;
+        }
+
+        const button = document.getElementById('admin-mobile-menu-button');
+        if (button?.getAttribute('aria-expanded') === 'true') {
+            event.preventDefault();
+            setMobileMenuOpen(false, true);
         }
     });
 </script>

@@ -1,0 +1,89 @@
+{
+  "ok": false,
+  "schema_version": "2.0",
+  "skill_dir": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent",
+  "registry_dir": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\registry",
+  "package": {
+    "schema_version": "2.0",
+    "name": "hengjia-rubber-joint-content-agent",
+    "version": "0.1.0-candidate.2",
+    "description": "Generate or review evidence-governed hengjia-content-package/v1 candidate content for 恒佳橡胶软接头 and map approved masters to WordPress、百度爱采购、1688、搜狐号、百家号 drafts. Use for recurring GEO/SEO/company/product/qualification/procurement content tasks backed by approved source files. Do not use for publishing, account login, CAPTCHA handling, credential storage, database replacement, or converting competitor/AI/industry claims into 恒佳 facts.",
+    "targets": [
+      "openai",
+      "generic",
+      "agent-skills-compatible"
+    ],
+    "maturity": "governed",
+    "owner": "恒佳 GEOFlow 内容治理组",
+    "review_cadence": "per-release",
+    "trust_level": "local",
+    "license": "AGPL-3.0-only",
+    "checksums": {
+      "package_sha256": "0b291dd6a075a12d75f86e9f0ed6c2e0d85f20ac22aaede27f802bbbfe75dd84",
+      "archive_sha256": "cf386a4c480a240ba4a153c31fda103e373ba716c791990e231532f140498939"
+    },
+    "compatibility": {
+      "openai": "pass",
+      "generic": "pass",
+      "agent-skills": "pass",
+      "agent-skills-compatible": "pass"
+    },
+    "source": {
+      "skill_dir": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent",
+      "skill_ir": "skill-ir\\hengjia-rubber-joint-content-agent.json",
+      "ir_schema_version": "2.0.0",
+      "canonical_metadata": "agents/interface.yaml"
+    },
+    "artifacts": {
+      "overview_html": "reports/skill-overview.html",
+      "review_studio_html": "reports/review-studio.html",
+      "trust_report": "reports/security_trust_report.md",
+      "conformance_matrix": "reports/conformance_matrix.md",
+      "compiled_targets": "reports/compiled_targets.md",
+      "package_verification": "reports/package_verification.md",
+      "install_simulation": "reports/install_simulation.md",
+      "adoption_drift": "",
+      "review_waivers": "reports/review_waivers.md",
+      "review_annotations": "reports/review_annotations.md",
+      "package_metadata": "registry/packages/hengjia-rubber-joint-content-agent.json"
+    },
+    "distribution": {
+      "archive_verified": true,
+      "archive_sha256": "cf386a4c480a240ba4a153c31fda103e373ba716c791990e231532f140498939",
+      "package_verification": "reports/package_verification.json",
+      "install_simulated": false,
+      "install_simulation": "reports/install_simulation.json"
+    },
+    "generated_at": "2026-08-31"
+  },
+  "index": {
+    "schema_version": "2.0",
+    "generated_at": "2026-08-31",
+    "package_count": 1,
+    "packages": [
+      {
+        "name": "hengjia-rubber-joint-content-agent",
+        "version": "0.1.0-candidate.2",
+        "maturity": "governed",
+        "owner": "恒佳 GEOFlow 内容治理组",
+        "targets": [
+          "openai",
+          "generic",
+          "agent-skills-compatible"
+        ],
+        "package_metadata": "registry/packages/hengjia-rubber-joint-content-agent.json",
+        "package_sha256": "0b291dd6a075a12d75f86e9f0ed6c2e0d85f20ac22aaede27f802bbbfe75dd84"
+      }
+    ]
+  },
+  "failures": [
+    "Install simulation report exists but install simulation did not pass"
+  ],
+  "warnings": [],
+  "artifacts": {
+    "index": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\registry\\index.json",
+    "package": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\registry\\packages\\hengjia-rubber-joint-content-agent.json",
+    "json": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\registry_audit.json",
+    "markdown": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\registry_audit.md"
+  }
+}

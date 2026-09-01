@@ -66,6 +66,20 @@
     $qualityPrompts = $formOptions['qualityPrompts'] ?? [];
     $defaultQualityPromptId = (string) (collect($qualityPrompts)->firstWhere('system_managed', true)['id'] ?? ($qualityPrompts[0]['id'] ?? ''));
     $qualityPromptId = (string) old('ai_quality_prompt_id', (string) ($taskForm['ai_quality_prompt_id'] ?? $defaultQualityPromptId));
+    $contentBrief = old('content_brief', $taskForm['content_brief'] ?? []);
+    $contentBrief = is_array($contentBrief) ? $contentBrief : [];
+    $briefListText = static function (mixed $value): string {
+        if (is_array($value)) {
+            return implode("\n", array_values(array_filter(array_map('strval', $value))));
+        }
+
+        return is_string($value) || is_numeric($value) ? (string) $value : '';
+    };
+    $contentBriefPageRoles = $formOptions['contentBriefPageRoles'] ?? [];
+    $contentBriefProfiles = $formOptions['contentBriefProfiles'] ?? [];
+    $contentBriefProfileSuggestions = collect($contentBriefPageRoles)
+        ->mapWithKeys(static fn (string $label, string $key): array => [$key => $key])
+        ->all();
 @endphp
 
 @section('content')
@@ -284,6 +298,92 @@
                         </div>
                     </div>
                 </div>
+
+                <section class="bg-white shadow rounded-lg xl:col-span-12" data-content-brief-card>
+                    <div class="flex flex-col gap-3 border-b border-gray-200 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <h3 class="text-lg font-medium text-gray-900">文章结构与采购问题</h3>
+                            <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">这些内容写入原 Task 的 content_brief，用来补充现有标题库、知识库、提示词、作者和图库。留空时旧任务行为不变。</p>
+                        </div>
+                        <span class="inline-flex w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">原生链 · 可选</span>
+                    </div>
+                    <div class="px-6 py-5">
+                        <div class="mb-5 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                            当前为影子测试设计：只有配置开关中指定的单个恒佳测试任务才会把这些字段注入正式生成；不会自动发布，也不会影响其他旧任务。
+                        </div>
+                        <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                            <div>
+                                <label for="content_brief_product_key" class="block text-sm font-medium text-gray-700">产品或产品线</label>
+                                <input id="content_brief_product_key" name="content_brief[product_key]" type="text" maxlength="160"
+                                       value="{{ (string) ($contentBrief['product_key'] ?? '') }}"
+                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                       placeholder="例如：KXT/JGD 橡胶软接头">
+                            </div>
+                            <div>
+                                <label for="content_brief_page_role" class="block text-sm font-medium text-gray-700">页面职责</label>
+                                <select id="content_brief_page_role" name="content_brief[page_role]" data-content-brief-page-role
+                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <option value="">暂不指定</option>
+                                    @foreach ($contentBriefPageRoles as $roleKey => $roleLabel)
+                                        <option value="{{ $roleKey }}" @selected((string) ($contentBrief['page_role'] ?? '') === (string) $roleKey)>{{ $roleLabel }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label for="content_brief_structure_profile" class="block text-sm font-medium text-gray-700">文章结构</label>
+                                <select id="content_brief_structure_profile" name="content_brief[structure_profile]" data-content-brief-structure-profile
+                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <option value="">根据页面职责自动建议</option>
+                                    @foreach ($contentBriefProfiles as $profileKey => $profileLabel)
+                                        <option value="{{ $profileKey }}" @selected((string) ($contentBrief['structure_profile'] ?? '') === (string) $profileKey)>{{ $profileLabel }}</option>
+                                    @endforeach
+                                </select>
+                                <p class="mt-1 text-xs leading-5 text-gray-500" data-content-brief-profile-hint>自动建议后仍可人工覆盖。</p>
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label for="content_brief_audience" class="block text-sm font-medium text-gray-700">目标用户与用户画像</label>
+                                <input id="content_brief_audience" name="content_brief[audience]" type="text" maxlength="600"
+                                       value="{{ (string) ($contentBrief['audience'] ?? '') }}"
+                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                       placeholder="例如：正在做供应商初筛的项目采购，需要核对工况、检测和交付边界">
+                            </div>
+                            <div>
+                                <label for="content_brief_decision_stage" class="block text-sm font-medium text-gray-700">采购决策阶段</label>
+                                <input id="content_brief_decision_stage" name="content_brief[decision_stage]" type="text" maxlength="160"
+                                       value="{{ (string) ($contentBrief['decision_stage'] ?? '') }}"
+                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                       placeholder="需求确认 / 选型比较 / 供应商核验 / 询价">
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label for="content_brief_buyer_questions" class="block text-sm font-medium text-gray-700">用户常见提问</label>
+                                <textarea id="content_brief_buyer_questions" name="content_brief[buyer_questions]" rows="4" maxlength="3000"
+                                          class="mt-1 block w-full resize-y rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                          placeholder="每行一个真实采购问题">{{ $briefListText($contentBrief['buyer_questions'] ?? '') }}</textarea>
+                            </div>
+                            <div>
+                                <label for="content_brief_image_keywords" class="block text-sm font-medium text-gray-700">图片匹配关键词</label>
+                                <textarea id="content_brief_image_keywords" name="content_brief[image_keywords]" rows="4" maxlength="2000"
+                                          class="mt-1 block w-full resize-y rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                          placeholder="每行一个产品、型号或场景标签">{{ $briefListText($contentBrief['image_keywords'] ?? '') }}</textarea>
+                                <p class="mt-1 text-xs leading-5 text-gray-500">测试任务只使用匹配标签或文件名的图片；没有匹配时明确阻断，不随机配图。</p>
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label for="content_brief_procurement_direction" class="block text-sm font-medium text-gray-700">采购关注方向</label>
+                                <textarea id="content_brief_procurement_direction" name="content_brief[procurement_direction]" rows="3" maxlength="1200"
+                                          class="mt-1 block w-full resize-y rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                          placeholder="例如：适用介质、压力温度边界、法兰连接、位移、检测依据、非标和询价输入">{{ (string) ($contentBrief['procurement_direction'] ?? '') }}</textarea>
+                            </div>
+                            <div>
+                                <label for="content_brief_desired_action" class="block text-sm font-medium text-gray-700">希望读者完成的动作</label>
+                                <textarea id="content_brief_desired_action" name="content_brief[desired_action]" rows="3" maxlength="600"
+                                          class="mt-1 block w-full resize-y rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                          placeholder="例如：提交介质、口径、压力、温度、连接和位移信息后询价">{{ (string) ($contentBrief['desired_action'] ?? '') }}</textarea>
+                            </div>
+                        </div>
+                        @error('content_brief')<p class="mt-4 text-sm text-red-600">{{ $message }}</p>@enderror
+                        @error('content_brief.*')<p class="mt-4 text-sm text-red-600">{{ $message }}</p>@enderror
+                    </div>
+                </section>
 
                 <div class="bg-white shadow rounded-lg xl:col-span-6">
                     <div class="px-6 py-4 border-b border-gray-200">
@@ -789,5 +889,6 @@
 
         <script type="application/json" data-task-form-i18n>@json($taskFormI18n)</script>
         <script type="application/json" data-task-title-readiness-initial>@json($initialTitleReadinessReport)</script>
+        <script type="application/json" data-content-brief-profile-suggestions>@json($contentBriefProfileSuggestions)</script>
     @endif
 @endsection

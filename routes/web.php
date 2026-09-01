@@ -32,6 +32,7 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DistributionAnalyticsController;
 use App\Http\Controllers\Admin\DistributionController;
 use App\Http\Controllers\Admin\EnterpriseKnowledgeController;
+use App\Http\Controllers\Admin\HengjiaContentCenterController;
 use App\Http\Controllers\Admin\HostedSiteController;
 use App\Http\Controllers\Admin\ImageLibraryController;
 use App\Http\Controllers\Admin\KeywordLibraryController;
@@ -345,6 +346,37 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('{manualPublicationId}/transition', [ManualPublicationController::class, 'transition'])->name('transition')->whereNumber('manualPublicationId');
         });
 
+        Route::prefix('hengjia-content')->name('hengjia-content.')->group(function (): void {
+            Route::get('/', [HengjiaContentCenterController::class, 'today'])->name('today');
+            Route::get('tasks', [HengjiaContentCenterController::class, 'nativeRedirect'])->name('tasks');
+            Route::get('evidence', [HengjiaContentCenterController::class, 'nativeRedirect'])->name('evidence');
+            Route::get('studio', [HengjiaContentCenterController::class, 'nativeRedirect'])->name('studio');
+            Route::get('previews', [HengjiaContentCenterController::class, 'nativeRedirect'])->name('previews');
+            Route::get('publishing', [HengjiaContentCenterController::class, 'nativeRedirect'])->name('publishing');
+            Route::get('accounts', [HengjiaContentCenterController::class, 'nativeRedirect'])->name('accounts');
+            Route::get('governance', [HengjiaContentCenterController::class, 'nativeRedirect'])->name('governance');
+
+            // 兼容旧书签和表单动作，但统一停止平行 ContentTask/ContentMaster/PromptRecipeVersion 写入。
+            Route::post('plan-daily', [HengjiaContentCenterController::class, 'retiredWrite'])->name('plan-daily');
+            Route::post('tasks', [HengjiaContentCenterController::class, 'retiredWrite'])->name('tasks.store');
+            Route::post('evidence', [HengjiaContentCenterController::class, 'retiredWrite'])->name('evidence.store');
+            Route::post('sources/sync', [HengjiaContentCenterController::class, 'retiredWrite'])->name('sources.sync');
+            Route::post('sources/{sourceFile}/approve', [HengjiaContentCenterController::class, 'retiredWrite'])->whereNumber('sourceFile')->name('sources.approve');
+            Route::post('tasks/{contentTask}/generate', [HengjiaContentCenterController::class, 'retiredWrite'])->whereNumber('contentTask')->name('tasks.generate');
+            Route::post('masters/{contentMaster}/approve', [HengjiaContentCenterController::class, 'retiredWrite'])->whereNumber('contentMaster')->name('masters.approve');
+            Route::post('masters/{contentMaster}/promote', [HengjiaContentCenterController::class, 'retiredWrite'])->whereNumber('contentMaster')->name('masters.promote');
+            Route::post('masters/{contentMaster}/rollback', [HengjiaContentCenterController::class, 'retiredWrite'])->whereNumber('contentMaster')->name('masters.rollback');
+            Route::post('masters/{contentMaster}/variants', [HengjiaContentCenterController::class, 'retiredWrite'])->whereNumber('contentMaster')->name('masters.variants');
+            Route::post('variants/{channelVariant}/approve', [HengjiaContentCenterController::class, 'retiredWrite'])->whereNumber('channelVariant')->name('variants.approve');
+            Route::post('variants/{channelVariant}/prepare', [HengjiaContentCenterController::class, 'retiredWrite'])->whereNumber('channelVariant')->name('variants.prepare');
+            Route::post('variants/{channelVariant}/readback', [HengjiaContentCenterController::class, 'retiredWrite'])->whereNumber('channelVariant')->name('variants.readback');
+            Route::post('accounts', [HengjiaContentCenterController::class, 'retiredWrite'])->name('accounts.store');
+            Route::post('accounts/{platformAccount}', [HengjiaContentCenterController::class, 'retiredWrite'])->whereNumber('platformAccount')->name('accounts.update');
+            Route::post('accounts/{platformAccount}/disable', [HengjiaContentCenterController::class, 'retiredWrite'])->whereNumber('platformAccount')->name('accounts.disable');
+            Route::post('accounts/{platformAccount}/verify', [HengjiaContentCenterController::class, 'retiredWrite'])->whereNumber('platformAccount')->name('accounts.verify');
+            Route::post('accounts/{platformAccount}/capabilities/refresh', [HengjiaContentCenterController::class, 'retiredWrite'])->whereNumber('platformAccount')->name('accounts.capabilities.refresh');
+        });
+
         // 栏目管理（保持 geo_admin/categories 路径语义）
         Route::prefix('categories')->name('categories.')->group(function () {
             Route::get('/', [CategoryController::class, 'index'])->name('index');
@@ -545,8 +577,12 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('ai-prompts', [AiPromptController::class, 'index'])->name('ai-prompts');
             Route::get('ai-prompts/create', [AiPromptController::class, 'create'])->name('ai-prompts.create');
             Route::post('ai-prompts/create', [AiPromptController::class, 'store'])->name('ai-prompts.store');
+            Route::post('ai-prompts/builder/suggest', [AiPromptController::class, 'suggest'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('ai-prompts.builder-suggest');
             Route::get('ai-prompts/{promptId}/edit', [AiPromptController::class, 'edit'])->name('ai-prompts.edit')->whereNumber('promptId');
             Route::post('ai-prompts/{promptId}/copy', [AiPromptController::class, 'copy'])->name('ai-prompts.copy')->whereNumber('promptId');
+            Route::post('ai-prompts/{promptId}/activate', [AiPromptController::class, 'activate'])->name('ai-prompts.activate')->whereNumber('promptId');
             Route::put('ai-prompts/{promptId}', [AiPromptController::class, 'update'])->name('ai-prompts.update')->whereNumber('promptId');
             Route::post('ai-prompts/{promptId}/delete', [AiPromptController::class, 'destroy'])->name('ai-prompts.delete')->whereNumber('promptId');
             Route::get('ai-special-prompts', [AiSpecialPromptController::class, 'index'])->name('ai-special-prompts');

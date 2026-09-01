@@ -1,0 +1,61 @@
+{
+  "ok": true,
+  "skill": "hengjia-rubber-joint-content-agent",
+  "targets": [
+    {
+      "target": "agent-skills",
+      "status": "pass",
+      "checks": [
+        "SKILL.md exists",
+        "frontmatter name exists",
+        "frontmatter description exists",
+        "description length <= 1024",
+        "name is runtime-safe",
+        "package identity derives from skill name",
+        "manifest.name exists",
+        "manifest.version exists",
+        "manifest.owner exists",
+        "manifest.status exists",
+        "manifest.maturity_tier exists",
+        "manifest.review_cadence exists",
+        "manifest declares agent-skills via agent-skills-compatible",
+        "interface.display_name exists",
+        "interface.short_description exists",
+        "interface.default_prompt exists",
+        "canonical format is agent-skills",
+        "activation mode exists",
+        "execution context exists",
+        "execution shell exists",
+        "trust source tier exists",
+        "Skill IR schema_version is 2.0.0",
+        "Skill IR name matches frontmatter",
+        "Skill IR description matches frontmatter",
+        "references resource resolves: references/evidence-policy.md",
+        "references resource resolves: references/content-package-contract.md",
+        "references resource resolves: references/prompt-recipes.md",
+        "references resource resolves: references/channel-contracts.md",
+        "references resource resolves: references/governance-and-review.md",
+        "scripts resource resolves: scripts/contract.py",
+        "scripts resource resolves: scripts/validate_content_package.py",
+        "scripts resource resolves: scripts/map_channel_candidates.py",
+        "reports resource resolves: reports/output_quality_scorecard.md",
+        "reports resource resolves: reports/security_trust_report.md",
+        "reports resource resolves: reports/output-risk-profile.md",
+        "reports resource resolves: reports/artifact-design-profile.md"
+      ],
+      "failures": [],
+      "warnings": [
+        "agent-skills uses canonical Agent Skills metadata; provider-native execution transforms are not implemented in v0."
+      ]
+    }
+  ],
+  "summary": {
+    "target_count": 1,
+    "pass_count": 1,
+    "fail_count": 0
+  },
+  "artifacts": {
+    "json": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\conformance_agent_skills.json",
+    "markdown": "D:\\Documents\\恒佳geo\\GEOFlow-main\\.agents\\skills\\hengjia-rubber-joint-content-agent\\reports\\conformance_agent_skills.md"
+  }
+}

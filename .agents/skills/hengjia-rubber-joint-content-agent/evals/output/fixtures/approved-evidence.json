@@ -1,0 +1,22 @@
+{
+  "fixture_label": "file-backed fixture",
+  "fixture_only": true,
+  "not_a_real_company_claim": true,
+  "task": {
+    "product": "橡胶软接头",
+    "audience": "工业采购测试受众",
+    "intent": "准备完整询价输入",
+    "target_channels": ["wordpress", "baidu-aicaigou", "1688", "sohu", "baijiahao"]
+  },
+  "sources": [
+    {
+      "source_id": "HJ-FIX-001",
+      "title": "测试夹具：询价输入清单",
+      "is_approved": true,
+      "evidence_status": "internal_confirmed_public",
+      "public_permission": "publishable",
+      "scope": "仅用于 Skill 评测，不代表真实生产资料",
+      "claim": "测试夹具列出的询价输入为口径、压力等级、介质、温度、连接标准和数量。"
+    }
+  ]
+}
