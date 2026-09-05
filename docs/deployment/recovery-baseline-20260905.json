@@ -1,0 +1,63 @@
+{
+  "schema_version": "geoflow-recovery-baseline/v1",
+  "project_id": "GF-PLATFORM",
+  "captured_at": "2026-09-05T23:03:58+08:00",
+  "storage_id": "GEOFLOW-RECOVERY-20260905",
+  "stable_target": {
+    "tag": "v3.0.0",
+    "tag_object": "c05a9fa5aa4b74ff08e0bf1f98e087c2aa2daa1c",
+    "commit": "f5301eb14a91f8e5994b479c545dbe2773d601d8",
+    "writer_guard_commit": "e05fa8a89698a3dce5d53bb178065548dd1923cb",
+    "writer_guard": "docker-compose.stable-freeze.yml",
+    "writer_guard_validation": "overlay_syntax_passed_full_merge_pending_real_prod_config"
+  },
+  "upgrade_guide": {
+    "source_commit": "1a4928125c0a474f0741e5abbb4cfd4c20c01b78",
+    "blob": "4f0bb29d2c41782504b687b3f4a3bc731149e3db",
+    "sha256": "e77a52f7882eaa794d94bfa1c2d113509311b55af36aab34d06e2f184e48136c",
+    "included_in_v3_tag": false
+  },
+  "source_preservation": {
+    "branch": "recovery/geoflow-mixed-baseline-20260904",
+    "commit": "adb71a8e11577873d3214f6f226b1b635126f57c",
+    "changed_paths": 60,
+    "tracked_changed_paths": 52,
+    "untracked_paths": 8,
+    "secret_scan_passed": true
+  },
+  "runtime": {
+    "docker_engine": "stopped",
+    "workers_observed_running": false,
+    "authenticated_task_pause_readback": "blocked_pending_docker",
+    "authenticated_channel_pause_readback": "blocked_pending_docker",
+    "queue_terminal_readback": "blocked_pending_docker",
+    "migration_status": "blocked_pending_docker",
+    "failed_quality_jobs_action": "not_retried_not_deleted",
+    "failed_quality_jobs_persistent_state": "unknown_not_authenticated"
+  },
+  "artifacts": [
+    {"relative_path": "config/runtime-config-summary.json", "bytes": 186245, "sha256": "7d20e844041d6000fe9578eba0ca0c74f8ed84eb32e11a8003118566b837bf71", "status": "captured_without_values"},
+    {"relative_path": "database/geoflow-postgresql-20260905.dump", "bytes": 6959316, "sha256": "3c1deb3602458d63cf28302ca3b700915834987282993a9058de8f4b9bf0b556", "status": "present_pg_dump_header_unverified"},
+    {"relative_path": "database/postgresql-pg-dump.status.json", "bytes": 356, "sha256": "a8f3eb1f1b1c12f866515e4a60ec597573bddef62720413c46851c188935dc94", "status": "captured_blocked_status"},
+    {"relative_path": "manifest/secrets-scan.json", "bytes": 329, "sha256": "c2dfaf620be814d3f2f00f8faeafb8818c0171908478a494783634457a3d8908", "status": "passed"},
+    {"relative_path": "runtime/authenticated-readback.status.json", "bytes": 371, "sha256": "5de4fb8a74487d3439ed766fc0e0324547de344625f6274bddad5c2b6dd7e2c5", "status": "blocked_pending_docker"},
+    {"relative_path": "runtime/engine-state.json", "bytes": 463, "sha256": "38f10c22562f674cabf4f6fa5c19678fa7ffa5b963efcbe8679e79efcc99b36a", "status": "captured"},
+    {"relative_path": "runtime/migration-state.status.json", "bytes": 365, "sha256": "ec30daff4168f8946ba6c818a3740be73d5b37ade1935bc0109268277e4015ec", "status": "blocked_pending_docker"},
+    {"relative_path": "runtime/queue-state.status.json", "bytes": 360, "sha256": "218ea7de3ebda48f8ee6de6e3569a6217995d3856ecd4ab5b34fab36dc273b92", "status": "blocked_pending_docker"},
+    {"relative_path": "source/geoflow-all-refs-before.bundle", "bytes": 21124657, "sha256": "f839a16e182f2cfe511102043e56ed10a9faa68262f75c3c0c7429e9b664af7d", "status": "captured"},
+    {"relative_path": "source/source-inventory.csv", "bytes": 444175, "sha256": "6a4db4e2e1206a26a0e72fdc608b76d9e9e341528aa382b73582760cfa26072e", "status": "captured"},
+    {"relative_path": "source/source-state-before.json", "bytes": 3666, "sha256": "94462e8336adb06bea2f6597030b362b4a91e70a5a498eb2666d4516cf2de029", "status": "captured"},
+    {"relative_path": "source/tracked-working-tree-before.patch", "bytes": 189901, "sha256": "ff73e4f6bb5e373f5b2ea99ba9ec614983e374eb6b9c1ed8517bdd0c320f9ca3", "status": "captured"},
+    {"relative_path": "source/untracked-working-tree-before.tar.gz", "bytes": 10220, "sha256": "606cdf48ac0b68d1734c7f103fbe2926edd9db44f004390593bea43335dceb7e", "status": "captured"},
+    {"relative_path": "storage/storage-20260905.tar.gz", "bytes": 8833224, "sha256": "086dcd75762b36543873c61c66190f3e0e06e1550598ffff9035092cec733346", "status": "captured_unrestored"}
+  ],
+  "release_gate": {
+    "stable_runtime_started": false,
+    "production_writers_enabled": false,
+    "database_restore_verified": false,
+    "authenticated_readback_verified": false,
+    "migrations_verified": false,
+    "test_draft_verified": false,
+    "eligible_for_production": false
+  }
+}
