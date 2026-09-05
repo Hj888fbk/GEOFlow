@@ -1,0 +1,41 @@
+# Phase-one stable runtime guard for the immutable v3.0.0 application images.
+#
+# Combine this file only with docker-compose.prebuilt.yml. Running Compose
+# without --profile production-writers cannot create scheduler/queue writers.
+# The profile stays disabled until authenticated pause/readback, pg_dump and
+# isolated restore, migration gates, and a test-draft rehearsal are complete.
+#
+# Validate only (does not start containers):
+#   docker compose --env-file .env.prod \
+#     -f docker-compose.prebuilt.yml \
+#     -f docker-compose.stable-freeze.yml config --quiet
+#
+# Readback stack, only after Docker and configuration are repaired:
+#   docker compose --env-file .env.prod \
+#     -f docker-compose.prebuilt.yml \
+#     -f docker-compose.stable-freeze.yml up -d postgres redis app reverb web
+
+services:
+  queue:
+    profiles: ["production-writers"]
+    restart: "no"
+
+  ai-quality-queue:
+    profiles: ["production-writers"]
+    restart: "no"
+
+  ai-quality-backfill-queue:
+    profiles: ["production-writers"]
+    restart: "no"
+
+  ai-optimization-queue:
+    profiles: ["production-writers"]
+    restart: "no"
+
+  knowledge-queue:
+    profiles: ["production-writers"]
+    restart: "no"
+
+  scheduler:
+    profiles: ["production-writers"]
+    restart: "no"
