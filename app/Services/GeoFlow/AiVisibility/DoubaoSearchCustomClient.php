@@ -47,6 +47,8 @@ final class DoubaoSearchCustomClient
             throw new RuntimeException('豆包 Search Custom 返回了非 JSON 结构');
         }
 
+        $this->assertSuccessfulPayload($json);
+
         return $this->normalizer->normalizeDoubaoSearchCustom($json, [
             'endpoint' => $endpoint,
             'payload' => $payload,
@@ -66,7 +68,7 @@ final class DoubaoSearchCustomClient
             'BlockHosts' => $options['block_hosts'] ?? null,
             'TimeRange' => $options['time_range'] ?? null,
             'ContentFormats' => $options['content_formats'] ?? 'Markdown',
-        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+        ], static fn (mixed $value): bool => $value !== null && $value !== '' && $value !== []);
 
         return array_filter([
             'Query' => $query,
@@ -76,6 +78,29 @@ final class DoubaoSearchCustomClient
             'AuthInfoLevel' => $options['auth_info_level'] ?? null,
             'Filter' => $filter,
         ], static fn (mixed $value): bool => $value !== null && $value !== '' && $value !== []);
+    }
+
+    /** @param array<string,mixed> $payload */
+    private function assertSuccessfulPayload(array $payload): void
+    {
+        $metadata = is_array($payload['ResponseMetadata'] ?? null)
+            ? $payload['ResponseMetadata']
+            : [];
+        $error = is_array($metadata['Error'] ?? null)
+            ? $metadata['Error']
+            : [];
+        $code = trim((string) ($error['Code'] ?? $error['CodeN'] ?? ''));
+        $message = trim((string) ($error['Message'] ?? ''));
+
+        if (($code === '' || $code === '0') && $message === '') {
+            return;
+        }
+
+        throw new RuntimeException(sprintf(
+            '豆包 Search Custom 返回业务错误%s%s',
+            $code !== '' ? '：'.$code : '',
+            $message !== '' ? ' '.$message : '',
+        ));
     }
 
     private function endpoint(AiSourceProvider $provider): string

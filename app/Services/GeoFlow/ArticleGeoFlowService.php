@@ -209,6 +209,7 @@ class ArticleGeoFlowService
             'slug' => $article->slug,
             'content' => $article->content,
             'excerpt' => $article->excerpt,
+            'original_keyword' => $article->original_keyword,
             'keywords' => $article->keywords,
             'meta_description' => $article->meta_description,
             'status' => $article->status,

@@ -100,6 +100,26 @@ class ArticleAiQualityScorerTest extends TestCase
         $this->assertSame('needs_review', $result['decision']);
     }
 
+    public function test_declared_unverified_source_is_scored_as_a_traceability_issue(): void
+    {
+        $result = (new ArticleAiQualityScorer)->score([
+            'promotion_context' => 'informational',
+            'knowledge_coverage' => 'sufficient',
+            'issues' => [[
+                'code' => 'source_declared_unverified',
+                'severity' => 'high',
+                'field' => 'content',
+                'quote' => '资料显示该参数范围',
+                'knowledge_refs' => [],
+            ]],
+            'uncertainties' => [],
+        ], 85, 70);
+
+        $this->assertSame(88, $result['score']);
+        $this->assertSame(13, $result['dimension_scores']['data_traceability']);
+        $this->assertSame('needs_review', $result['decision']);
+    }
+
     public function test_removed_ai_generation_disclosure_code_is_rejected(): void
     {
         $this->expectException(\InvalidArgumentException::class);

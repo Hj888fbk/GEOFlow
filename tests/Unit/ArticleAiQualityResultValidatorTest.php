@@ -94,6 +94,67 @@ class ArticleAiQualityResultValidatorTest extends TestCase
         $this->assertSame(3, $validated['issues'][0]['paragraph_index']);
     }
 
+    public function test_it_rejects_nested_or_associative_legacy_reference_values(): void
+    {
+        foreach ([
+            ['knowledge_refs' => [['K1']], 'legal_refs' => []],
+            ['knowledge_refs' => [], 'legal_refs' => ['id' => 'CN-AD-LAW-08']],
+        ] as $references) {
+            try {
+                (new ArticleAiQualityResultValidator)->validate([
+                    'summary' => '引用格式异常',
+                    'promotion_context' => 'informational',
+                    'knowledge_coverage' => 'partial',
+                    'issues' => [[
+                        'code' => 'unsupported_claim',
+                        'severity' => 'low',
+                        'field' => 'content',
+                        'quote' => '标准价格为 1,980 元',
+                        'paragraph_index' => 1,
+                        'heading' => '',
+                        'fact_candidate_id' => '',
+                        'article_claim' => '标准价格为 1,980 元',
+                        'evidence_value' => '',
+                        'knowledge_refs' => $references['knowledge_refs'],
+                        'legal_refs' => $references['legal_refs'],
+                        'reason' => '引用格式异常',
+                        'suggestion' => '重新质检',
+                    ]],
+                    'uncertainties' => [],
+                ], $this->article(), [], [], $this->rules());
+                $this->fail('Malformed reference values should be rejected.');
+            } catch (UnexpectedValueException $exception) {
+                $this->assertSame('ai_quality_issue_reference_invalid', $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_v2_rejects_nested_evidence_reference_values(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('ai_quality_issue_reference_invalid');
+
+        (new ArticleAiQualityResultValidator)->validate([
+            'summary' => '引用格式异常',
+            'promotion_context' => 'informational',
+            'reviewed_claim_hashes' => [],
+            'issues' => [[
+                'code' => 'content_integrity',
+                'severity' => 'low',
+                'claim_hash' => '',
+                'field' => 'content',
+                'quote' => '标准价格为 1,980 元',
+                'evidence_keys' => [['K1']],
+                'evidence_status' => 'supported',
+                'reason' => '引用格式异常',
+                'suggestion' => '重新质检',
+                'confidence' => 0.9,
+            ]],
+            'uncertainties' => [],
+            'truncated_issue_count' => 0,
+        ], $this->article(), [], [], $this->rules());
+    }
+
     public function test_v2_accepts_stable_evidence_keys_and_derives_backend_locations(): void
     {
         $validated = (new ArticleAiQualityResultValidator)->validate([

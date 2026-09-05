@@ -62,6 +62,7 @@
         'title' => old('title', (string) ($articleForm['title'] ?? '')),
         'excerpt' => old('excerpt', (string) ($articleForm['excerpt'] ?? '')),
         'content' => old('content', (string) ($articleForm['content'] ?? '')),
+        'original_keyword' => (string) ($articleForm['original_keyword'] ?? ''),
         'keywords' => old('keywords', (string) ($articleForm['keywords'] ?? '')),
         'meta_description' => old('meta_description', (string) ($articleForm['meta_description'] ?? '')),
         'status' => old('status', (string) ($articleForm['status'] ?? 'draft')),
@@ -1111,6 +1112,13 @@
                             <h3 class="text-lg font-medium text-gray-900">{{ __($i18nRoot.'.section.basic_title') }}</h3>
                         </div>
                         <div class="px-6 py-4 space-y-6">
+                            @if($isEdit && trim((string) $formData['original_keyword']) !== '')
+                                <div>
+                                    <label for="original_keyword" class="block text-sm font-medium text-gray-700">{{ __($i18nRoot.'.field.focus_keyword') }}</label>
+                                    <input id="original_keyword" type="text" value="{{ $formData['original_keyword'] }}" readonly class="mt-1 block w-full rounded-md border-gray-200 bg-gray-50 text-gray-700 shadow-sm sm:text-sm">
+                                    <p class="mt-2 text-xs text-gray-500">{{ __($i18nRoot.'.help.focus_keyword') }}</p>
+                                </div>
+                            @endif
                             <div>
                                 <div class="flex items-center justify-between gap-3">
                                     <label for="title" class="block text-sm font-medium text-gray-700">{{ __($i18nRoot.'.field.title') }} *</label>

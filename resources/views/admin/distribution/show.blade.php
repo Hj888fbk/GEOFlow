@@ -12,6 +12,7 @@
     $channelTypeLabel = __('admin.distribution.channel_type.'.$channelType);
     $channelConfig = $channel->resolvedChannelConfig();
     $genericConfig = $channel->resolvedGenericHttpConfig();
+    $byxxConfig = $channel->resolvedByxxConfig();
     $articleTextAdPolicy = \App\Models\DistributionChannel::normalizeArticleTextAdPolicy($articleTextAdPolicy ?? $channel->resolvedArticleTextAdPolicy());
     $effectiveArticleTextAds = is_array($effectiveArticleTextAds ?? null) ? $effectiveArticleTextAds : $channel->effectiveArticleTextAds();
     $frontendExperienceReport = is_array($frontendExperienceReport ?? null) ? $frontendExperienceReport : [];
@@ -52,10 +53,12 @@
     ];
     $healthCheckUrl = rtrim((string) $channel->endpoint_url, '/').'/geoflow-agent/v1/health';
     if ($channel->isWordPressRest()) {
-        $healthCheckUrl = $channel->wordpressRestBaseUrl().'/wp/v2/users/me?context=edit';
+        $healthCheckUrl = $channel->wordpressRestBaseUrl().'/wp/v2/posts?context=edit&per_page=1&_fields=id';
     } elseif ($channel->isGenericHttpApi()) {
         $genericHealthPath = strtr((string) $genericConfig['generic_health_path'], ['{channel_id}' => (string) $channel->id]);
         $healthCheckUrl = rtrim((string) $channel->endpoint_url, '/').(str_starts_with($genericHealthPath, '/') ? $genericHealthPath : '/'.$genericHealthPath);
+    } elseif ($channel->isByxxApi()) {
+        $healthCheckUrl = rtrim((string) $channel->endpoint_url, '/').'/api_getSpace.php';
     }
     $indexAgentBaseUrl = str_ends_with(rtrim((string) $channel->endpoint_url, '/'), '/index.php') ? rtrim((string) $channel->endpoint_url, '/') : rtrim((string) $channel->endpoint_url, '/').'/index.php';
     $indexHealthCheckUrl = $indexAgentBaseUrl.'/geoflow-agent/v1/health';
@@ -125,10 +128,12 @@
                                     </button>
                                 </form>
                             @endif
-                            <a href="{{ route('admin.distribution.sync-settings.preview', ['channelId' => (int) $channel->id]) }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-medium text-gray-700 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.98]">
-                                <i data-lucide="scan-search" class="h-4 w-4"></i>
-                                同步预览
-                            </a>
+                            @unless ($channel->isByxxApi())
+                                <a href="{{ route('admin.distribution.sync-settings.preview', ['channelId' => (int) $channel->id]) }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-medium text-gray-700 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.98]">
+                                    <i data-lucide="scan-search" class="h-4 w-4"></i>
+                                    同步预览
+                                </a>
+                            @endunless
                             @if ($channel->isGeoFlowAgent())
                                 <form method="POST" action="{{ route('admin.distribution.rotate-secret', ['channelId' => (int) $channel->id]) }}" data-admin-confirm-form data-admin-confirm-tone="warning" data-admin-confirm-title="{{ __('admin.distribution.confirm.rotate_secret') }}" data-admin-confirm-message="{{ __('admin.action_dialog.target', ['name' => $channel->name]) }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.distribution.button.rotate_secret') }}">
                                     @csrf
@@ -219,6 +224,15 @@
                             <dt class="text-gray-500">{{ __('admin.distribution.generic.publish_endpoint') }}</dt>
                             <dd class="mt-1 break-all font-mono text-sm text-gray-900">{{ $genericConfig['generic_publish_method'] }} {{ $genericConfig['generic_publish_path'] }}</dd>
                         </div>
+                    @elseif ($channel->isByxxApi())
+                        <div>
+                            <dt class="text-gray-500">{{ __('admin.distribution.byxx.member_id') }}</dt>
+                            <dd class="mt-1 font-medium text-gray-900">{{ $byxxConfig['byxx_member_id'] }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-gray-500">{{ __('admin.distribution.byxx.shop_id') }}</dt>
+                            <dd class="mt-1 font-medium text-gray-900">{{ $byxxConfig['byxx_shop_id'] }}</dd>
+                        </div>
                     @endif
                     <div>
                         <dt class="text-gray-500">{{ __('admin.distribution.field.health_status') }}</dt>
@@ -243,7 +257,11 @@
                         <dd class="mt-1 font-medium text-gray-900">{{ $channel->activeSecret?->last_used_at?->format('Y-m-d H:i') ?: __('admin.common.none') }}</dd>
                     </div>
                 </dl>
-                @if ($channel->activeSecret)
+                @if ($channel->isByxxApi())
+                    <div class="mt-5 rounded-md border border-amber-100 bg-amber-50 px-3 py-3 text-sm leading-6 text-amber-900">
+                        {{ $channel->activeSecret ? __('admin.distribution.byxx.secret_hint') : __('admin.distribution.byxx.secret_missing_hint') }}
+                    </div>
+                @elseif ($channel->activeSecret)
                     @if ($channel->isWordPressRest())
                         <div class="mt-5 rounded-md border border-blue-100 bg-blue-50 px-3 py-3 text-sm leading-6 text-blue-900">
                             {{ __('admin.distribution.wordpress.secret_hint') }}
@@ -271,6 +289,7 @@
             </div>
         </div>
 
+        @unless ($channel->isByxxApi())
         <div class="rounded-lg bg-white p-6 shadow">
             <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div>
@@ -307,7 +326,6 @@
                 </div>
             </div>
         </div>
-
         <div class="rounded-lg bg-white p-6 shadow">
             <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div>
@@ -335,6 +353,7 @@
                 {{ __('admin.distribution.article_text_ads.package_hint') }}
             </div>
         </div>
+        @endunless
 
         @if ($channel->isGeoFlowAgent())
             <div class="rounded-lg bg-white p-6 shadow">
@@ -518,6 +537,31 @@
                         <pre class="mt-3 max-h-72 overflow-auto rounded-md bg-gray-950 p-3 text-xs leading-5 text-gray-100"><code>{{ json_encode($genericSamplePayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</code></pre>
                     </div>
                 </div>
+            </div>
+        @elseif ($channel->isByxxApi())
+            <div class="rounded-lg bg-white p-6 shadow">
+                <div class="max-w-3xl">
+                    <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.byxx.guide_title') }}</h2>
+                    <p class="mt-2 text-sm leading-6 text-gray-600">{{ __('admin.distribution.byxx.guide_desc') }}</p>
+                </div>
+                <dl class="mt-6 grid grid-cols-1 gap-4 text-sm text-gray-700 md:grid-cols-2 xl:grid-cols-4">
+                    <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
+                        <dt class="font-medium text-gray-900">{{ __('admin.distribution.byxx.health_endpoint') }}</dt>
+                        <dd class="mt-2 break-all font-mono text-xs text-gray-600">POST /api_getSpace.php</dd>
+                    </div>
+                    <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
+                        <dt class="font-medium text-gray-900">{{ __('admin.distribution.byxx.publish_endpoint') }}</dt>
+                        <dd class="mt-2 break-all font-mono text-xs text-gray-600">POST /api_goods.php</dd>
+                    </div>
+                    <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
+                        <dt class="font-medium text-gray-900">{{ __('admin.distribution.byxx.content_format') }}</dt>
+                        <dd class="mt-2 text-xs leading-5 text-gray-600">{{ __('admin.distribution.byxx.content_format_plain') }}</dd>
+                    </div>
+                    <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
+                        <dt class="font-medium text-gray-900">{{ __('admin.distribution.byxx.remote_limits') }}</dt>
+                        <dd class="mt-2 text-xs leading-5 text-gray-600">{{ __('admin.distribution.byxx.remote_limits_desc') }}</dd>
+                    </div>
+                </dl>
             </div>
         @endif
 

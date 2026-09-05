@@ -60,7 +60,9 @@ class AiVisibilityServiceTest extends TestCase
             && $request->hasHeader('Authorization', 'Bearer test-search-key')
             && $request['Query'] === 'GEOFlow AI 可见性'
             && $request['Count'] === 2
-            && ($request['Filter']['NeedContent'] ?? null) === true);
+            && ($request['Filter']['NeedContent'] ?? null) === true
+            && ! array_key_exists('Sites', $request['Filter'])
+            && ! array_key_exists('BlockHosts', $request['Filter']));
     }
 
     public function test_it_uses_source_provider_metadata_as_default_search_options(): void
@@ -189,6 +191,69 @@ class AiVisibilityServiceTest extends TestCase
         $this->assertStringContainsString('HTTP 401', (string) $run->error_message);
         $this->assertStringContainsString('bad api key', (string) $run->error_message);
         $this->assertSame(0, (int) $provider->fresh()->used_today);
+    }
+
+    public function test_it_marks_doubao_search_custom_run_failed_for_embedded_provider_error(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'ResponseMetadata' => [
+                    'RequestId' => 'request_invalid_parameter',
+                    'Error' => [
+                        'CodeN' => 10400,
+                        'Code' => '10400',
+                        'Message' => 'Invalid Parameter. Please check the parameter type.',
+                    ],
+                ],
+                'Result' => null,
+            ]),
+        ]);
+
+        $provider = $this->createSearchProvider();
+
+        try {
+            app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow');
+            $this->fail('Expected embedded provider error to throw.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('10400', $exception->getMessage());
+            $this->assertStringContainsString('Invalid Parameter', $exception->getMessage());
+        }
+
+        $run = AiVisibilityRun::query()->firstOrFail();
+        $this->assertSame(AiVisibilityRun::STATUS_FAILED, $run->status);
+        $this->assertStringContainsString('10400', (string) $run->error_message);
+        $this->assertSame(0, (int) $provider->fresh()->used_today);
+    }
+
+    public function test_it_stops_deepseek_analysis_when_search_returns_no_sources(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'LogId' => 'log_empty_search',
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+        MarkdownContentWriterAgent::fake()->preventStrayPrompts();
+
+        $provider = $this->createSearchProvider();
+        $model = $this->createAiModel();
+
+        try {
+            app(AiVisibilityService::class)->runDoubaoSearchThenDeepSeekAnalysis($provider, $model, 'GEOFlow');
+            $this->fail('Expected empty search results to stop analysis.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('未返回可用于分析的信源', $exception->getMessage());
+        }
+
+        $this->assertDatabaseCount('ai_visibility_runs', 1);
+        $this->assertDatabaseHas('ai_visibility_runs', [
+            'provider_type' => AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            'status' => AiVisibilityRun::STATUS_FAILED,
+        ]);
+        $this->assertSame(1, (int) $provider->fresh()->used_today);
+        $this->assertSame(0, (int) $model->fresh()->used_today);
     }
 
     public function test_it_does_not_call_doubao_search_custom_when_provider_limit_is_exhausted(): void

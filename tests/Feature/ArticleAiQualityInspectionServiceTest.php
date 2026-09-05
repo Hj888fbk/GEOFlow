@@ -1706,6 +1706,47 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertSame(['legacy', 'fast_v2'], $reviewer->versions);
     }
 
+    public function test_full_inspection_keeps_broad_retrieval_evidence_when_no_fact_candidates_exist(): void
+    {
+        $reviewer = new class implements ArticleAiQualityReviewer
+        {
+            public string $instructions = '';
+
+            public function review(AiModel $model, string $instructions): array
+            {
+                $this->instructions = $instructions;
+
+                return [
+                    'result' => [
+                        'summary' => '质检通过。',
+                        'promotion_context' => 'informational',
+                        'knowledge_coverage' => 'partial',
+                        'issues' => [],
+                        'uncertainties' => [],
+                    ],
+                    'usage' => [],
+                    'model' => ['id' => (int) $model->id, 'model_id' => (string) $model->model_id],
+                    'mode' => 'structured',
+                ];
+            }
+        };
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        $article = $this->createQualityFixture('broad-evidence-without-facts', needReview: true);
+        Article::withoutEvents(function () use ($article): void {
+            $article->forceFill([
+                'title' => '采购资料核对清单',
+                'content' => '下单前先核对项目资料。',
+            ])->save();
+        });
+        $service = app(ArticleAiQualityInspectionService::class);
+
+        $completed = $service->process($service->createOrReuse($article->fresh(), dispatch: false));
+
+        $this->assertSame([], $completed->fact_candidates_snapshot);
+        $this->assertNotEmpty($completed->evidence_snapshot);
+        $this->assertStringContainsString('服务客户为 800 家。', $reviewer->instructions);
+    }
+
     public function test_fast_v2_execution_validates_and_scores_the_v2_model_contract(): void
     {
         $this->setQualityRollout(execution: 100, scoring: 100);

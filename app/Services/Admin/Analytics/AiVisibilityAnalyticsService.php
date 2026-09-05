@@ -197,6 +197,15 @@ class AiVisibilityAnalyticsService
     {
         $rankedRuns = $this->periodRunsQuery($start, $end, $filter)
             ->where('status', AiVisibilityRun::STATUS_COMPLETED)
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereHas('sources')
+                    ->orWhere(function (Builder $query): void {
+                        $query
+                            ->where('provider_type', AiVisibilityRun::PROVIDER_DOUBAO_ARK_RESPONSES)
+                            ->whereRaw("TRIM(COALESCE(answer_text, '')) <> ''");
+                    });
+            })
             ->select('id')
             ->selectRaw(
                 'ROW_NUMBER() OVER (
@@ -268,6 +277,7 @@ class AiVisibilityAnalyticsService
             'positive_rate' => 0.0,
             'negative_rate' => 0.0,
             'sentiment_score' => 0.0,
+            'owned_source_rate' => 0.0,
         ];
     }
 
@@ -288,6 +298,7 @@ class AiVisibilityAnalyticsService
             'positive_rate' => round((float) $metricRows->avg('positive_rate'), 1),
             'negative_rate' => round((float) $metricRows->avg('negative_rate'), 1),
             'sentiment_score' => round((float) $metricRows->avg('sentiment_score'), 1),
+            'owned_source_rate' => round((float) $metricRows->avg('owned_source_rate'), 1),
         ];
     }
 
@@ -318,7 +329,8 @@ class AiVisibilityAnalyticsService
                     $source->summary,
                     $source->content_excerpt,
                 ], static fn (mixed $value): bool => trim((string) $value) !== ''));
-                $brandMentioned = $this->domainMatches($domain, $ownedHosts) || $this->containsAny($brandText, $brandAliases);
+                $ownedSource = $this->domainMatches($domain, $ownedHosts);
+                $brandMentioned = $ownedSource || $this->containsAny($brandText, $brandAliases);
 
                 return [
                     'id' => (int) $source->id,
@@ -328,6 +340,7 @@ class AiVisibilityAnalyticsService
                     'site_name' => trim((string) $source->site_name),
                     'rank' => $rank,
                     'brand_mentioned' => $brandMentioned,
+                    'owned_source' => $ownedSource,
                     'text' => $brandText,
                     'term_text' => $termText,
                 ];
@@ -340,6 +353,7 @@ class AiVisibilityAnalyticsService
             ->pluck('rank')
             ->map(fn (mixed $rank): int => (int) $rank)
             ->filter(fn (int $rank): bool => $rank > 0);
+        $ownedSourceVisible = $sources->contains(fn (array $source): bool => (bool) ($source['owned_source'] ?? false));
         $sentiment = $this->sentiment($run);
 
         return [
@@ -355,6 +369,7 @@ class AiVisibilityAnalyticsService
             'top1' => $brandSourceRanks->contains(fn (int $rank): bool => $rank === 1),
             'top3' => $brandSourceRanks->contains(fn (int $rank): bool => $rank <= 3),
             'best_brand_rank' => $brandSourceRanks->min(),
+            'owned_source_visible' => $ownedSourceVisible,
             'sentiment' => $sentiment['label'],
             'sentiment_score' => $sentiment['score'],
             'terms' => $this->termsForRun($answerText, $sources, $brandAliases),
@@ -396,6 +411,9 @@ class AiVisibilityAnalyticsService
                 return (int) ($source->rank ?: $index + 1);
             })
             ->filter(fn (?int $rank): bool => $rank !== null && $rank > 0);
+        $ownedSourceVisible = $run->sources->contains(
+            fn (AiVisibilitySource $source): bool => $this->domainMatches($this->sourceDomain($source), $ownedHosts)
+        );
         $sentiment = $this->sentiment($run);
 
         return [
@@ -406,6 +424,7 @@ class AiVisibilityAnalyticsService
                 || $brandSourceRanks->contains(fn (int $rank): bool => $rank <= 3),
             'top1' => $brandSourceRanks->contains(fn (int $rank): bool => $rank === 1),
             'top3' => $brandSourceRanks->contains(fn (int $rank): bool => $rank <= 3),
+            'owned_source_visible' => $ownedSourceVisible,
             'sentiment' => $sentiment['label'],
             'sentiment_score' => $sentiment['score'],
         ];
@@ -539,6 +558,7 @@ class AiVisibilityAnalyticsService
             'positive_rate' => $this->percent($rows->where('sentiment', 'positive')->count(), $rows->count()),
             'negative_rate' => $this->percent($rows->where('sentiment', 'negative')->count(), $rows->count()),
             'sentiment_score' => round((float) $rows->avg('sentiment_score') * 100, 1),
+            'owned_source_rate' => $this->percent($rows->where('owned_source_visible', true)->count(), $rows->count()),
         ];
     }
 
@@ -585,8 +605,10 @@ class AiVisibilityAnalyticsService
                     'domain' => $domain,
                     'mentions' => 0,
                     'brand_mentions' => 0,
+                    'owned_mentions' => 0,
                     'top1_count' => 0,
                     'top3_count' => 0,
+                    'best_rank' => null,
                     'rank_sum' => 0,
                     'rank_count' => 0,
                     'positive_count' => 0,
@@ -601,6 +623,9 @@ class AiVisibilityAnalyticsService
                 $sources[$domain]['mentions']++;
                 $sources[$domain]['rank_sum'] += $rank;
                 $sources[$domain]['rank_count']++;
+                $sources[$domain]['best_rank'] = $sources[$domain]['best_rank'] === null
+                    ? $rank
+                    : min((int) $sources[$domain]['best_rank'], $rank);
                 $sources[$domain]['latest_title'] = $source['title'] ?: $sources[$domain]['latest_title'];
                 $sources[$domain]['latest_url'] = $source['url'] ?: $sources[$domain]['latest_url'];
                 $sources[$domain]['last_seen'] = (string) $run['date'];
@@ -608,6 +633,10 @@ class AiVisibilityAnalyticsService
 
                 if ((bool) ($source['brand_mentioned'] ?? false)) {
                     $sources[$domain]['brand_mentions']++;
+                }
+
+                if ((bool) ($source['owned_source'] ?? false)) {
+                    $sources[$domain]['owned_mentions']++;
                 }
 
                 if ($rank === 1) {
@@ -663,7 +692,6 @@ class AiVisibilityAnalyticsService
     private function attentionSources(array $sources): array
     {
         return collect($sources)
-            ->filter(fn (array $source): bool => in_array($source['action'], ['content_gap', 'reputation_attention', 'strengthen_owned'], true))
             ->take(5)
             ->values()
             ->all();
@@ -728,14 +756,18 @@ class AiVisibilityAnalyticsService
             'www', 'com', 'cn', 'demo', 'example', 'html', 'juejin', 'infoq', 'sspai', 'deepseek', 'doubao', 'tencent', 'cloud',
             '以及', '对应', '这个', '相关', '可以', '进行', '通过', '一个', '一些', '包括', '结果', '信息', '数据', '内容', '分析', '信源',
         ];
-        $domainTerms = [
-            'AI 搜索', 'AI 可见度', 'AI 营销', 'GEO 运营', 'Top 1', 'Top 3',
-            '内容工程', '信源投放', '生成式引擎优化', '企业知识库', '知识库', '多站点分发',
-            '品牌可见度', '结构化输出', '联网搜索', '第三方信源', '公开案例', '客户案例',
-            '白皮书', '案例页', '对比内容', '权威信源', '引用证据', '可引用资料',
-            '工具选型', '行业语境', '品牌提及', '投放建议', '搜索覆盖', '排名稳定性',
-            'RAG', 'FAQ',
-        ];
+        $domainTerms = collect(config('geoflow.ai_visibility.term_dictionary', []))
+            ->map(fn (mixed $term): string => trim((string) $term))
+            ->filter()
+            ->unique(fn (string $term): string => Str::lower($term))
+            ->values()
+            ->all();
+        if ($domainTerms === []) {
+            $domainTerms = [
+                'AI 搜索', 'AI 可见度', '内容工程', '企业知识库', '知识库', '品牌可见度',
+                '联网搜索', '第三方信源', '客户案例', '白皮书', '引用证据', '工具选型', 'RAG', 'FAQ',
+            ];
+        }
         $brandAliasSet = collect($brandAliases)
             ->map(fn (string $alias): string => Str::lower($alias))
             ->filter()
@@ -748,9 +780,6 @@ class AiVisibilityAnalyticsService
                 $terms[] = $term;
             }
         }
-
-        preg_match_all('/[A-Za-z][A-Za-z0-9_-]{2,}/u', $text, $matches);
-        $terms = array_merge($terms, $matches[0] ?? []);
 
         return collect($terms)
             ->map(fn (string $term): string => $this->normalizeTerm($term, $domainTerms))
@@ -928,6 +957,7 @@ class AiVisibilityAnalyticsService
         $host = preg_replace('/^https?:\/\//', '', $host) ?? $host;
         $host = preg_replace('/\/.*$/', '', $host) ?? $host;
         $host = preg_replace('/^www\./', '', $host) ?? $host;
+        $host = preg_replace('/^m\./', '', $host) ?? $host;
 
         return trim($host);
     }
@@ -937,6 +967,20 @@ class AiVisibilityAnalyticsService
      */
     private function brandAliases(): array
     {
+        $configuredName = trim((string) config('geoflow.ai_visibility.brand_name', ''));
+        $configuredAliases = collect(config('geoflow.ai_visibility.brand_aliases', []))
+            ->map(fn (mixed $alias): string => trim((string) $alias))
+            ->filter(fn (string $alias): bool => $alias !== '' && mb_strlen($alias) >= 2);
+        if ($configuredName !== '') {
+            $configuredAliases->prepend($configuredName);
+        }
+        if ($configuredAliases->isNotEmpty()) {
+            return $configuredAliases
+                ->unique(fn (string $alias): string => Str::lower($alias))
+                ->values()
+                ->all();
+        }
+
         $siteAliases = collect([
             config('geoflow.site_name'),
             config('geoflow.site_full_name'),
@@ -961,6 +1005,13 @@ class AiVisibilityAnalyticsService
      */
     private function ownedHosts(): array
     {
+        $configuredHosts = collect(config('geoflow.ai_visibility.owned_hosts', []))
+            ->map(fn (mixed $host): string => $this->normalizeHost((string) $host))
+            ->filter();
+        if ($configuredHosts->isNotEmpty()) {
+            return $configuredHosts->unique()->values()->all();
+        }
+
         return collect([
             config('geoflow.site_url'),
             config('app.url'),
@@ -977,23 +1028,15 @@ class AiVisibilityAnalyticsService
      */
     private function sourceAction(array $source): string
     {
-        if ((int) $source['negative_count'] > (int) $source['positive_count'] && (int) $source['brand_mentions'] > 0) {
-            return 'reputation_attention';
-        }
-
-        if ((int) $source['brand_mentions'] === 0 && (int) $source['top3_count'] > 0) {
-            return 'content_gap';
-        }
-
-        if ((int) $source['brand_mentions'] > 0 && (float) $source['top3_rate'] >= 30) {
-            return 'maintain';
+        if ((int) ($source['owned_mentions'] ?? 0) > 0) {
+            return 'owned_source';
         }
 
         if ((int) $source['brand_mentions'] > 0) {
-            return 'strengthen_owned';
+            return 'brand_present';
         }
 
-        return 'monitor';
+        return 'observe_only';
     }
 
     /**

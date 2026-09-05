@@ -25,6 +25,7 @@ trait ConfiguresArticleQualityProviderOptions
         return [
             'max_tokens' => $this->outputTokenLimit,
             'thinking' => ['type' => 'disabled'],
+            'response_format' => ['type' => 'json_object'],
         ];
     }
 }

@@ -42,6 +42,7 @@ class WorkerExecutionService
         private readonly ArticleWorkflowTransitionService $articleWorkflowTransitionService,
         private readonly ArticleContentPromptRenderer $articleContentPromptRenderer,
         private readonly ArticleContentGenerationService $articleContentGenerationService,
+        private readonly ArticleGeneratedMetadataService $articleGeneratedMetadataService,
         private readonly ArticleCitationMarkerCleaner $articleCitationMarkerCleaner,
         private readonly TaskTitleReadinessService $taskTitleReadinessService,
         private readonly ArticleAiQualityPolicyResolver $articleAiQualityPolicyResolver,
@@ -101,8 +102,18 @@ class WorkerExecutionService
         $content = $imageResult['content'];
         $selectedImages = $imageResult['images'];
         $excerpt = $this->buildExcerpt($content);
+        $generatedMetadata = $this->articleGeneratedMetadataService->generate(
+            $task,
+            $aiModel,
+            (string) $titleRow->title,
+            $keyword,
+            $content,
+            mb_substr($excerpt, 0, 160, 'UTF-8'),
+        );
+        $keywords = $generatedMetadata['keywords'];
+        $metaDescription = $generatedMetadata['meta_description'];
         $qualityPolicy = null;
-        $articleId = DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $selectedImages, &$qualityPolicy, $generationEvidenceSnapshot): int {
+        $articleId = DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $keywords, $metaDescription, $content, $excerpt, $selectedImages, &$qualityPolicy, $generationEvidenceSnapshot): int {
             $freshTask = Task::query()
                 ->whereKey((int) $task->id)
                 ->lockForUpdate()
@@ -134,8 +145,8 @@ class WorkerExecutionService
                 'task_id' => (int) $task->id,
                 'source_title_id' => (int) $titleRow->id,
                 'original_keyword' => $keyword,
-                'keywords' => $keyword,
-                'meta_description' => mb_substr($excerpt, 0, 120),
+                'keywords' => $keywords,
+                'meta_description' => $metaDescription,
                 'status' => $pendingWorkflow['status'],
                 'review_status' => $pendingWorkflow['review_status'],
                 'is_ai_generated' => 1,
@@ -218,6 +229,10 @@ class WorkerExecutionService
                 'used_model_id' => (int) $aiModel->id,
                 'used_model_name' => (string) $aiModel->name,
                 'model_attempts' => $generation['attempts'],
+                'metadata_generation' => [
+                    'keywords' => $generatedMetadata['keyword_status'],
+                    'description' => $generatedMetadata['description_status'],
+                ],
                 'ai_quality' => [
                     'required' => (bool) (is_array($qualityPolicy) && ($qualityPolicy['required'] ?? false)),
                     'check_id' => $qualityCheck?->id,

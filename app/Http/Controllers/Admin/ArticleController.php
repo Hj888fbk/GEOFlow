@@ -584,6 +584,7 @@ class ArticleController extends Controller
                 'title' => (string) $article->title,
                 'excerpt' => (string) ($article->excerpt ?? ''),
                 'content' => (string) $article->content,
+                'original_keyword' => (string) ($article->original_keyword ?? ''),
                 'keywords' => (string) ($article->keywords ?? ''),
                 'meta_description' => (string) ($article->meta_description ?? ''),
                 'status' => (string) $article->status,

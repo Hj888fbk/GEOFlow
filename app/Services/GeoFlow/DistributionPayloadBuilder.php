@@ -42,6 +42,7 @@ class DistributionPayloadBuilder
                 'content_format' => 'markdown',
                 'content_html' => $contentHtml,
                 'hero_image_url' => $heroImageUrl,
+                'focus_keyword' => (string) ($article->original_keyword ?? ''),
                 'keywords' => (string) ($article->keywords ?? ''),
                 'meta_description' => (string) ($article->meta_description ?? ''),
                 'status' => (string) $article->status,

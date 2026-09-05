@@ -31,6 +31,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Exception\SuspiciousOperationException;
@@ -160,6 +161,24 @@ return Application::configure(basePath: dirname(__DIR__))
                 $e->getHttpStatus(),
                 $e->getDetails()
             )->withHeaders(['X-Request-Id' => $rid]);
+        });
+
+        $exceptions->render(function (ThrottleRequestsException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
+            $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
+            $retryAfter = (int) ($e->getHeaders()['Retry-After'] ?? 0);
+            $details = $retryAfter > 0 ? ['retry_after' => $retryAfter] : [];
+
+            return ApiResponse::error(
+                'rate_limited',
+                '操作过于频繁，请稍候再试。',
+                $rid,
+                429,
+                $details,
+            )->withHeaders(array_merge($e->getHeaders(), ['X-Request-Id' => $rid]));
         });
 
         $exceptions->render(function (Throwable $e, Request $request) {

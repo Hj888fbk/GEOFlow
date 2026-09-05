@@ -80,12 +80,21 @@
                     <p class="mt-1 text-sm text-gray-600">{{ __('admin.growth_center.ai_visibility.desc', ['count' => $ai['daily_sample_target'] ?? 5]) }}</p>
                 </div>
 
+                <div class="mb-6 grid gap-3 lg:grid-cols-2">
+                    <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-900" data-ai-visibility-natural-query-note>
+                        {{ __('admin.growth_center.ai_visibility.natural_query_note', ['brand' => $ai['brand']['name'] ?? '']) }}
+                    </div>
+                    <div class="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-900" data-ai-visibility-evidence-boundary>
+                        {{ __('admin.growth_center.ai_visibility.evidence_boundary_note') }}
+                    </div>
+                </div>
+
                 <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
                     @foreach ([
                         ['key' => 'brand_visibility', 'label' => 'visibility', 'tone' => 'text-violet-700'],
                         ['key' => 'top1_rate', 'label' => 'top1', 'tone' => 'text-amber-700'],
                         ['key' => 'top3_rate', 'label' => 'top3', 'tone' => 'text-emerald-700'],
-                        ['key' => 'sentiment_score', 'label' => 'sentiment', 'tone' => 'text-slate-700'],
+                        ['key' => 'owned_source_rate', 'label' => 'owned_source', 'tone' => 'text-sky-700'],
                     ] as $card)
                         <article class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
                             <p class="text-sm text-gray-500">{{ __('admin.growth_center.ai_visibility.kpi.'.$card['label']) }}</p>
@@ -147,9 +156,14 @@
                         <p class="mt-1 text-sm text-gray-500">{{ __('admin.growth_center.ai_visibility.attention_desc') }}</p>
                         <div class="mt-4 space-y-3">
                             @forelse (($ai['attention_sources'] ?? []) as $source)
-                                <article class="rounded-lg border border-amber-100 bg-amber-50 p-4">
-                                    <div class="flex items-center justify-between gap-3"><strong class="truncate text-sm text-gray-900">{{ $source['domain'] }}</strong><span class="rounded-full bg-white px-2 py-1 text-xs font-semibold text-amber-700">{{ __('admin.growth_center.ai_visibility.action.'.$source['action']) }}</span></div>
-                                    <p class="mt-2 text-sm leading-6 text-amber-900">{{ __('admin.growth_center.ai_visibility.recommendation.'.$source['action']) }}</p>
+                                <article class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                                    <div class="flex items-center justify-between gap-3"><strong class="truncate text-sm text-gray-900">{{ $source['domain'] }}</strong><span class="rounded-full bg-white px-2 py-1 text-xs font-semibold text-gray-700">{{ __('admin.growth_center.ai_visibility.action.'.$source['action']) }}</span></div>
+                                    <div class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-gray-600">
+                                        <span>{{ __('admin.growth_center.ai_visibility.source_mentions', ['count' => $source['mentions']]) }}</span>
+                                        <span>{{ __('admin.growth_center.ai_visibility.source_best_rank', ['rank' => $source['best_rank']]) }}</span>
+                                        <span>{{ __('admin.growth_center.ai_visibility.source_brand_mentions', ['count' => $source['brand_mentions']]) }}</span>
+                                        <span>{{ __('admin.growth_center.ai_visibility.source_keyword_count', ['count' => $source['keyword_count']]) }}</span>
+                                    </div>
                                 </article>
                             @empty
                                 <p class="rounded-lg bg-gray-50 p-4 text-sm text-gray-500">{{ __('admin.growth_center.ai_visibility.no_attention_sources') }}</p>
@@ -170,7 +184,7 @@
                         <p class="mt-1 text-sm text-gray-500">{{ __('admin.growth_center.ai_visibility.source_desc') }}</p>
                         <div class="mt-4 space-y-3">
                             @forelse (($ai['sources'] ?? []) as $source)
-                                <article class="rounded-lg border border-gray-100 p-4"><div class="flex items-center justify-between gap-3"><strong class="truncate text-sm text-gray-900">{{ $source['domain'] }}</strong><span class="font-mono text-sm tabular-nums text-gray-600">{{ __('admin.growth_center.ai_visibility.source_mentions', ['count' => $source['mentions']]) }}</span></div><div class="mt-2 flex gap-4 text-xs text-gray-500"><span>{{ __('admin.growth_center.ai_visibility.source_avg_rank', ['rank' => $source['avg_rank']]) }}</span><span>{{ __('admin.growth_center.ai_visibility.source_brand_coverage', ['rate' => number_format($source['brand_coverage'], 1)]) }}</span></div></article>
+                                <article class="rounded-lg border border-gray-100 p-4"><div class="flex items-center justify-between gap-3"><strong class="truncate text-sm text-gray-900">{{ $source['domain'] }}</strong><span class="font-mono text-sm tabular-nums text-gray-600">{{ __('admin.growth_center.ai_visibility.source_mentions', ['count' => $source['mentions']]) }}</span></div><div class="mt-2 grid grid-cols-3 gap-3 text-xs text-gray-500"><span>{{ __('admin.growth_center.ai_visibility.source_best_rank', ['rank' => $source['best_rank']]) }}</span><span>{{ __('admin.growth_center.ai_visibility.source_brand_mentions', ['count' => $source['brand_mentions']]) }}</span><span>{{ __('admin.growth_center.ai_visibility.source_keyword_count', ['count' => $source['keyword_count']]) }}</span></div></article>
                             @empty
                                 <p class="rounded-lg bg-gray-50 p-4 text-sm text-gray-500">{{ __('admin.growth_center.ai_visibility.no_sources') }}</p>
                             @endforelse
