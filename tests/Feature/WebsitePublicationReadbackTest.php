@@ -144,11 +144,21 @@ final class WebsitePublicationReadbackTest extends TestCase
 
     private function makeArticle(string $content): Article
     {
+        $categoryId = \App\Models\Category::query()->create([
+            'name' => '回读测试分类',
+            'slug' => 'readback-cat-'.uniqid(),
+        ])->id;
+        $authorId = \App\Models\Author::query()->create([
+            'name' => '回读测试作者',
+        ])->id;
+
         return Article::query()->create([
             'title' => '回读测试文章',
             'slug' => 'readback-test-'.uniqid(),
             'excerpt' => '回读测试摘要。',
             'content' => $content,
+            'category_id' => $categoryId,
+            'author_id' => $authorId,
             'status' => 'published',
             'review_status' => 'approved',
             'is_ai_generated' => 0,
