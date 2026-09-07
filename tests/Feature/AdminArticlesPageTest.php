@@ -306,6 +306,7 @@ class AdminArticlesPageTest extends TestCase
             'slug' => 'markdown-editor-article',
             'excerpt' => '摘要',
             'content' => "## 小节\n\n正文",
+            'original_keyword' => 'GEO 内容工程',
             'keywords' => 'GEO,内容工程',
             'meta_description' => '用于验证 GEO 质量评分卡的 SEO 描述。',
             'category_id' => $category->id,
@@ -328,6 +329,9 @@ class AdminArticlesPageTest extends TestCase
             ->assertSee('id="article-editor-copy-wechat-html"', false)
             ->assertSee('id="article-editor-quick-image-input"', false)
             ->assertSee('id="article-editor-context-menu"', false)
+            ->assertSee('id="original_keyword"', false)
+            ->assertSee('GEO 内容工程')
+            ->assertSee(__('admin.article_edit.field.focus_keyword'))
             ->assertSee(__('admin.article_editor.copy.button'), false)
             ->assertSee(__('admin.article_editor.wechat.button'), false)
             ->assertSee(__('admin.articles.quality_scorecard.title'))

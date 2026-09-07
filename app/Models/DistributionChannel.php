@@ -17,6 +17,8 @@ class DistributionChannel extends Model
 
     public const TYPE_HOSTED_SITE = 'hosted_site';
 
+    public const TYPE_BYXX_API = 'byxx_api';
+
     public const STATUS_ACTIVE = 'active';
 
     public const STATUS_PAUSED = 'paused';
@@ -428,7 +430,7 @@ class DistributionChannel extends Model
     {
         $type = (string) ($this->channel_type ?? 'geoflow_agent');
 
-        return in_array($type, ['geoflow_agent', 'wordpress_rest', 'generic_http_api', self::TYPE_HOSTED_SITE], true) ? $type : 'geoflow_agent';
+        return in_array($type, ['geoflow_agent', 'wordpress_rest', 'generic_http_api', self::TYPE_BYXX_API, self::TYPE_HOSTED_SITE], true) ? $type : 'geoflow_agent';
     }
 
     public function isGeoFlowAgent(): bool
@@ -444,6 +446,11 @@ class DistributionChannel extends Model
     public function isGenericHttpApi(): bool
     {
         return $this->channelType() === 'generic_http_api';
+    }
+
+    public function isByxxApi(): bool
+    {
+        return $this->channelType() === self::TYPE_BYXX_API;
     }
 
     public function isHostedSite(): bool
@@ -538,6 +545,37 @@ class DistributionChannel extends Model
             'generic_remote_id_path' => trim((string) ($stored['generic_remote_id_path'] ?? 'id')),
             'generic_remote_url_path' => trim((string) ($stored['generic_remote_url_path'] ?? 'url')),
             'generic_payload_wrapper' => in_array($payloadWrapper, ['none', 'data'], true) ? $payloadWrapper : 'none',
+        ];
+    }
+
+    /**
+     * @return array{
+     *   byxx_member_id:string,
+     *   byxx_shop_id:string,
+     *   byxx_site_id:string,
+     *   byxx_class_id:int|null,
+     *   byxx_brand_id:int,
+     *   byxx_price:float,
+     *   byxx_service:int,
+     *   byxx_timeout_seconds:int
+     * }
+     */
+    public function resolvedByxxConfig(): array
+    {
+        $stored = is_array($this->channel_config) ? $this->channel_config : [];
+        $classId = filter_var($stored['byxx_class_id'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1],
+        ]);
+
+        return [
+            'byxx_member_id' => trim((string) ($stored['byxx_member_id'] ?? '')),
+            'byxx_shop_id' => trim((string) ($stored['byxx_shop_id'] ?? '')),
+            'byxx_site_id' => trim((string) ($stored['byxx_site_id'] ?? '')),
+            'byxx_class_id' => $classId === false ? null : (int) $classId,
+            'byxx_brand_id' => max(0, (int) ($stored['byxx_brand_id'] ?? 0)),
+            'byxx_price' => max(0.0, (float) ($stored['byxx_price'] ?? 0)),
+            'byxx_service' => (int) ($stored['byxx_service'] ?? 2) === 1 ? 1 : 2,
+            'byxx_timeout_seconds' => min(120, max(5, (int) ($stored['byxx_timeout_seconds'] ?? 30))),
         ];
     }
 

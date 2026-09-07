@@ -17,6 +17,15 @@ class ArticleQualityReviewerAgentTest extends TestCase
         $this->assertSame(2048, (new ArticleQualityJsonReviewerAgent('instructions'))->maxTokens());
     }
 
+    public function test_json_fallback_instructions_require_machine_values_and_forbid_nulls(): void
+    {
+        $instructions = (new ArticleQualityJsonReviewerAgent('instructions'))->instructions();
+
+        $this->assertStringContainsString('issues.field 只能是 title、excerpt、content、keywords、meta_description', $instructions);
+        $this->assertStringContainsString('禁止输出 null', $instructions);
+        $this->assertStringContainsString('必须输出 JSON 数组', $instructions);
+    }
+
     public function test_quality_agents_disable_deepseek_thinking_and_send_the_v4_output_limit(): void
     {
         $agents = [
@@ -29,6 +38,7 @@ class ArticleQualityReviewerAgentTest extends TestCase
             $this->assertSame([
                 'max_tokens' => 321,
                 'thinking' => ['type' => 'disabled'],
+                'response_format' => ['type' => 'json_object'],
             ], $agent->providerOptions(Lab::DeepSeek));
             $this->assertSame([], $agent->providerOptions(Lab::OpenAI));
         }

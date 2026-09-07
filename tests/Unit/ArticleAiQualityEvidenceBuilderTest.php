@@ -226,6 +226,35 @@ class ArticleAiQualityEvidenceBuilderTest extends TestCase
         $this->assertSame('sufficient', $result['knowledge_coverage']);
     }
 
+    public function test_fact_matching_evidence_is_selected_before_unrelated_generic_rows(): void
+    {
+        $retrieval = $this->createMock(KnowledgeRetrievalService::class);
+        $retrieval->expects($this->once())
+            ->method('retrieveEvidenceFromMany')
+            ->willReturn([
+                $this->evidence(1, 1, '企业地址和联系方式。', 'reviewed'),
+                $this->evidence(1, 2, 'KXT 公称口径范围为 DN32—DN1200。', 'reviewed'),
+            ]);
+
+        $result = (new ArticleAiQualityEvidenceBuilder($retrieval))->build(
+            [1],
+            ['title' => 'KXT 参数', 'content' => 'KXT 公称口径范围为 DN32—DN1200。'],
+            [[
+                'id' => 'F1',
+                'quote' => 'KXT 公称口径范围为 DN32—DN1200',
+                'normalized_claim' => 'KXT 公称口径范围为 DN32—DN1200',
+                'materiality' => 'high',
+            ]],
+            1,
+            4000,
+            6,
+        );
+
+        $this->assertStringContainsString('DN32—DN1200', $result['evidence'][0]['content']);
+        $this->assertSame(['K1'], $result['fact_candidates'][0]['knowledge_refs']);
+        $this->assertSame('sufficient', $result['knowledge_coverage']);
+    }
+
     public function test_the_first_evidence_row_also_respects_the_total_character_budget(): void
     {
         $retrieval = $this->createMock(KnowledgeRetrievalService::class);

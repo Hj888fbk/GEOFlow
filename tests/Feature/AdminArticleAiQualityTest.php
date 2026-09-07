@@ -1299,6 +1299,33 @@ class AdminArticleAiQualityTest extends TestCase
         Queue::assertPushed(ProcessArticleAiQualityJob::class);
     }
 
+    public function test_api_manual_quality_rate_limit_isolated_by_bearer_token_and_returns_json_429(): void
+    {
+        Queue::fake();
+        [$admin, $article] = $this->qualityArticle();
+        $firstToken = $admin->createToken('quality-rate-limit-a', ['articles:publish'])->plainTextToken;
+        $secondToken = $admin->createToken('quality-rate-limit-b', ['articles:publish'])->plainTextToken;
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->withHeader('Authorization', 'Bearer '.$firstToken)
+                ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck")
+                ->assertStatus(409)
+                ->assertJsonPath('error.code', 'article_ai_quality_config_version_required');
+        }
+
+        $this->withHeader('Authorization', 'Bearer '.$secondToken)
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck")
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'article_ai_quality_config_version_required');
+
+        $this->withHeader('Authorization', 'Bearer '.$firstToken)
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck")
+            ->assertStatus(429)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('error.code', 'rate_limited')
+            ->assertJsonStructure(['error' => ['details' => ['retry_after']], 'meta' => ['request_id', 'timestamp']]);
+    }
+
     public function test_api_recheck_idempotency_rejects_replay_after_knowledge_source_drift(): void
     {
         Queue::fake();

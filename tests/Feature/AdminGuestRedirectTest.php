@@ -47,7 +47,11 @@ class AdminGuestRedirectTest extends TestCase
     public function test_guest_admin_login_flow_is_unchanged(): void
     {
         $this->get(route('admin.login'))
-            ->assertOk();
+            ->assertOk()
+            ->assertSee('data-admin-login-form', false)
+            ->assertSee('data-admin-login-submit', false)
+            ->assertSee('data-submitting-label="'.e(__('admin.login.submitting')).'"', false)
+            ->assertSee('if (loginSubmitting)', false);
 
         $this->get(route('admin.entry'))
             ->assertRedirect(route('admin.login'));

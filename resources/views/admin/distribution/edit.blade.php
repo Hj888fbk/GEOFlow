@@ -18,6 +18,7 @@
     $channelType = $channel->channelType();
     $channelConfig = $channel->resolvedChannelConfig();
     $genericConfig = $channel->resolvedGenericHttpConfig();
+    $byxxConfig = $channel->resolvedByxxConfig();
     $frontendExperienceMode = old('frontend_experience_mode', $frontendExperienceMode ?? $channel->frontendExperienceMode());
     $frontendExperienceModes = $frontendExperienceModes ?? \App\Models\DistributionChannel::frontendExperienceModes();
     $frontendExperienceReport = $frontendExperienceReport ?? [];
@@ -71,6 +72,7 @@
             </div>
         </div>
 
+        @unless ($channel->isByxxApi())
         <div class="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-5 py-4">
             <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -94,6 +96,7 @@
                 </div>
             </div>
         </div>
+        @endunless
 
         <div class="rounded-lg bg-white shadow">
             <div class="px-6 py-6">
@@ -190,6 +193,48 @@
                                         <option value="keywords_to_tags" @selected(old('wordpress_tag_strategy', $channelConfig['wordpress_tag_strategy']) === 'keywords_to_tags')>{{ __('admin.distribution.wordpress.tag_keywords_to_tags') }}</option>
                                         <option value="disabled" @selected(old('wordpress_tag_strategy', $channelConfig['wordpress_tag_strategy']) === 'disabled')>{{ __('admin.distribution.wordpress.tag_disabled') }}</option>
                                     </select>
+                                </div>
+                            </div>
+                        </div>
+                    @elseif ($channel->isByxxApi())
+                        <div class="rounded-lg border border-amber-100 bg-amber-50 p-5">
+                            <div class="mb-5">
+                                <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.byxx.section_title') }}</h2>
+                                <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.distribution.byxx.edit_section_desc') }}</p>
+                            </div>
+                            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                                <div>
+                                    <label for="byxx_member_id" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.member_id') }}</label>
+                                    <input id="byxx_member_id" name="byxx_member_id" type="text" inputmode="numeric" value="{{ old('byxx_member_id', $byxxConfig['byxx_member_id']) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label for="byxx_shop_id" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.shop_id') }}</label>
+                                    <input id="byxx_shop_id" name="byxx_shop_id" type="text" inputmode="numeric" value="{{ old('byxx_shop_id', $byxxConfig['byxx_shop_id']) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label for="byxx_api_key" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.api_key') }}</label>
+                                    <input id="byxx_api_key" name="byxx_api_key" type="password" value="{{ old('byxx_api_key') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" autocomplete="new-password" placeholder="{{ __('admin.distribution.byxx.api_key_placeholder') }}">
+                                    <p class="mt-1 text-xs text-gray-500">{{ __('admin.distribution.byxx.api_key_update_help') }}</p>
+                                </div>
+                                <div>
+                                    <label for="byxx_site_id" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.site_id') }}</label>
+                                    <input id="byxx_site_id" name="byxx_site_id" type="text" inputmode="numeric" value="{{ old('byxx_site_id', $byxxConfig['byxx_site_id']) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label for="byxx_class_id" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.class_id') }}</label>
+                                    <input id="byxx_class_id" name="byxx_class_id" type="number" min="1" value="{{ old('byxx_class_id', $byxxConfig['byxx_class_id']) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label for="byxx_brand_id" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.brand_id') }}</label>
+                                    <input id="byxx_brand_id" name="byxx_brand_id" type="number" min="0" value="{{ old('byxx_brand_id', $byxxConfig['byxx_brand_id']) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label for="byxx_price" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.price') }}</label>
+                                    <input id="byxx_price" name="byxx_price" type="number" min="0" step="0.01" value="{{ old('byxx_price', $byxxConfig['byxx_price']) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label for="byxx_timeout_seconds" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.timeout_seconds') }}</label>
+                                    <input id="byxx_timeout_seconds" name="byxx_timeout_seconds" type="number" min="5" max="120" value="{{ old('byxx_timeout_seconds', $byxxConfig['byxx_timeout_seconds']) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                                 </div>
                             </div>
                         </div>

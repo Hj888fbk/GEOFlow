@@ -872,7 +872,7 @@ class AdminDistributionPageTest extends TestCase
             ->assertOk()
             ->assertSee(__('admin.distribution.channel_type.wordpress_rest'))
             ->assertSee(__('admin.distribution.wordpress.guide_title'))
-            ->assertSee('/wp-json/wp/v2/users/me?context=edit')
+            ->assertSee('/wp-json/wp/v2/posts?context=edit&amp;per_page=1&amp;_fields=id', false)
             ->assertSee(__('admin.distribution.wordpress.secret_hint'))
             ->assertDontSee(__('admin.distribution.detail.target_package_files'))
             ->assertDontSee(__('admin.distribution.detail.agent_package_name'))
@@ -4203,6 +4203,7 @@ class AdminDistributionPageTest extends TestCase
 
 ![333.png](/uploads/images/2026/04/demo.png)
 MD,
+            'original_keyword' => 'GEO 内容工程',
             'category_id' => $fixtures['category']->id,
             'author_id' => $fixtures['author']->id,
             'status' => 'published',
@@ -4212,6 +4213,7 @@ MD,
             'published_at' => now(),
         ]);
         $builtPayload = app(DistributionPayloadBuilder::class)->build($article->fresh());
+        $this->assertSame('GEO 内容工程', $builtPayload['article']['focus_keyword']);
         $this->assertTrue($builtPayload['article']['is_featured']);
         $this->assertTrue($builtPayload['article']['is_hot']);
 

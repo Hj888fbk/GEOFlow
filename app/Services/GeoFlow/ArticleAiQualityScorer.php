@@ -17,6 +17,7 @@ class ArticleAiQualityScorer
         'data_mismatch' => 'data_traceability',
         'citation_missing' => 'data_traceability',
         'citation_scope_mismatch' => 'data_traceability',
+        'source_declared_unverified' => 'data_traceability',
         'ad_absolute_claim' => 'advertising_compliance',
         'ad_false_or_misleading' => 'advertising_compliance',
         'ad_industry_specific' => 'advertising_compliance',

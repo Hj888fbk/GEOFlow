@@ -165,6 +165,16 @@ class DistributionController extends Controller
                 ->with('message', __('admin.distribution.message.created'));
         }
 
+        if ($channel->isByxxApi()) {
+            if (filled($payload['byxx_api_key'] ?? null)) {
+                $this->createByxxSecret($channel, (string) $payload['byxx_api_key']);
+            }
+
+            return redirect()
+                ->route('admin.distribution.show', ['channelId' => (int) $channel->id])
+                ->with('message', __('admin.distribution.message.created'));
+        }
+
         $secret = $this->createChannelSecret($channel);
 
         return redirect()
@@ -249,6 +259,19 @@ class DistributionController extends Controller
                         ]);
                     }
                 }
+                if (($payload['channel_type'] ?? 'geoflow_agent') === DistributionChannel::TYPE_BYXX_API) {
+                    $hasActiveSecret = DistributionChannelSecret::query()
+                        ->where('distribution_channel_id', (int) $lockedChannel->id)
+                        ->where('status', 'active')
+                        ->exists();
+                    if (($payload['status'] ?? DistributionChannel::STATUS_PAUSED) === DistributionChannel::STATUS_ACTIVE
+                        && ! $hasActiveSecret
+                        && ! filled($payload['byxx_api_key'] ?? null)) {
+                        throw ValidationException::withMessages([
+                            'byxx_api_key' => __('admin.distribution.validation.byxx_api_key'),
+                        ]);
+                    }
+                }
 
                 $lockedChannel->forceFill([
                     'name' => (string) $payload['name'],
@@ -269,6 +292,17 @@ class DistributionController extends Controller
                         ->where('status', 'active')
                         ->update(['status' => 'revoked']);
                     $this->createWordPressSecret($lockedChannel, (string) $payload['wordpress_application_password']);
+                }
+                if ($lockedChannel->isByxxApi()) {
+                    if (filled($payload['byxx_api_key'] ?? null)) {
+                        DistributionChannelSecret::query()
+                            ->where('distribution_channel_id', (int) $lockedChannel->id)
+                            ->where('status', 'active')
+                            ->update(['status' => 'revoked']);
+                        $this->createByxxSecret($lockedChannel, (string) $payload['byxx_api_key']);
+                    }
+
+                    return $lockedChannel->fresh();
                 }
                 if (! $lockedChannel->isGenericHttpApi()) {
                     return $lockedChannel->fresh();
@@ -300,6 +334,11 @@ class DistributionController extends Controller
 
         $message = __('admin.distribution.message.updated');
         $channel->load('activeSecret');
+        if ($channel->isByxxApi()) {
+            return redirect()
+                ->route('admin.distribution.show', ['channelId' => (int) $channel->id])
+                ->with('message', $message);
+        }
         if ($channel->activeSecret || ($channel->isGenericHttpApi() && $channel->resolvedGenericHttpConfig()['generic_auth_type'] === 'none')) {
             if ($channel->isGeoFlowAgent() && $this->frontendExperienceInspector->requiresSyncConfirmation($channel)) {
                 return redirect()
@@ -578,8 +617,8 @@ class DistributionController extends Controller
         if ($redirect = $this->deletingChannelRedirect($channel)) {
             return $redirect;
         }
-        if ($channel->isWordPressRest()) {
-            return back()->withErrors(__('admin.distribution.message.package_not_available_for_wordpress'));
+        if ($channel->isWordPressRest() || $channel->isByxxApi()) {
+            return back()->withErrors(__('admin.distribution.message.secret_reveal_not_available'));
         }
 
         /** @var Admin|null $admin */
@@ -1329,7 +1368,7 @@ class DistributionController extends Controller
             'name' => ['required', 'string', 'max:120'],
             'domain' => ['required', 'string', 'max:255'],
             'endpoint_url' => ['required', 'string', 'max:500'],
-            'channel_type' => ['nullable', 'string', 'in:geoflow_agent,wordpress_rest,generic_http_api'],
+            'channel_type' => ['nullable', 'string', 'in:geoflow_agent,wordpress_rest,generic_http_api,byxx_api'],
             'front_mode' => ['nullable', 'string', 'in:static,rewrite'],
             'template_key' => ['nullable', 'string', 'max:120'],
             'status' => ['required', 'string', 'in:active,paused'],
@@ -1365,6 +1404,14 @@ class DistributionController extends Controller
             'generic_remote_id_path' => ['nullable', 'string', 'max:120'],
             'generic_remote_url_path' => ['nullable', 'string', 'max:120'],
             'generic_payload_wrapper' => ['nullable', 'string', 'in:none,data'],
+            'byxx_member_id' => ['nullable', 'string', 'regex:/^\d+$/', 'max:20'],
+            'byxx_shop_id' => ['nullable', 'string', 'regex:/^\d+$/', 'max:20'],
+            'byxx_site_id' => ['nullable', 'string', 'regex:/^\d+$/', 'max:20'],
+            'byxx_class_id' => ['nullable', 'integer', 'min:1'],
+            'byxx_brand_id' => ['nullable', 'integer', 'min:0'],
+            'byxx_price' => ['nullable', 'numeric', 'min:0'],
+            'byxx_timeout_seconds' => ['nullable', 'integer', 'min:5', 'max:120'],
+            'byxx_api_key' => ['nullable', 'string', 'max:255'],
             'site_name' => ['nullable', 'string', 'max:120'],
             'site_subtitle' => ['nullable', 'string', 'max:255'],
             'site_description' => ['nullable', 'string'],
@@ -1469,6 +1516,36 @@ class DistributionController extends Controller
                     ]);
                 }
                 $payload[$field] = $path;
+            }
+        }
+        if ($payload['channel_type'] === DistributionChannel::TYPE_BYXX_API) {
+            foreach (['byxx_member_id', 'byxx_shop_id'] as $requiredField) {
+                if (! filled($payload[$requiredField] ?? null)) {
+                    throw ValidationException::withMessages([
+                        $requiredField => __('admin.distribution.validation.'.$requiredField),
+                    ]);
+                }
+            }
+            $parts = parse_url((string) $payload['endpoint_url']);
+            if (! is_array($parts)
+                || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+                || strtolower((string) ($parts['host'] ?? '')) !== 'member.byxx.com'
+                || filled($parts['user'] ?? null)
+                || filled($parts['pass'] ?? null)
+                || filled($parts['query'] ?? null)
+                || filled($parts['fragment'] ?? null)
+                || ! in_array((string) ($parts['path'] ?? ''), ['', '/'], true)) {
+                throw ValidationException::withMessages([
+                    'endpoint_url' => __('admin.distribution.validation.byxx_endpoint_url'),
+                ]);
+            }
+            $payload['endpoint_url'] = 'https://member.byxx.com';
+            if ($request->isMethod('post')
+                && ($payload['status'] ?? DistributionChannel::STATUS_PAUSED) === DistributionChannel::STATUS_ACTIVE
+                && ! filled($payload['byxx_api_key'] ?? null)) {
+                throw ValidationException::withMessages([
+                    'byxx_api_key' => __('admin.distribution.validation.byxx_api_key'),
+                ]);
             }
         }
 
@@ -1794,6 +1871,23 @@ class DistributionController extends Controller
             ], $channel);
         }
 
+        if ($channelType === DistributionChannel::TYPE_BYXX_API) {
+            $defaults = $channel?->resolvedByxxConfig() ?? (new DistributionChannel)->resolvedByxxConfig();
+
+            return $this->withExistingFrontendCapabilitiesCache([
+                'article_text_ad_policy' => $articleTextAdPolicy,
+                'frontend_experience_mode' => $frontendExperienceMode,
+                'byxx_member_id' => trim((string) ($payload['byxx_member_id'] ?? $defaults['byxx_member_id'])),
+                'byxx_shop_id' => trim((string) ($payload['byxx_shop_id'] ?? $defaults['byxx_shop_id'])),
+                'byxx_site_id' => trim((string) ($payload['byxx_site_id'] ?? $defaults['byxx_site_id'])),
+                'byxx_class_id' => filled($payload['byxx_class_id'] ?? null) ? (int) $payload['byxx_class_id'] : null,
+                'byxx_brand_id' => max(0, (int) ($payload['byxx_brand_id'] ?? $defaults['byxx_brand_id'])),
+                'byxx_price' => max(0.0, (float) ($payload['byxx_price'] ?? $defaults['byxx_price'])),
+                'byxx_service' => 2,
+                'byxx_timeout_seconds' => min(120, max(5, (int) ($payload['byxx_timeout_seconds'] ?? $defaults['byxx_timeout_seconds']))),
+            ], $channel);
+        }
+
         if ($channelType !== 'wordpress_rest') {
             return $this->withExistingFrontendCapabilitiesCache([
                 'article_text_ad_policy' => $articleTextAdPolicy,
@@ -1900,6 +1994,17 @@ class DistributionController extends Controller
         ]);
     }
 
+    private function createByxxSecret(DistributionChannel $channel, string $secret): void
+    {
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'byxx_'.Str::lower(Str::random(18)),
+            'secret_ciphertext' => $this->apiKeyCrypto->encrypt($secret),
+            'status' => 'active',
+            'scopes' => ['byxx.api'],
+        ]);
+    }
+
     /**
      * @return list<int>
      */
@@ -1997,6 +2102,16 @@ class DistributionController extends Controller
                     return $channel;
                 }
                 $this->channelOperationLeaseService->assertNoActiveLease($channel);
+                if ($status === DistributionChannel::STATUS_ACTIVE
+                    && $channel->isByxxApi()
+                    && ! DistributionChannelSecret::query()
+                        ->where('distribution_channel_id', (int) $channel->id)
+                        ->where('status', 'active')
+                        ->exists()) {
+                    throw ValidationException::withMessages([
+                        'byxx_api_key' => __('admin.distribution.validation.byxx_api_key'),
+                    ]);
+                }
 
                 $channel->forceFill(['status' => $status])->save();
 

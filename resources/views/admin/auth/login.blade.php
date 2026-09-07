@@ -95,7 +95,7 @@
                 </div>
             </div>
         @endif
-        <form method="POST" action="{{ route('admin.login.attempt') }}" class="space-y-6">
+        <form method="POST" action="{{ route('admin.login.attempt') }}" class="space-y-6" data-admin-login-form>
             @csrf
             <div>
                 <label for="username" class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.login.username') }}</label>
@@ -117,8 +117,11 @@
                 </span>
                 <span class="text-xs text-gray-400">{{ __('admin.login.remember_30_days_hint') }}</span>
             </label>
-            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg">
-                {{ __('admin.login.submit') }}
+            <button type="submit"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg disabled:cursor-wait disabled:opacity-70"
+                    data-admin-login-submit
+                    data-submitting-label="{{ __('admin.login.submitting') }}">
+                <span data-admin-login-submit-label>{{ __('admin.login.submit') }}</span>
             </button>
         </form>
     </div>
@@ -128,6 +131,30 @@
 </div>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        const loginForm = document.querySelector('[data-admin-login-form]');
+        const loginSubmit = loginForm?.querySelector('[data-admin-login-submit]');
+        let loginSubmitting = false;
+
+        loginForm?.addEventListener('submit', function (event) {
+            if (loginSubmitting) {
+                event.preventDefault();
+                return;
+            }
+
+            loginSubmitting = true;
+            if (loginSubmit) {
+                loginSubmit.disabled = true;
+                loginSubmit.setAttribute('aria-disabled', 'true');
+                loginSubmit.setAttribute('aria-busy', 'true');
+
+                const submitLabel = loginSubmit.querySelector('[data-admin-login-submit-label]');
+                const submittingLabel = loginSubmit.getAttribute('data-submitting-label');
+                if (submitLabel && submittingLabel) {
+                    submitLabel.textContent = submittingLabel;
+                }
+            }
+        });
+
         const initialHint = document.getElementById('initial-admin-hint');
         if (initialHint) {
             const storageKey = initialHint.getAttribute('data-storage-key') || 'geoflow.initial-admin-hint';

@@ -158,6 +158,15 @@ final class AiVisibilityService
         $searchRun = $this->runDoubaoSearchCustom($sourceProvider, $keyword, $searchOptions);
         $searchRun->load('sources');
         $sources = $this->sourceDataFromRun($searchRun);
+        if ($sources === []) {
+            $message = '豆包 Search Custom 未返回可用于分析的信源，已停止 DeepSeek 分析';
+            $searchRun->update([
+                'status' => AiVisibilityRun::STATUS_FAILED,
+                'error_message' => $message,
+            ]);
+
+            throw new RuntimeException($message);
+        }
         $prompt = $analysisPrompt !== null && trim($analysisPrompt) !== ''
             ? $analysisPrompt
             : $this->defaultAnalysisPrompt($keyword);

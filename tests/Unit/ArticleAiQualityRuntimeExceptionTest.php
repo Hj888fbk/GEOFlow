@@ -117,4 +117,57 @@ class ArticleAiQualityRuntimeExceptionTest extends TestCase
         $this->assertSame('output_budget_exhausted', $typed->safeCode());
         $this->assertTrue($typed->retryable());
     }
+
+    public function test_provider_result_normalization_repairs_known_json_fallback_type_drift(): void
+    {
+        $method = new ReflectionMethod(LaravelArticleAiQualityReviewer::class, 'normalizeProviderResult');
+        $result = $method->invoke(app(LaravelArticleAiQualityReviewer::class), [
+            'summary' => '发现一项待核验内容。',
+            'promotion_context' => 'informational',
+            'knowledge_coverage' => 'partial',
+            'issues' => [[
+                'code' => 'unsupported_claim',
+                'severity' => 'low',
+                'field' => '正文',
+                'quote' => '待核验原文',
+                'paragraph_index' => '2',
+                'heading' => null,
+                'fact_candidate_id' => null,
+                'article_claim' => '待核验主张',
+                'evidence_value' => null,
+                'knowledge_refs' => [['K1'], 'K2', [['K3']]],
+                'legal_refs' => [['CN-AD-LAW-08']],
+                'reason' => '缺少依据',
+                'suggestion' => '补充依据',
+            ]],
+            'uncertainties' => [[
+                'claim' => '待核验主张',
+                'materiality' => 'low',
+                'reason' => '缺少依据',
+                'needed_evidence' => null,
+            ]],
+        ], false);
+
+        $this->assertSame('content', $result['issues'][0]['field']);
+        $this->assertSame('', $result['issues'][0]['fact_candidate_id']);
+        $this->assertSame('', $result['issues'][0]['evidence_value']);
+        $this->assertSame(['K1', 'K2', 'K3'], $result['issues'][0]['knowledge_refs']);
+        $this->assertSame(['CN-AD-LAW-08'], $result['issues'][0]['legal_refs']);
+        $this->assertSame(2, $result['issues'][0]['paragraph_index']);
+        $this->assertSame('', $result['uncertainties'][0]['needed_evidence']);
+    }
+
+    public function test_provider_result_normalization_does_not_guess_associative_reference_objects(): void
+    {
+        $method = new ReflectionMethod(LaravelArticleAiQualityReviewer::class, 'normalizeProviderResult');
+        $references = [['id' => 'K1']];
+        $result = $method->invoke(app(LaravelArticleAiQualityReviewer::class), [
+            'issues' => [[
+                'knowledge_refs' => $references,
+                'legal_refs' => [],
+            ]],
+        ], false);
+
+        $this->assertSame($references, $result['issues'][0]['knowledge_refs']);
+    }
 }

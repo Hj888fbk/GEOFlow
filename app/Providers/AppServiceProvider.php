@@ -133,12 +133,15 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('api-ai-quality-manual', function (Request $request): array {
             $auth = $request->attributes->get('api_auth');
             $tokenId = $auth instanceof ApiAuthContext ? (int) ($auth->token['id'] ?? 0) : 0;
+            $tokenIdentity = $tokenId > 0
+                ? 'id:'.$tokenId
+                : $this->hashedBearerTokenIdentity($request);
             $articleId = (int) $request->route('article');
 
             return [
-                Limit::perMinute(5)->by('api-ai-quality:token:'.$tokenId),
-                Limit::perHour(20)->by('api-ai-quality:token-hour:'.$tokenId),
-                Limit::perHour(6)->by('api-ai-quality:article:'.$tokenId.'|'.$articleId),
+                Limit::perMinute(5)->by('api-ai-quality:token:'.$tokenIdentity),
+                Limit::perHour(20)->by('api-ai-quality:token-hour:'.$tokenIdentity),
+                Limit::perHour(6)->by('api-ai-quality:article:'.$tokenIdentity.'|'.$articleId),
                 Limit::perHour(12)->by('api-ai-quality:article-global:'.$articleId),
                 Limit::perMinute(10)->by('api-ai-quality:ip:'.$request->ip()),
             ];
@@ -278,6 +281,16 @@ class AppServiceProvider extends ServiceProvider
                 ]);
             }
         });
+    }
+
+    private function hashedBearerTokenIdentity(Request $request): string
+    {
+        $token = $request->bearerToken();
+        if (is_string($token) && trim($token) !== '') {
+            return 'sha256:'.hash('sha256', $token);
+        }
+
+        return 'anonymous:'.hash('sha256', (string) $request->ip());
     }
 
     private function assertHostedSiteConfiguration(): void

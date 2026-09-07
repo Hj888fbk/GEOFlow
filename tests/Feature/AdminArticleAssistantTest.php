@@ -284,6 +284,9 @@ class AdminArticleAssistantTest extends TestCase
                 && str_contains($prompt->prompt, 'GEO 内容工程需要结合检索证据')
                 && str_contains($prompt->prompt, '【知识库证据】')
                 && str_contains($prompt->prompt, '最终文章中不得出现任何内部证据编号')
+                && str_contains($prompt->prompt, '公开内容边界')
+                && str_contains($prompt->prompt, '不得披露内部知识库名称或编号')
+                && str_contains($prompt->prompt, '本文用于采购前期核对')
                 && ! str_contains($prompt->prompt, '并在相关句子后标注证据编号'),
         );
     }

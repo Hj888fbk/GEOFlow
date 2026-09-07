@@ -94,6 +94,8 @@ class WorkerExecutionSourceTitleTest extends TestCase
         $article = $title->articles()->whereKey((int) $result['article_id'])->firstOrFail();
 
         $this->assertSame((int) $title->id, (int) $article->source_title_id);
+        $this->assertSame('GEO', (string) $article->original_keyword);
+        $this->assertSame('GEO', (string) $article->keywords);
         $this->assertSame(1, (int) $title->fresh()->used_count);
         $this->assertSame(1, (int) $title->fresh()->usage_count);
         $this->assertSame((int) $chunk->id, $article->generation_evidence_snapshot[0]['chunk_id']);

@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\DistributionChannel;
+use App\Services\GeoFlow\ByxxApiPublisher;
 use App\Services\GeoFlow\DistributionPublisherManager;
 use App\Services\GeoFlow\GenericHttpApiPublisher;
 use App\Services\GeoFlow\GeoFlowAgentPublisher;
@@ -33,5 +34,13 @@ class DistributionPublisherManagerTest extends TestCase
         $manager = app(DistributionPublisherManager::class);
 
         $this->assertInstanceOf(GenericHttpApiPublisher::class, $manager->forChannel($channel));
+    }
+
+    public function test_it_resolves_byxx_api_publisher(): void
+    {
+        $channel = new DistributionChannel(['channel_type' => DistributionChannel::TYPE_BYXX_API]);
+        $manager = app(DistributionPublisherManager::class);
+
+        $this->assertInstanceOf(ByxxApiPublisher::class, $manager->forChannel($channel));
     }
 }

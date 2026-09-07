@@ -50,7 +50,7 @@
                     <fieldset class="rounded-lg border border-gray-200 bg-gray-50 p-4">
                         <legend class="text-sm font-medium text-gray-900">{{ __('admin.distribution.field.channel_type') }}</legend>
                         <p class="mt-1 text-sm text-gray-600">{{ __('admin.distribution.help.channel_type') }}</p>
-                        <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
+                        <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-4">
                             <label class="flex cursor-pointer gap-3 rounded-md border border-gray-200 bg-white p-4 hover:border-blue-300">
                                 <input type="radio" name="channel_type" value="geoflow_agent" class="mt-1 text-blue-600 focus:ring-blue-500" @checked($channelType === 'geoflow_agent')>
                                 <span>
@@ -70,6 +70,13 @@
                                 <span>
                                     <span class="block text-sm font-semibold text-gray-900">{{ __('admin.distribution.channel_type.generic_http_api') }}</span>
                                     <span class="mt-1 block text-sm text-gray-600">{{ __('admin.distribution.channel_type.generic_http_api_desc') }}</span>
+                                </span>
+                            </label>
+                            <label class="flex cursor-pointer gap-3 rounded-md border border-gray-200 bg-white p-4 hover:border-blue-300">
+                                <input type="radio" name="channel_type" value="byxx_api" class="mt-1 text-blue-600 focus:ring-blue-500" @checked($channelType === 'byxx_api')>
+                                <span>
+                                    <span class="block text-sm font-semibold text-gray-900">{{ __('admin.distribution.channel_type.byxx_api') }}</span>
+                                    <span class="mt-1 block text-sm text-gray-600">{{ __('admin.distribution.channel_type.byxx_api_desc') }}</span>
                                 </span>
                             </label>
                         </div>
@@ -139,6 +146,48 @@
                                     <option value="keywords_to_tags" @selected(old('wordpress_tag_strategy', 'keywords_to_tags') === 'keywords_to_tags')>{{ __('admin.distribution.wordpress.tag_keywords_to_tags') }}</option>
                                     <option value="disabled" @selected(old('wordpress_tag_strategy') === 'disabled')>{{ __('admin.distribution.wordpress.tag_disabled') }}</option>
                                 </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div data-channel-type-panel="byxx_api" @class(['rounded-lg border border-amber-100 bg-amber-50 p-5', 'hidden' => $channelType !== 'byxx_api'])>
+                        <div class="mb-5">
+                            <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.byxx.section_title') }}</h2>
+                            <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.distribution.byxx.section_desc') }}</p>
+                        </div>
+                        <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                            <div>
+                                <label for="byxx_member_id" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.member_id') }}</label>
+                                <input id="byxx_member_id" name="byxx_member_id" type="text" inputmode="numeric" value="{{ old('byxx_member_id') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="11766482">
+                            </div>
+                            <div>
+                                <label for="byxx_shop_id" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.shop_id') }}</label>
+                                <input id="byxx_shop_id" name="byxx_shop_id" type="text" inputmode="numeric" value="{{ old('byxx_shop_id') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="35237718">
+                            </div>
+                            <div>
+                                <label for="byxx_api_key" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.api_key') }}</label>
+                                <input id="byxx_api_key" name="byxx_api_key" type="password" value="{{ old('byxx_api_key') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" autocomplete="new-password">
+                                <p class="mt-1 text-xs text-gray-500">{{ __('admin.distribution.byxx.api_key_help') }}</p>
+                            </div>
+                            <div>
+                                <label for="byxx_site_id" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.site_id') }}</label>
+                                <input id="byxx_site_id" name="byxx_site_id" type="text" inputmode="numeric" value="{{ old('byxx_site_id') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="">
+                            </div>
+                            <div>
+                                <label for="byxx_class_id" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.class_id') }}</label>
+                                <input id="byxx_class_id" name="byxx_class_id" type="number" min="1" value="{{ old('byxx_class_id') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label for="byxx_brand_id" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.brand_id') }}</label>
+                                <input id="byxx_brand_id" name="byxx_brand_id" type="number" min="0" value="{{ old('byxx_brand_id', 0) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label for="byxx_price" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.price') }}</label>
+                                <input id="byxx_price" name="byxx_price" type="number" min="0" step="0.01" value="{{ old('byxx_price', 0) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label for="byxx_timeout_seconds" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.byxx.timeout_seconds') }}</label>
+                                <input id="byxx_timeout_seconds" name="byxx_timeout_seconds" type="number" min="5" max="120" value="{{ old('byxx_timeout_seconds', 30) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                             </div>
                         </div>
                     </div>

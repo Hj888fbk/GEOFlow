@@ -19,6 +19,16 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('geoflow.ai_visibility.brand_name', '');
+        config()->set('geoflow.ai_visibility.brand_aliases', []);
+        config()->set('geoflow.ai_visibility.owned_hosts', []);
+        config()->set('geoflow.ai_visibility.term_dictionary', []);
+    }
+
     public function test_growth_center_renders_ai_visibility_dashboard_from_collected_runs(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
@@ -87,7 +97,8 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             ->assertSee('GEOFlow 内容工程')
             ->assertSee('AI 信源投放')
             ->assertSee('ranking.example.com')
-            ->assertSee(__('admin.growth_center.ai_visibility.action.content_gap'));
+            ->assertSee(__('admin.growth_center.ai_visibility.action.observe_only'))
+            ->assertDontSee('投放合作');
 
         Carbon::setTestNow();
     }
@@ -144,9 +155,13 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
     public function test_visibility_filter_is_applied_before_daily_keyword_sampling(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
-        $this->completedRun('目标关键词', AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS, 'GEOFlow 可见', 'positive', '2026-07-10 09:00:00', []);
+        $this->completedRun('目标关键词', AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS, 'GEOFlow 可见', 'positive', '2026-07-10 09:00:00', [
+            ['title' => 'GEOFlow 来源', 'domain' => 'geoflow.example.com', 'rank' => 1, 'snippet' => 'GEOFlow 可见。'],
+        ]);
         $this->completedRun('目标关键词', AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM, '其它结果', 'neutral', '2026-07-10 10:00:00', []);
-        $this->completedRun('其它关键词', AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS, '其它结果', 'neutral', '2026-07-10 11:00:00', []);
+        $this->completedRun('其它关键词', AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS, '其它结果', 'neutral', '2026-07-10 11:00:00', [
+            ['title' => '其它来源', 'domain' => 'neutral.example.com', 'rank' => 1, 'snippet' => '其它结果。'],
+        ]);
 
         $overview = app(AiVisibilityAnalyticsService::class)->overview(AiVisibilityAnalyticsFilter::fromRequest([
             'ai_preset' => 'custom',
@@ -361,6 +376,72 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         $this->assertNotContains('deepseek', $terms);
         $this->assertNotContains('cloud', $terms);
         $this->assertNotContains('tencent', $terms);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_hengjia_configuration_measures_a_non_branded_procurement_question(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-04 12:00:00'));
+        config()->set('geoflow.ai_visibility.brand_name', '巩义市恒佳供水材料有限公司');
+        config()->set('geoflow.ai_visibility.brand_aliases', ['恒佳供水', '恒佳']);
+        config()->set('geoflow.ai_visibility.owned_hosts', ['hengjiashebei.com']);
+        config()->set('geoflow.ai_visibility.term_dictionary', ['橡胶软接头', '生产厂家', '厂家推荐', '厂家', 'EPDM']);
+
+        $this->completedRun(
+            keyword: '橡胶软接头厂家哪家好',
+            providerType: AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            answer: '',
+            sentiment: 'neutral',
+            completedAt: '2026-09-04 10:00:00',
+            sources: [
+                ['title' => '巩义市恒佳供水材料有限公司橡胶软接头生产厂家', 'domain' => 'm.jdzj.com', 'rank' => 1, 'snippet' => '恒佳供水产品信息。'],
+                ['title' => '橡胶软接头厂家推荐', 'domain' => 'jdzj.com', 'rank' => 3, 'snippet' => '采购厂家信息。'],
+                ['title' => '橡胶软接头产品页', 'domain' => 'www.hengjiashebei.com', 'rank' => 6, 'snippet' => 'EPDM 橡胶软接头。'],
+            ],
+        );
+
+        $overview = app(AiVisibilityAnalyticsService::class)->overview();
+        $jdzj = collect($overview['sources'])->firstWhere('domain', 'jdzj.com');
+        $terms = collect($overview['terms'])->pluck('term')->all();
+
+        $this->assertSame('巩义市恒佳供水材料有限公司', $overview['brand']['name']);
+        $this->assertSame('橡胶软接头厂家哪家好', $overview['keywords'][0]['keyword']);
+        $this->assertStringNotContainsString('恒佳', $overview['keywords'][0]['keyword']);
+        $this->assertSame(100.0, $overview['kpis']['brand_visibility']);
+        $this->assertSame(100.0, $overview['kpis']['owned_source_rate']);
+        $this->assertNotNull($jdzj);
+        $this->assertSame(2, $jdzj['mentions']);
+        $this->assertSame(1, $jdzj['best_rank']);
+        $this->assertSame(1, $jdzj['brand_mentions']);
+        $this->assertContains('橡胶软接头', $terms);
+        $this->assertContains('生产厂家', $terms);
+        $this->assertNotContains('GEOFlow', $terms);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_completed_runs_without_sources_do_not_become_valid_samples(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-04 12:00:00'));
+        config()->set('geoflow.ai_visibility.brand_name', '巩义市恒佳供水材料有限公司');
+        config()->set('geoflow.ai_visibility.brand_aliases', ['恒佳']);
+
+        $this->completedRun(
+            keyword: '橡胶软接头厂家推荐',
+            providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+            answer: '恒佳是一家推荐厂家。',
+            sentiment: 'positive',
+            completedAt: '2026-09-04 10:00:00',
+            sources: [],
+        );
+
+        $overview = app(AiVisibilityAnalyticsService::class)->overview();
+
+        $this->assertSame(1, $overview['polling']['completed_runs']);
+        $this->assertSame(0, $overview['polling']['sampled_runs']);
+        $this->assertSame(0.0, $overview['kpis']['brand_visibility']);
+        $this->assertSame([], $overview['terms']);
 
         Carbon::setTestNow();
     }

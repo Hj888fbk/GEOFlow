@@ -128,4 +128,80 @@ class ArticleFactCandidateExtractorTest extends TestCase
         $this->assertSame(['citation'], array_values(array_unique(array_column($candidates, 'type'))));
         $this->assertSame(['high'], array_values(array_unique(array_column($candidates, 'materiality'))));
     }
+
+    public function test_it_extracts_industrial_specs_models_and_product_capability_claims(): void
+    {
+        $candidates = (new ArticleFactCandidateExtractor)->extract([
+            'title' => '',
+            'excerpt' => '',
+            'content' => implode("\n", [
+                '页面列出的口径范围为 DN32—DN1200，工作压力栏包含 0.6、1.0、1.6、2.5 MPa。',
+                '恒佳现有资料以 KYT 作为同心异径产品入口，以 KYP 作为偏心异径产品入口。',
+                '橡胶软接头用于法兰管线柔性连接的初步核对。',
+            ]),
+            'keywords' => '',
+            'meta_description' => '',
+        ]);
+
+        $this->assertSame(
+            ['technical_spec', 'product_model', 'product_claim'],
+            array_values(array_unique(array_column($candidates, 'type'))),
+        );
+        $this->assertSame('high', $candidates[0]['materiality']);
+        $this->assertSame('medium', $candidates[1]['materiality']);
+    }
+
+    public function test_it_does_not_treat_markdown_product_images_or_links_as_fact_claims(): void
+    {
+        $candidates = (new ArticleFactCandidateExtractor)->extract([
+            'title' => '',
+            'excerpt' => '',
+            'content' => implode("\n", [
+                '![KXT/JGD单球体橡胶软接头产品示意](/storage/example.webp)',
+                '[KXT/JGD 单球体橡胶接头](https://example.test/kxt)',
+                '- [KST 双球体橡胶接头](https://example.test/kst)',
+            ]),
+            'keywords' => '',
+            'meta_description' => '',
+        ]);
+
+        $this->assertSame([], $candidates);
+    }
+
+    public function test_it_skips_markdown_table_headers_and_product_keyword_lists(): void
+    {
+        $candidates = (new ArticleFactCandidateExtractor)->extract([
+            'title' => '',
+            'excerpt' => '',
+            'content' => implode("\n", [
+                '| 产品型号 | 产品能够提供的连接 |',
+                '|---|---|',
+                '| KXT | KXT 产品采用法兰连接 |',
+            ]),
+            'keywords' => '橡胶软接头作用,可曲挠橡胶接头,橡胶软接头选型',
+            'meta_description' => '',
+        ]);
+
+        $this->assertCount(1, $candidates);
+        $this->assertSame('| KXT | KXT 产品采用法兰连接 |', $candidates[0]['quote']);
+        $this->assertSame('KXT 产品采用法兰连接', $candidates[0]['normalized_claim']);
+    }
+
+    public function test_it_uses_only_material_cells_when_normalizing_a_markdown_table_claim(): void
+    {
+        $candidates = (new ArticleFactCandidateExtractor)->extract([
+            'title' => '',
+            'excerpt' => '',
+            'content' => implode("\n", [
+                '| 评价维度 | 现有资料可以确认 | 仍需取得的资料 | 对采购的影响 |',
+                '|---|---|---|---|',
+                '| 名称与结构 | KXT/JGD、单球体、法兰连接 | 项目最终型号和结构图 | 防止相近型号或其他结构混入报价 |',
+            ]),
+            'keywords' => '',
+            'meta_description' => '',
+        ]);
+
+        $this->assertCount(1, $candidates);
+        $this->assertSame('KXT/JGD、单球体、法兰连接', $candidates[0]['normalized_claim']);
+    }
 }

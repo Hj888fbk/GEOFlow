@@ -33,7 +33,9 @@ final class ArticleHandler
             ], idempotencyKey: $this->runtime->idempotencyKey()),
             'publish' => $this->runtime->send('article.publish', ['article' => $articleId()], body: [], idempotencyKey: $this->runtime->idempotencyKey()),
             'ai-quality-status' => $this->runtime->send('article.ai-quality-status', ['article' => $articleId()]),
-            'ai-quality-recheck' => $this->runtime->send('article.ai-quality-recheck', ['article' => $articleId()], body: [], idempotencyKey: $this->runtime->idempotencyKey()),
+            'ai-quality-recheck' => $this->runtime->send('article.ai-quality-recheck', ['article' => $articleId()], body: [
+                'config_version' => $this->requiredConfigVersion(),
+            ], idempotencyKey: $this->runtime->idempotencyKey()),
             'ai-quality-override' => $this->runtime->send('article.ai-quality-override', ['article' => $articleId()], body: [
                 'reason' => $this->runtime->requiredOption('reason'),
             ], idempotencyKey: $this->runtime->idempotencyKey()),
@@ -107,6 +109,13 @@ final class ArticleHandler
             $this->runtime->requiredOption('run-id'),
             '运行 ID',
         );
+    }
+
+    private function requiredConfigVersion(): int
+    {
+        $this->runtime->requiredOption('config-version');
+
+        return $this->runtime->integerOption('config-version', 1);
     }
 
     /** @return array<string,mixed> */

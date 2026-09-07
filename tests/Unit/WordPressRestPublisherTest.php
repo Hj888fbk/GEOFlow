@@ -118,6 +118,51 @@ class WordPressRestPublisherTest extends TestCase
         $this->assertSame('wordpress_rest', $result['channel_type']);
         $this->assertSame(7, $result['user_id']);
         $this->assertTrue($result['can_edit_posts']);
+        $this->assertSame('wp_v2_users_me', $result['capability_source']);
+    }
+
+    public function test_health_falls_back_to_authenticated_edit_contexts_when_users_route_is_disabled(): void
+    {
+        Http::fake([
+            'https://wp.example.com/wp-json' => Http::response(['name' => 'WordPress']),
+            'https://wp.example.com/wp-json/wp/v2/users/me*' => Http::response([
+                'code' => 'rest_no_route',
+                'message' => 'No route was found matching the URL and request method.',
+            ], 404),
+            'https://wp.example.com/wp-json/wp/v2/posts*' => Http::response([['id' => 10]]),
+            'https://wp.example.com/wp-json/wp/v2/media*' => Http::response([['id' => 20]]),
+            'https://wp.example.com/wp-json/wp/v2/categories*' => Http::response([['id' => 9]]),
+        ]);
+
+        [$channel] = $this->makeDistribution();
+
+        $result = app(WordPressRestPublisher::class)->health($channel);
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame('authenticated_edit_context_fallback', $result['capability_source']);
+        $this->assertSame(['posts', 'media', 'categories'], $result['authenticated_edit_contexts']);
+        $this->assertSame('editor', $result['user_name']);
+        $this->assertTrue($result['can_edit_posts']);
+        $this->assertNull($result['can_publish_posts']);
+        $this->assertNull($result['can_upload_files']);
+    }
+
+    public function test_health_does_not_fallback_for_invalid_wordpress_credentials(): void
+    {
+        Http::fake([
+            'https://wp.example.com/wp-json' => Http::response(['name' => 'WordPress']),
+            'https://wp.example.com/wp-json/wp/v2/users/me*' => Http::response([
+                'code' => 'rest_not_logged_in',
+                'message' => 'You are not currently logged in.',
+            ], 401),
+        ]);
+
+        [$channel] = $this->makeDistribution();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('WordPress 健康检查失败：HTTP 401');
+
+        app(WordPressRestPublisher::class)->health($channel);
     }
 
     public function test_it_syncs_supported_site_settings_to_wordpress_settings_endpoint(): void

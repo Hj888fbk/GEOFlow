@@ -55,6 +55,9 @@ class WorkerExecutionServicePromptTest extends TestCase
         $this->assertStringContainsString('Reference knowledge from the business knowledge base.', $prompt);
         $this->assertStringContainsString('Citation marker constraint', $prompt);
         $this->assertStringContainsString('must not contain internal evidence IDs', $prompt);
+        $this->assertStringContainsString('Public-facing knowledge boundary', $prompt);
+        $this->assertStringContainsString('Never expose internal knowledge-base names or identifiers', $prompt);
+        $this->assertStringContainsString('evidence cutoff dates', $prompt);
         $this->assertStringContainsString('Please output only the final article body in Markdown.', $prompt);
     }
 
@@ -73,6 +76,11 @@ class WorkerExecutionServicePromptTest extends TestCase
         $this->assertStringContainsString('[K2][K3]', $prompt);
         $this->assertStringNotContainsString('并在相关句子后标注证据编号', $prompt);
         $this->assertStringContainsString('证据不足时不要编造来源或结论', $prompt);
+        $this->assertStringContainsString('公开内容边界', $prompt);
+        $this->assertStringContainsString('不得披露内部知识库名称或编号', $prompt);
+        $this->assertStringContainsString('版本号、证据截止日期', $prompt);
+        $this->assertStringContainsString('“资料与发布边界”“内部依据”', $prompt);
+        $this->assertStringContainsString('本文用于采购前期核对', $prompt);
     }
 
     public function test_worker_prompt_without_knowledge_context_still_forbids_evidence_ids(): void
@@ -86,6 +94,23 @@ class WorkerExecutionServicePromptTest extends TestCase
 
         $this->assertStringContainsString('正文引用标注约束', $prompt);
         $this->assertStringContainsString('最终文章中不得出现任何内部证据编号', $prompt);
+        $this->assertStringContainsString('公开内容边界', $prompt);
+    }
+
+    public function test_existing_citation_constraint_does_not_skip_public_facing_knowledge_boundary(): void
+    {
+        $prompt = $this->renderContentPrompt(
+            '橡胶接头采购要点',
+            '橡胶接头',
+            "【正文引用标注约束】最终文章不得显示 K 编号。\n请生成采购文章。",
+            '内部依据：KB-HJ-ALL-001 v1.0.0，证据截止 2026-09-03。',
+        );
+
+        $this->assertSame(1, substr_count($prompt, '【正文引用标注约束】'));
+        $this->assertStringContainsString('公开内容边界', $prompt);
+        $this->assertStringContainsString('不得披露内部知识库名称或编号', $prompt);
+        $this->assertStringContainsString('治理或审批状态、审核备注', $prompt);
+        $this->assertStringContainsString('由供需双方书面确认', $prompt);
     }
 
     public function test_article_citation_marker_cleaner_removes_supported_marker_forms(): void
@@ -120,8 +145,10 @@ class WorkerExecutionServicePromptTest extends TestCase
         );
 
         $this->assertStringContainsString('Citation marker constraint', $prompt);
+        $this->assertStringContainsString('Public-facing knowledge boundary', $prompt);
         $this->assertStringContainsString('Please output only the final article body', $prompt);
         $this->assertStringNotContainsString('请直接输出最终文章正文', $prompt);
+        $this->assertStringNotContainsString('公开内容边界', $prompt);
     }
 
     public function test_unknown_template_blocks_are_preserved_for_future_extensions(): void

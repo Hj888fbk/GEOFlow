@@ -64,7 +64,9 @@ class AiVisibilityServiceTest extends TestCase
             && $request->hasHeader('Authorization', 'Bearer test-search-key')
             && $request['Query'] === 'GEOFlow AI 可见性'
             && $request['Count'] === 2
-            && ($request['Filter']['NeedContent'] ?? null) === true);
+            && ($request['Filter']['NeedContent'] ?? null) === true
+            && ! array_key_exists('Sites', $request['Filter'])
+            && ! array_key_exists('BlockHosts', $request['Filter']));
     }
 
     public function test_it_uses_source_provider_metadata_as_default_search_options(): void
@@ -200,6 +202,69 @@ class AiVisibilityServiceTest extends TestCase
         $this->assertSame(0, (int) $provider->fresh()->used_today);
     }
 
+    public function test_it_marks_doubao_search_custom_run_failed_for_embedded_provider_error(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'ResponseMetadata' => [
+                    'RequestId' => 'request_invalid_parameter',
+                    'Error' => [
+                        'CodeN' => 10400,
+                        'Code' => '10400',
+                        'Message' => 'Invalid Parameter. Please check the parameter type.',
+                    ],
+                ],
+                'Result' => null,
+            ]),
+        ]);
+
+        $provider = $this->createSearchProvider();
+
+        try {
+            app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow');
+            $this->fail('Expected embedded provider error to throw.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('10400', $exception->getMessage());
+            $this->assertStringContainsString('Invalid Parameter', $exception->getMessage());
+        }
+
+        $run = AiVisibilityRun::query()->firstOrFail();
+        $this->assertSame(AiVisibilityRun::STATUS_FAILED, $run->status);
+        $this->assertStringContainsString('10400', (string) $run->error_message);
+        $this->assertSame(0, (int) $provider->fresh()->used_today);
+    }
+
+    public function test_it_stops_deepseek_analysis_when_search_returns_no_sources(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'LogId' => 'log_empty_search',
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+        MarkdownContentWriterAgent::fake()->preventStrayPrompts();
+
+        $provider = $this->createSearchProvider();
+        $model = $this->createAiModel();
+
+        try {
+            app(AiVisibilityService::class)->runDoubaoSearchThenDeepSeekAnalysis($provider, $model, 'GEOFlow');
+            $this->fail('Expected empty search results to stop analysis.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('未返回可用于分析的信源', $exception->getMessage());
+        }
+
+        $this->assertDatabaseCount('ai_visibility_runs', 1);
+        $this->assertDatabaseHas('ai_visibility_runs', [
+            'provider_type' => AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            'status' => AiVisibilityRun::STATUS_FAILED,
+        ]);
+        $this->assertSame(1, (int) $provider->fresh()->used_today);
+        $this->assertSame(0, (int) $model->fresh()->used_today);
+    }
+
     public function test_it_does_not_call_doubao_search_custom_when_provider_limit_is_exhausted(): void
     {
         Http::preventStrayRequests();
@@ -278,9 +343,30 @@ class AiVisibilityServiceTest extends TestCase
 
     public function test_it_persists_deepseek_analysis_usage_from_ai_sdk_response(): void
     {
-        MarkdownContentWriterAgent::fake(['分析完成'])->preventStrayPrompts();
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://api.deepseek.com/v1/chat/completions' => Http::response([
+                'id' => 'chatcmpl_analysis_1',
+                'model' => 'deepseek-v4-flash',
+                'choices' => [[
+                    'index' => 0,
+                    'message' => [
+                        'role' => 'assistant',
+                        'content' => '分析完成',
+                    ],
+                    'finish_reason' => 'stop',
+                ]],
+                'usage' => [
+                    'prompt_tokens' => 120,
+                    'completion_tokens' => 80,
+                    'completion_tokens_details' => [
+                        'reasoning_tokens' => 0,
+                    ],
+                ],
+            ]),
+        ]);
 
-        $model = $this->createAiModel();
+        $model = $this->createAiModel(['max_tokens' => 6144]);
 
         $this->bindModel(AiVisibilityConfigurationResolver::DEEPSEEK_MODEL_SETTING_KEY, $model);
 
@@ -295,13 +381,68 @@ class AiVisibilityServiceTest extends TestCase
         $this->assertSame(AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS, $run->provider_type);
         $this->assertSame('分析完成', $run->answer_text);
         $this->assertSame([
-            'prompt_tokens' => 0,
-            'completion_tokens' => 0,
+            'prompt_tokens' => 120,
+            'completion_tokens' => 80,
             'cache_write_input_tokens' => 0,
             'cache_read_input_tokens' => 0,
             'reasoning_tokens' => 0,
         ], $run->usage_json);
         $this->assertSame(1, (int) $model->fresh()->used_today);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://api.deepseek.com/v1/chat/completions'
+            && ($request['model'] ?? null) === 'deepseek-v4-flash'
+            && ($request['max_completion_tokens'] ?? null) === 6144
+            && ! array_key_exists('max_tokens', (array) $request->data())
+            && ($request['thinking']['type'] ?? null) === 'disabled');
+    }
+
+    public function test_it_reports_safe_token_diagnostics_when_deepseek_returns_only_reasoning(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://api.deepseek.com/v1/chat/completions' => Http::response([
+                'id' => 'chatcmpl_analysis_reasoning_only',
+                'model' => 'deepseek-v4-flash',
+                'choices' => [[
+                    'index' => 0,
+                    'message' => [
+                        'role' => 'assistant',
+                        'content' => null,
+                        'reasoning_content' => '内部推理内容不应进入错误消息',
+                    ],
+                    'finish_reason' => 'length',
+                ]],
+                'usage' => [
+                    'prompt_tokens' => 3500,
+                    'completion_tokens' => 4096,
+                    'completion_tokens_details' => [
+                        'reasoning_tokens' => 4096,
+                    ],
+                ],
+            ]),
+        ]);
+
+        $model = $this->createAiModel();
+
+        try {
+            app(AiVisibilityService::class)->runDeepSeekAnalysis($model, 'GEOFlow', '请分析 GEOFlow 的 AI 可见性');
+            $this->fail('Expected reasoning-only DeepSeek response to fail.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('输出令牌预算已用尽', $exception->getMessage());
+            $this->assertStringContainsString('finish_reason=length', $exception->getMessage());
+            $this->assertStringContainsString('completion_tokens=4096', $exception->getMessage());
+            $this->assertStringContainsString('reasoning_tokens=4096', $exception->getMessage());
+            $this->assertStringNotContainsString('内部推理内容', $exception->getMessage());
+        }
+
+        $run = AiVisibilityRun::query()->firstOrFail();
+        $this->assertSame(AiVisibilityRun::STATUS_FAILED, $run->status);
+        $this->assertStringContainsString('输出令牌预算已用尽', (string) $run->error_message);
+        $this->assertSame(0, (int) $model->fresh()->used_today);
+
+        Http::assertSent(fn ($request): bool => ($request['max_completion_tokens'] ?? null) === 4096
+            && ! array_key_exists('max_tokens', (array) $request->data())
+            && ($request['thinking']['type'] ?? null) === 'disabled');
     }
 
     private function createSearchProvider(array $overrides = []): AiSourceProvider

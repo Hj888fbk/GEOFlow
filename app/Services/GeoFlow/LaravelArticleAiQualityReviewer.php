@@ -282,6 +282,9 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
                 }
             }
 
+            if (is_array($result)) {
+                $result = $this->normalizeProviderResult($result, $usesV2Schema);
+            }
             if (! is_array($result) || $result === []) {
                 if ($providerUsageAttempt !== null) {
                     $usageSession?->providerResultDiscarded($providerUsageAttempt, $response->usage ?? null, 'invalid_model_output');
@@ -356,6 +359,112 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
         }
 
         return is_array($decoded) ? $decoded : [];
+    }
+
+    /** @param array<string,mixed> $result @return array<string,mixed> */
+    private function normalizeProviderResult(array $result, bool $usesV2Schema): array
+    {
+        $fieldAliases = [
+            '标题' => 'title',
+            '摘要' => 'excerpt',
+            '正文' => 'content',
+            '关键词' => 'keywords',
+            'seo描述' => 'meta_description',
+            'seo 描述' => 'meta_description',
+        ];
+        $stringFields = $usesV2Schema
+            ? ['code', 'severity', 'claim_hash', 'field', 'quote', 'evidence_status', 'reason', 'suggestion']
+            : [
+                'code', 'severity', 'field', 'quote', 'heading', 'fact_candidate_id',
+                'article_claim', 'evidence_value', 'reason', 'suggestion',
+            ];
+        $arrayFields = $usesV2Schema ? ['evidence_keys'] : ['knowledge_refs', 'legal_refs'];
+
+        if (is_array($result['issues'] ?? null)) {
+            foreach ($result['issues'] as &$issue) {
+                if (! is_array($issue)) {
+                    continue;
+                }
+                $field = mb_strtolower(trim((string) ($issue['field'] ?? '')), 'UTF-8');
+                if (isset($fieldAliases[$field])) {
+                    $issue['field'] = $fieldAliases[$field];
+                }
+                foreach ($stringFields as $key) {
+                    if (array_key_exists($key, $issue) && $issue[$key] === null) {
+                        $issue[$key] = '';
+                    }
+                }
+                foreach ($arrayFields as $key) {
+                    if (array_key_exists($key, $issue) && $issue[$key] === null) {
+                        $issue[$key] = [];
+                    } elseif (is_array($issue[$key] ?? null)) {
+                        $flattened = $this->flattenScalarList($issue[$key]);
+                        if ($flattened !== null) {
+                            $issue[$key] = $flattened;
+                        }
+                    }
+                }
+                if (array_key_exists('paragraph_index', $issue) && is_numeric($issue['paragraph_index'])) {
+                    $issue['paragraph_index'] = (int) $issue['paragraph_index'];
+                }
+                if (array_key_exists('confidence', $issue) && is_numeric($issue['confidence'])) {
+                    $issue['confidence'] = (float) $issue['confidence'];
+                }
+            }
+            unset($issue);
+        }
+
+        if (is_array($result['uncertainties'] ?? null)) {
+            foreach ($result['uncertainties'] as &$uncertainty) {
+                if (! is_array($uncertainty)) {
+                    continue;
+                }
+                foreach (['claim', 'materiality', 'reason', 'needed_evidence'] as $key) {
+                    if (array_key_exists($key, $uncertainty) && $uncertainty[$key] === null) {
+                        $uncertainty[$key] = '';
+                    }
+                }
+            }
+            unset($uncertainty);
+        }
+        if ($usesV2Schema
+            && array_key_exists('truncated_issue_count', $result)
+            && is_numeric($result['truncated_issue_count'])) {
+            $result['truncated_issue_count'] = (int) $result['truncated_issue_count'];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  array<mixed>  $values
+     * @return list<scalar>|null
+     */
+    private function flattenScalarList(array $values): ?array
+    {
+        if (! array_is_list($values)) {
+            return null;
+        }
+
+        $flattened = [];
+        foreach ($values as $value) {
+            if (is_scalar($value)) {
+                $flattened[] = $value;
+
+                continue;
+            }
+            if (! is_array($value)) {
+                return null;
+            }
+
+            $nested = $this->flattenScalarList($value);
+            if ($nested === null) {
+                return null;
+            }
+            array_push($flattened, ...$nested);
+        }
+
+        return $flattened;
     }
 
     private function typedProviderException(

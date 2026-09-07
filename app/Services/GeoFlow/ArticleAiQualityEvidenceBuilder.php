@@ -110,7 +110,9 @@ class ArticleAiQualityEvidenceBuilder
         $promptInjectionRiskCount = collect($evidenceByKey)
             ->filter(fn (array $row): bool => $this->securityInspector->hasPromptInjectionRisk($row))
             ->count();
-        foreach ($evidenceByKey as $key => $row) {
+        $orderedEvidenceKeys = $this->orderedEvidenceKeys($factCandidates, $factEvidenceKeys, $evidenceByKey);
+        foreach ($orderedEvidenceKeys as $key) {
+            $row = $evidenceByKey[$key];
             if ($this->securityInspector->hasPromptInjectionRisk($row)) {
                 continue;
             }
@@ -169,6 +171,47 @@ class ArticleAiQualityEvidenceBuilder
                 'source_knowledge_base_ids' => ['chunk' => $sourceKnowledgeBaseIds],
             ],
         ];
+    }
+
+    /**
+     * @param list<array<string,mixed>> $factCandidates
+     * @param array<string,array<string,bool>> $factEvidenceKeys
+     * @param array<string,array<string,mixed>> $evidenceByKey
+     * @return list<string>
+     */
+    private function orderedEvidenceKeys(array $factCandidates, array $factEvidenceKeys, array $evidenceByKey): array
+    {
+        $ordered = [];
+        $seen = [];
+        foreach ($factCandidates as $candidate) {
+            $factId = (string) ($candidate['id'] ?? '');
+            foreach (array_keys($factEvidenceKeys[$factId] ?? []) as $key) {
+                if (! isset($evidenceByKey[$key])
+                    || isset($seen[$key])
+                    || $this->securityInspector->hasPromptInjectionRisk($evidenceByKey[$key])) {
+                    continue;
+                }
+                $ordered[] = $key;
+                $seen[$key] = true;
+                break;
+            }
+        }
+        foreach ($factCandidates as $candidate) {
+            $factId = (string) ($candidate['id'] ?? '');
+            foreach (array_keys($factEvidenceKeys[$factId] ?? []) as $key) {
+                if (isset($evidenceByKey[$key]) && ! isset($seen[$key])) {
+                    $ordered[] = $key;
+                    $seen[$key] = true;
+                }
+            }
+        }
+        foreach (array_keys($evidenceByKey) as $key) {
+            if (! isset($seen[$key])) {
+                $ordered[] = $key;
+            }
+        }
+
+        return $ordered;
     }
 
     /** @param array<string, mixed> $row */

@@ -30,6 +30,7 @@
                     @php($jobStatusLabel = trans()->has($jobStatusKey) ? __($jobStatusKey) : (string) $job->status)
                     @php($isDeletedRemoteCopy = (string) $job->action === 'delete' && (string) $job->status === 'synced')
                     @php($isOutcomeUnknown = (string) $job->status === 'outcome_unknown')
+                    @php($supportsRemoteMutation = ! ($job->channel?->isByxxApi() ?? false))
                     <tr>
                         <td class="min-w-[28rem] max-w-[42rem] break-words px-6 py-4 text-sm font-medium text-gray-900">{{ $job->article?->title ?? __('admin.common.none') }}</td>
                         <td class="whitespace-nowrap px-4 py-4 text-sm text-gray-600">{{ $job->channel?->name ?? __('admin.common.none') }}</td>
@@ -52,6 +53,8 @@
                                 <span class="text-purple-700">{{ __('admin.distribution.job_state.manual_reconciliation_required') }}</span>
                             @elseif ($isDeletedRemoteCopy)
                                 <span class="text-gray-400">{{ __('admin.distribution.job_state.remote_copy_deleted') }}</span>
+                            @elseif ($job->article && ! $supportsRemoteMutation)
+                                <span class="text-amber-700">{{ __('admin.distribution.byxx.remote_mutation_not_supported') }}</span>
                             @elseif ($job->article)
                                 <a href="{{ route('admin.distribution.article.edit', ['distributionId' => (int) $job->id]) }}" class="text-blue-600 hover:text-blue-800">{{ __('admin.distribution.button.edit_remote_article') }}</a>
                                 <form method="POST" action="{{ route('admin.distribution.article.delete', ['distributionId' => (int) $job->id], false) }}" data-distribution-delete-form data-confirm-message="{{ __('admin.articles.confirm.delete_title') }}" data-deleting-label="{{ __('admin.distribution.job_state.remote_copy_deleting') }}" data-deleted-label="{{ __('admin.distribution.job_state.remote_copy_deleted') }}" data-failed-template="{{ __('admin.distribution.message.remote_article_delete_failed', ['message' => '__MESSAGE__']) }}">

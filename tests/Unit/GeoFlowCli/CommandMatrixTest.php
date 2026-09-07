@@ -286,11 +286,11 @@ class CommandMatrixTest extends TestCase
                 'articles/10/ai-quality/status',
             ),
             'article.ai-quality-recheck' => self::contract(
-                ['article', 'ai-quality-recheck', '10'],
+                ['article', 'ai-quality-recheck', '10', '--config-version', '1'],
                 'POST',
                 'articles/10/ai-quality/recheck',
                 idempotencyKey: 'article-ai-quality-recheck-10',
-                body: [],
+                body: ['config_version' => 1],
             ),
             'article.ai-quality-override' => self::contract(
                 ['article', 'ai-quality-override', '10', '--reason', 'verified evidence'],

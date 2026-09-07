@@ -2853,7 +2853,7 @@ class ArticleAiQualityInspectionService
         }
 
         if ($references === []) {
-            return [];
+            return array_values($evidence);
         }
 
         return array_values(array_filter(

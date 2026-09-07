@@ -1,0 +1,78 @@
+# Local production overlay for the existing GEOFlow instance.
+#
+# The active instance was initialized from .env and
+# docker-data/dev/postgres.  This overlay keeps those credentials and data
+# while switching the web runtime to the production PHP-FPM image.
+
+x-geoflow-current-runtime: &geoflow-current-runtime
+  environment:
+    AUTO_OPTIMIZE: "true"
+    CACHE_STORE: "redis"
+  volumes:
+    - ./.env:/var/www/html/.env:ro
+    - ./storage:/var/www/html/storage
+
+services:
+  redis:
+    environment:
+      REDIS_PASSWORD: ""
+
+  init:
+    <<: *geoflow-current-runtime
+    env_file:
+      - ./.env
+
+  app:
+    <<: *geoflow-current-runtime
+
+  web:
+    ports: !override
+      - "127.0.0.1:${APP_PORT:-18080}:80"
+    environment:
+      GEOFLOW_NGINX_PRIMARY_HOST: "127.0.0.1"
+      GEOFLOW_NGINX_PRIMARY_ALIASES: "localhost"
+      GEOFLOW_NGINX_HOSTED_ROOT_DOMAIN: "invalid"
+      GEOFLOW_NGINX_PUBLIC_SCHEME: "http"
+      GEOFLOW_NGINX_PUBLIC_PORT: "${APP_PORT:-18080}"
+
+  queue:
+    <<: *geoflow-current-runtime
+    environment:
+      AUTO_OPTIMIZE: "false"
+      CACHE_STORE: "redis"
+
+  ai-quality-queue:
+    <<: *geoflow-current-runtime
+    environment:
+      AUTO_OPTIMIZE: "false"
+      CACHE_STORE: "redis"
+
+  ai-quality-backfill-queue:
+    <<: *geoflow-current-runtime
+    environment:
+      AUTO_OPTIMIZE: "false"
+      CACHE_STORE: "redis"
+
+  ai-optimization-queue:
+    <<: *geoflow-current-runtime
+    environment:
+      AUTO_OPTIMIZE: "false"
+      CACHE_STORE: "redis"
+
+  knowledge-queue:
+    <<: *geoflow-current-runtime
+    environment:
+      AUTO_OPTIMIZE: "false"
+      CACHE_STORE: "redis"
+
+  scheduler:
+    <<: *geoflow-current-runtime
+    environment:
+      AUTO_OPTIMIZE: "false"
+      CACHE_STORE: "redis"
+
+  reverb:
+    <<: *geoflow-current-runtime
+    environment:
+      AUTO_OPTIMIZE: "false"
+      CACHE_STORE: "redis"

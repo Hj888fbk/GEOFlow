@@ -111,8 +111,8 @@ class ArticleAiQualityResultValidator
             }
 
             $factId = trim((string) ($rawIssue['fact_candidate_id'] ?? ''));
-            $knowledgeRefs = array_values(array_unique(array_map('strval', is_array($rawIssue['knowledge_refs'] ?? null) ? $rawIssue['knowledge_refs'] : [])));
-            $issueLegalRefs = array_values(array_unique(array_map('strval', is_array($rawIssue['legal_refs'] ?? null) ? $rawIssue['legal_refs'] : [])));
+            $knowledgeRefs = $this->referenceList($rawIssue['knowledge_refs'] ?? null);
+            $issueLegalRefs = $this->referenceList($rawIssue['legal_refs'] ?? null);
             $referencesValid = ($factId === '' || isset($factIds[$factId]))
                 && collect($knowledgeRefs)->every(fn (string $ref): bool => isset($evidenceIds[$ref]))
                 && collect($issueLegalRefs)->every(fn (string $ref): bool => isset($legalRefs[$ref]));
@@ -267,11 +267,11 @@ class ArticleAiQualityResultValidator
             $quote = Str::limit(trim((string) ($rawIssue['quote'] ?? '')), 200, '');
             $evidenceStatus = (string) ($rawIssue['evidence_status'] ?? '');
             $confidence = (float) ($rawIssue['confidence'] ?? -1);
+            $evidenceKeys = $this->referenceList($rawIssue['evidence_keys'] ?? null);
             if (! in_array($code, self::CODES, true)
                 || ! in_array($severity, ['critical', 'high', 'medium', 'low'], true)
                 || ! in_array($field, ['title', 'excerpt', 'content', 'keywords', 'meta_description'], true)
                 || ! in_array($evidenceStatus, ['supported', 'contradicted', 'unverified'], true)
-                || ! is_array($rawIssue['evidence_keys'] ?? null)
                 || $quote === ''
                 || $confidence < 0
                 || $confidence > 1) {
@@ -296,10 +296,6 @@ class ArticleAiQualityResultValidator
                 continue;
             }
 
-            $evidenceKeys = array_values(array_unique(array_map(
-                'strval',
-                array_filter($rawIssue['evidence_keys'], static fn (mixed $key): bool => is_scalar($key)),
-            )));
             $stableEvidenceKeys = array_values(array_unique(array_filter(array_map(
                 static fn (string $key): ?string => $evidenceReferenceMap[$key] ?? null,
                 $evidenceKeys,
@@ -381,6 +377,24 @@ class ArticleAiQualityResultValidator
             'reviewed_claim_hashes' => $reviewedClaimHashes,
             'truncated_issue_count' => max(0, min(65535, (int) $result['truncated_issue_count'])),
         ];
+    }
+
+    /** @return list<string> */
+    private function referenceList(mixed $references): array
+    {
+        if (! is_array($references) || ! array_is_list($references)) {
+            throw new UnexpectedValueException('ai_quality_issue_reference_invalid');
+        }
+
+        $normalized = [];
+        foreach ($references as $reference) {
+            if (! is_scalar($reference)) {
+                throw new UnexpectedValueException('ai_quality_issue_reference_invalid');
+            }
+            $normalized[] = (string) $reference;
+        }
+
+        return array_values(array_unique($normalized));
     }
 
     /**

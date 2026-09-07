@@ -68,6 +68,47 @@ class CommandDispatcherTest extends TestCase
     }
 
     #[Test]
+    public function article_ai_quality_recheck_requires_a_config_version(): void
+    {
+        $factory = new HttpFactory;
+        $factory->preventStrayRequests();
+        [$dispatcher, $input, $stdout, $stderr] = $this->harness($factory, [
+            'article', 'ai-quality-recheck', '42',
+            '--base-url', 'https://api.example.com', '--token', 'secret-token',
+        ]);
+
+        $this->expectException(CliException::class);
+        $this->expectExceptionMessage('缺少必填参数 --config-version');
+
+        $dispatcher->dispatch($input->getRawTokens(), $input, $stdout, $stderr);
+    }
+
+    #[Test]
+    #[DataProvider('invalidAiQualityConfigVersions')]
+    public function article_ai_quality_recheck_rejects_an_invalid_config_version(string $version): void
+    {
+        $factory = new HttpFactory;
+        $factory->preventStrayRequests();
+        [$dispatcher, $input, $stdout, $stderr] = $this->harness($factory, [
+            'article', 'ai-quality-recheck', '42', '--config-version', $version,
+            '--base-url', 'https://api.example.com', '--token', 'secret-token',
+        ]);
+
+        $this->expectException(CliException::class);
+        $this->expectExceptionMessage('--config-version 必须是正整数');
+
+        $dispatcher->dispatch($input->getRawTokens(), $input, $stdout, $stderr);
+    }
+
+    /** @return iterable<string,array{string}> */
+    public static function invalidAiQualityConfigVersions(): iterable
+    {
+        yield 'zero' => ['0'];
+        yield 'negative' => ['-1'];
+        yield 'text' => ['current'];
+    }
+
+    #[Test]
     #[DataProvider('articleUpdateWorkflowOptions')]
     public function article_update_rejects_workflow_only_direct_options(array $options): void
     {

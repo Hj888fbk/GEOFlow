@@ -302,6 +302,20 @@ return [
         'ark_responses_path' => env('GEOFLOW_ARK_RESPONSES_PATH', '/responses'),
         'default_search_count' => max(1, min(20, (int) env('GEOFLOW_AI_VISIBILITY_SEARCH_COUNT', 10))),
         'default_analysis_max_tokens' => max(512, (int) env('GEOFLOW_AI_VISIBILITY_ANALYSIS_MAX_TOKENS', 4096)),
+        // 被监测品牌与 GEOFlow 系统站点身份分离；别名、域名和词典使用 | 分隔。
+        'brand_name' => trim((string) env('GEOFLOW_AI_VISIBILITY_BRAND_NAME', '')),
+        'brand_aliases' => array_values(array_filter(array_map(
+            static fn (string $value): string => trim($value),
+            explode('|', (string) env('GEOFLOW_AI_VISIBILITY_BRAND_ALIASES', '')),
+        ))),
+        'owned_hosts' => array_values(array_filter(array_map(
+            static fn (string $value): string => trim($value),
+            explode('|', (string) env('GEOFLOW_AI_VISIBILITY_OWNED_HOSTS', '')),
+        ))),
+        'term_dictionary' => array_values(array_filter(array_map(
+            static fn (string $value): string => trim($value),
+            explode('|', (string) env('GEOFLOW_AI_VISIBILITY_TERM_DICTIONARY', '')),
+        ))),
     ],
 
     // 本地上传根目录（绝对路径）

@@ -46,7 +46,8 @@ final class ArticleContentPromptRenderer
         }
 
         $finalInstructions = array_values(array_filter([
-            $this->promptHasCitationMarkerConstraint($prompt) ? '' : $this->knowledgeAttributionInstruction($isEnglish),
+            $this->promptHasCitationMarkerConstraint($prompt) ? '' : $this->citationMarkerInstruction($isEnglish),
+            $this->publicFacingKnowledgeInstruction($isEnglish),
             $this->finalPromptInstruction($isEnglish),
         ], static fn (string $instruction): bool => trim($instruction) !== ''));
 
@@ -164,13 +165,22 @@ final class ArticleContentPromptRenderer
         return '请直接输出最终文章正文（Markdown），不要重复提示词、不要输出占位符。';
     }
 
-    private function knowledgeAttributionInstruction(bool $isEnglish): string
+    private function citationMarkerInstruction(bool $isEnglish): string
     {
         if ($isEnglish) {
             return 'Citation marker constraint: the final article must not contain internal evidence IDs, citation placeholders, or numbered citation markers, including [K1], [K2][K3], 【K1】, （K1）, or equivalent forms. When attribution is needed, use natural phrases such as “the materials show,” “the client confirmed,” or “according to the store materials,” without K-number labels. If the evidence is insufficient, use cautious wording and do not invent sources or conclusions.';
         }
 
         return '正文引用标注约束：最终文章中不得出现任何内部证据编号、引用占位符或编号引用标记，包括 [K1]、[K2][K3]、【K1】、（K1）及同类形式。文章中如需表达依据，直接写“资料显示”“客户确认”“根据门店资料”，不要添加 K 编号。证据不足时不要编造来源或结论。';
+    }
+
+    private function publicFacingKnowledgeInstruction(bool $isEnglish): string
+    {
+        if ($isEnglish) {
+            return 'Public-facing knowledge boundary: reference knowledge is internal grounding material only. Never expose internal knowledge-base names or identifiers, version numbers, evidence cutoff dates, governance or approval statuses, audit notes, or internal-only headings such as “Source and Publication Boundary” or “Internal Basis” in the final article. When a limitation is necessary for readers, rewrite it as concise, natural procurement guidance. Preserve cautious wording when evidence is limited, and never invent facts, sources, or conclusions.';
+        }
+
+        return '公开内容边界：参考知识仅用于内部事实支撑。最终文章不得披露内部知识库名称或编号、版本号、证据截止日期、治理或审批状态、审核备注，也不得出现“资料与发布边界”“内部依据”等仅供内部管理使用的标题或表述。确需向读者说明通用采购限制时，可写为“本文用于采购前期核对。具体型号、材料、压力等级、接口尺寸、检验要求与交付条件，应结合实际工况、项目图纸和技术协议，由供需双方书面确认。”证据有限时保留审慎措辞，不得编造事实、来源或结论。';
     }
 
     private function isLikelyEnglishPrompt(string $prompt): bool

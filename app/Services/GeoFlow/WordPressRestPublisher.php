@@ -22,7 +22,13 @@ class WordPressRestPublisher implements DistributionPublisherInterface
 
         $response = $this->requestFactory->request($channel, 10)
             ->get($channel->wordpressRestBaseUrl().'/wp/v2/users/me', ['context' => 'edit']);
-        $this->throwIfFailed($response, 'WordPress 健康检查');
+        if ($response->failed()) {
+            if ($this->currentUserRouteUnavailable($response)) {
+                return $this->healthFromAuthenticatedEditContext($channel);
+            }
+
+            $this->throwIfFailed($response, 'WordPress 健康检查');
+        }
         $user = $response->json();
         if (! is_array($user)) {
             $user = [];
@@ -38,6 +44,60 @@ class WordPressRestPublisher implements DistributionPublisherInterface
             'can_edit_posts' => (bool) ($capabilities['edit_posts'] ?? false),
             'can_publish_posts' => (bool) ($capabilities['publish_posts'] ?? false),
             'can_upload_files' => (bool) ($capabilities['upload_files'] ?? false),
+            'capability_source' => 'wp_v2_users_me',
+        ];
+    }
+
+    private function currentUserRouteUnavailable(Response $response): bool
+    {
+        if ($response->status() !== 404) {
+            return false;
+        }
+
+        $json = $response->json();
+
+        return is_array($json) && (string) ($json['code'] ?? '') === 'rest_no_route';
+    }
+
+    /**
+     * Some hardened WordPress sites intentionally remove the users REST routes.
+     * An authenticated edit-context request still distinguishes a working
+     * Application Password from anonymous access without changing remote data.
+     *
+     * @return array<string,mixed>
+     */
+    private function healthFromAuthenticatedEditContext(DistributionChannel $channel): array
+    {
+        $restBase = $channel->wordpressRestBaseUrl();
+        $probes = [
+            'posts' => '/wp/v2/posts',
+            'media' => '/wp/v2/media',
+            'categories' => '/wp/v2/categories',
+        ];
+
+        foreach ($probes as $label => $path) {
+            $response = $this->requestFactory->request($channel, 10)->get($restBase.$path, [
+                'context' => 'edit',
+                'per_page' => 1,
+                '_fields' => 'id',
+            ]);
+            $this->throwIfFailed($response, 'WordPress '.ucfirst($label).' 编辑上下文检查');
+        }
+
+        $config = $channel->resolvedChannelConfig();
+
+        return [
+            'ok' => true,
+            'channel_type' => 'wordpress_rest',
+            'rest_base_url' => $restBase,
+            'user_id' => 0,
+            'user_name' => (string) $config['wordpress_username'],
+            'can_edit_posts' => true,
+            'can_publish_posts' => null,
+            'can_upload_files' => null,
+            'capability_source' => 'authenticated_edit_context_fallback',
+            'authenticated_edit_contexts' => array_keys($probes),
+            'note' => '目标站点禁用了wp/v2/users/me；已通过文章、媒体和分类编辑上下文验证凭据。发布与上传权限仍以实际操作结果为准。',
         ];
     }
 

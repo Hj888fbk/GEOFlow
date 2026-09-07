@@ -35,9 +35,15 @@ class ArticleFactCandidateExtractor
                 if ($quote === '') {
                     continue;
                 }
+                if ($this->isMarkdownTableHeader($text, $byteOffset, strlen($raw))) {
+                    continue;
+                }
 
                 $type = $this->claimType($quote);
                 if ($type === null) {
+                    continue;
+                }
+                if ($field === 'keywords' && in_array($type, ['product_model', 'product_claim'], true)) {
                     continue;
                 }
 
@@ -107,6 +113,10 @@ class ArticleFactCandidateExtractor
 
     private function claimType(string $claim): ?string
     {
+        if (preg_match('/^\s*(?:(?:[-*+]|\d+\.)\s+)?!?\[[^\]]+\]\([^\)]+\)\s*$/u', $claim) === 1) {
+            return null;
+        }
+
         $patterns = [
             'percentage' => '/(?:\d+(?:[.,]\d+)?\s*(?:%|％)|百分之[零〇一二两三四五六七八九十百千万点\d.]+|(?:增长率|转化率|占比)\D{0,12}\d+(?:[.,]\d+)?\s*(?:%|％)?)/u',
             'amount' => '/(?:\d[\d,.]*\s*(?:元|万元|亿元|USD|CNY|RMB|\$|¥)|(?:\$|¥)\s*\d[\d,.]*|(?:价格|金额|售价|费用)\D{0,12}\d[\d,.]*|(?:人民币|美元|港元|欧元)\s*\d[\d,.]*)/iu',
@@ -117,6 +127,9 @@ class ArticleFactCandidateExtractor
             'citation' => '/(?:据.{0,20}(?:报告|研究|数据|统计|显示|披露)|(?:来源|引用|参考资料|文献|报告)\s*[:：]|“[^”]{4,}”|「[^」]{4,}」)/u',
             'comparison' => '/(?:高于|低于|超过|优于|不低于|不少于|同比|环比)/u',
             'quantity' => '/(?:\d[\d,.]*\s*(?:家|人|户|次|项|个|台|套|份|篇|件|所|名)|(?:客户|用户|门店|员工|项目|案例|企业|机构)\D{0,8}\d[\d,.]*)/u',
+            'technical_spec' => '/(?:(?:DN|PN|NPS)\s*\d+(?:\s*[—–~\-]\s*(?:(?:DN|PN|NPS)\s*)?\d+)?|\d+(?:[.,]\d+)?\s*(?:MPa|kPa|Pa|bar|℃|°C|mm|cm|m³\/h|m3\/h|L\/s|Hz|kW|rpm))/iu',
+            'product_model' => '/(?:(?:\b[A-Z]{2,}(?:[-\/]?[A-Z0-9]+)*\b).{0,80}(?:型号|产品|结构|连接|同心|偏心|单球体|双球体)|(?:型号|产品|结构|连接|同心|偏心|单球体|双球体).{0,80}(?:\b[A-Z]{2,}(?:[-\/]?[A-Z0-9]+)*\b))/u',
+            'product_claim' => '/(?:(?:橡胶(?:软)?接头|橡胶鸭嘴阀|鸭嘴(?:止回)?阀|卡箍|防护罩|传力接头|伸缩接头|补偿器).{0,80}(?:是|为|采用|适用|用于|提供|包含|具备|覆盖|连接|允许|能够|不能|不得)|(?:是|为|采用|适用|用于|提供|包含|具备|覆盖|连接|允许|能够|不能|不得).{0,80}(?:橡胶(?:软)?接头|橡胶鸭嘴阀|鸭嘴(?:止回)?阀|卡箍|防护罩|传力接头|伸缩接头|补偿器))/u',
         ];
 
         if (preg_match('/[？?]\s*$/u', $claim) === 1) {
@@ -132,9 +145,21 @@ class ArticleFactCandidateExtractor
         return null;
     }
 
+    private function isMarkdownTableHeader(string $text, int $byteOffset, int $byteLength): bool
+    {
+        $candidate = trim(substr($text, $byteOffset, $byteLength));
+        if (! str_starts_with($candidate, '|') || substr_count($candidate, '|') < 2) {
+            return false;
+        }
+
+        $remaining = substr($text, $byteOffset + $byteLength);
+
+        return preg_match('/^\r?\n\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?/u', $remaining) === 1;
+    }
+
     private function materiality(string $type): string
     {
-        return in_array($type, ['percentage', 'amount', 'date', 'ranking', 'qualification', 'guarantee', 'citation'], true)
+        return in_array($type, ['percentage', 'amount', 'date', 'ranking', 'qualification', 'guarantee', 'citation', 'technical_spec'], true)
             ? 'high'
             : 'medium';
     }
@@ -142,6 +167,15 @@ class ArticleFactCandidateExtractor
     private function normalizeClaim(string $claim): string
     {
         $normalized = Str::squish($claim);
+        if (str_starts_with($normalized, '|') && substr_count($normalized, '|') >= 2) {
+            $claimCells = array_values(array_filter(
+                array_map('trim', explode('|', trim($normalized, '|'))),
+                fn (string $cell): bool => $cell !== '' && $this->claimType($cell) !== null,
+            ));
+            if ($claimCells !== []) {
+                $normalized = implode('；', $claimCells);
+            }
+        }
         $normalized = preg_replace('/[。！？!?；;，,：:\s]+$/u', '', $normalized) ?? $normalized;
 
         return trim($normalized);
