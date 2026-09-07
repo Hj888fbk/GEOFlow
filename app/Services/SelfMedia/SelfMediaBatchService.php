@@ -99,9 +99,10 @@ final readonly class SelfMediaBatchService
             }
 
             $pendingLimit = max(1, (int) ($policy?->pending_batch_limit ?? self::DEFAULT_PENDING_BATCH_LIMIT));
+            // 注意：PostgreSQL 不允许聚合查询加 FOR UPDATE；同篇文章的并发创建已由
+            // 上游（回执行锁 updateOrCreate / 文章行锁）串行化，这里的计数无需再加锁。
             $pendingCount = ManualPublicationBatch::query()
                 ->whereIn('status', ManualPublicationBatch::PENDING_STATUSES)
-                ->lockForUpdate()
                 ->count();
             if ($pendingCount >= $pendingLimit) {
                 throw new DomainException('待审核发布批次已达到上限。');
