@@ -64,6 +64,11 @@ textarea { resize: vertical; }
 .task-topline { display: flex; align-items: center; justify-content: space-between; }
 .task-detail h1 { font-size: 19px; }
 .content-preview { max-height: 220px; overflow: auto; padding: 12px; border-radius: var(--radius-sm); background: #f8fafc; color: #344054; line-height: 1.7; white-space: pre-wrap; }
+.media-assets { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.media-assets__list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.media-item { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: 11px; }
+.media-item img { width: 100%; aspect-ratio: 4 / 3; border-radius: 5px; background: #f2f4f7; object-fit: cover; }
+.media-item span { overflow-wrap: anywhere; }
 .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .action-grid .primary { grid-column: 1 / -1; }
 .result-panel { padding-top: 16px; border-top: 1px solid var(--line); }

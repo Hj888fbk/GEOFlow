@@ -32,7 +32,7 @@ return [
     'stats' => ['total' => 'Total', 'ready' => 'Ready', 'in_progress' => 'In progress', 'completed' => 'Completed'],
     'type' => ['post' => 'Post', 'comment' => 'Comment'],
     'status' => [
-        'draft' => 'Draft', 'ready' => 'Ready', 'in_progress' => 'In progress', 'completed' => 'Completed',
+        'draft' => 'Draft', 'ready' => 'Pending platform', 'in_progress' => 'Claimed', 'draft_filled' => 'Draft filled', 'completed' => 'Published',
         'failed' => 'Failed', 'skipped' => 'Skipped', 'cancelled' => 'Cancelled', 'outcome_unknown' => 'Needs verification',
     ],
     'action' => [
@@ -45,6 +45,8 @@ return [
         'lost' => 'Connection lost, verify the platform before recovery', 'last_seen' => 'Last heartbeat: :time',
     ],
     'platform' => [
+        'qq_penguin' => 'Penguin Media', 'zhihu_column' => 'Zhihu Column', 'baijiahao' => 'Baijiahao', 'netease_media' => 'NetEase Media',
+        'sohu_media' => 'Sohu Media', 'csdn' => 'CSDN', 'dayu' => 'Dayu Media',
         'zhihu' => 'Zhihu', 'xiaohongshu' => 'Xiaohongshu', 'weibo' => 'Weibo', 'wechat' => 'WeChat Official Account',
         'douyin' => 'Douyin', 'bilibili' => 'Bilibili', 'reddit' => 'Reddit', 'x' => 'X', 'linkedin' => 'LinkedIn', 'custom' => 'Custom platform',
     ],

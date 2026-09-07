@@ -22,6 +22,8 @@ class ManualPublication extends Model
 
     public const STATUS_IN_PROGRESS = 'in_progress';
 
+    public const STATUS_DRAFT_FILLED = 'draft_filled';
+
     public const STATUS_COMPLETED = 'completed';
 
     public const STATUS_FAILED = 'failed';
@@ -36,6 +38,7 @@ class ManualPublication extends Model
         self::STATUS_DRAFT,
         self::STATUS_READY,
         self::STATUS_IN_PROGRESS,
+        self::STATUS_DRAFT_FILLED,
         self::STATUS_COMPLETED,
         self::STATUS_FAILED,
         self::STATUS_SKIPPED,
@@ -66,6 +69,7 @@ class ManualPublication extends Model
 
     protected $fillable = [
         'type',
+        'manual_publication_batch_id',
         'article_id',
         'persona_id',
         'account_id',
@@ -77,6 +81,13 @@ class ManualPublication extends Model
         'target_url_hash',
         'target_context',
         'content',
+        'platform_title',
+        'platform_summary',
+        'body_markdown',
+        'body_html',
+        'tags',
+        'media_manifest',
+        'source_hash',
         'content_fingerprint',
         'source_snapshot',
         'identity_snapshot',
@@ -91,6 +102,8 @@ class ManualPublication extends Model
         'completion_url',
         'result_note',
         'execution_receipt',
+        'draft_filled_receipt',
+        'source_stale_at',
         'browser_claimed_by_token_id',
         'browser_claimed_at',
         'browser_last_seen_at',
@@ -102,6 +115,7 @@ class ManualPublication extends Model
     {
         return [
             'article_id' => 'integer',
+            'manual_publication_batch_id' => 'integer',
             'persona_id' => 'integer',
             'account_id' => 'integer',
             'assigned_admin_id' => 'integer',
@@ -115,6 +129,10 @@ class ManualPublication extends Model
             'status_changed_at' => 'datetime',
             'completed_at' => 'datetime',
             'execution_receipt' => 'array',
+            'draft_filled_receipt' => 'array',
+            'tags' => 'array',
+            'media_manifest' => 'array',
+            'source_stale_at' => 'datetime',
             'browser_claimed_by_token_id' => 'integer',
             'browser_claimed_at' => 'datetime',
             'browser_last_seen_at' => 'datetime',
@@ -125,6 +143,11 @@ class ManualPublication extends Model
     public function article(): BelongsTo
     {
         return $this->belongsTo(Article::class, 'article_id')->withTrashed();
+    }
+
+    public function batch(): BelongsTo
+    {
+        return $this->belongsTo(ManualPublicationBatch::class, 'manual_publication_batch_id');
     }
 
     public function persona(): BelongsTo
@@ -190,7 +213,8 @@ class ManualPublication extends Model
         return match ($status) {
             self::STATUS_DRAFT => [self::STATUS_READY, self::STATUS_CANCELLED],
             self::STATUS_READY => [self::STATUS_IN_PROGRESS, self::STATUS_CANCELLED],
-            self::STATUS_IN_PROGRESS => [self::STATUS_READY, self::STATUS_COMPLETED, self::STATUS_FAILED, self::STATUS_SKIPPED, self::STATUS_CANCELLED, self::STATUS_OUTCOME_UNKNOWN],
+            self::STATUS_IN_PROGRESS => [self::STATUS_READY, self::STATUS_DRAFT_FILLED, self::STATUS_COMPLETED, self::STATUS_FAILED, self::STATUS_SKIPPED, self::STATUS_CANCELLED, self::STATUS_OUTCOME_UNKNOWN],
+            self::STATUS_DRAFT_FILLED => [self::STATUS_IN_PROGRESS, self::STATUS_COMPLETED, self::STATUS_FAILED, self::STATUS_CANCELLED, self::STATUS_OUTCOME_UNKNOWN],
             self::STATUS_FAILED, self::STATUS_SKIPPED, self::STATUS_CANCELLED => [self::STATUS_READY],
             self::STATUS_OUTCOME_UNKNOWN => [self::STATUS_READY, self::STATUS_COMPLETED, self::STATUS_FAILED],
             default => [],

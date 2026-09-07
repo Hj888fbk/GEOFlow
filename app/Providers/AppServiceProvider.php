@@ -8,11 +8,13 @@ use App\Contracts\ArticleAiOptimizationRefiner;
 use App\Contracts\ArticleAiQualityReviewer;
 use App\Contracts\Outbound\HostResolver;
 use App\Contracts\Outbound\OutboundTransport;
+use App\Contracts\SelfMediaContentGenerator;
 use App\Contracts\SystemUpdater\AgentClient;
 use App\Http\ApiAuthContext;
 use App\Jobs\GenerateKnowledgeFactBatchJob;
 use App\Jobs\ProcessTitleGenerationBatchJob;
 use App\Models\Admin;
+use App\Models\Article;
 use App\Models\KnowledgeFactGenerationRun;
 use App\Services\Admin\AdminUpdateMetadataService;
 use App\Services\Admin\AdminWelcomeModalService;
@@ -32,6 +34,8 @@ use App\Services\Outbound\LaravelPinnedOutboundTransport;
 use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Services\Outbound\SecureHttpFactory;
 use App\Services\Outbound\SystemHostResolver;
+use App\Services\SelfMedia\AiSelfMediaContentGenerator;
+use App\Services\SelfMedia\SelfMediaBatchService;
 use App\Services\Site\HostedSiteResolver;
 use App\Services\SystemUpdater\UnixSocketAgentClient;
 use App\Support\AdminUiRegistry;
@@ -66,6 +70,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ArticleAiOptimizationRefiner::class, LaravelArticleAiOptimizationRefiner::class);
         $this->app->bind(AgentClient::class, UnixSocketAgentClient::class);
         $this->app->bind(AiModelWriteLock::class, DatabaseAiModelWriteLock::class);
+        $this->app->bind(SelfMediaContentGenerator::class, AiSelfMediaContentGenerator::class);
         $this->app->singleton(FinalOutboundSecurityPolicy::class);
         $this->app->bind(OutboundTransport::class, function () use ($fixedContextCapability): LaravelPinnedOutboundTransport {
             return new LaravelPinnedOutboundTransport($fixedContextCapability);
@@ -100,6 +105,11 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->assertHostedSiteConfiguration();
+        Article::updated(function (Article $article): void {
+            if ($article->wasChanged(['title', 'excerpt', 'content'])) {
+                app(SelfMediaBatchService::class)->invalidateForChangedArticle($article);
+            }
+        });
         Event::listen(WorkerStarting::class, function (WorkerStarting $event): void {
             app(ArticleAiQualityWorkerLiveness::class)->record((string) $event->connectionName, (string) $event->queue);
         });

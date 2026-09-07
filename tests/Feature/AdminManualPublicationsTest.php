@@ -291,6 +291,31 @@ class AdminManualPublicationsTest extends TestCase
         ])->assertRedirect();
 
         $this->assertDatabaseHas('manual_publication_accounts', ['account_name' => 'GEOFlow LinkedIn']);
+        $this->actingAs($superAdmin, 'admin')->post(route('admin.manual-publications.settings.accounts.store'), [
+            'persona_id' => $persona->getKey(),
+            'platform' => ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+            'account_name' => 'GEOFlow 百家号 UID 账号',
+            'editor_url' => 'https://baijiahao.baidu.com/builder/rc/edit',
+            'account_uid' => '778899',
+            'browser_adapter_enabled' => '1',
+            'is_active' => '1',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('manual_publication_accounts', [
+            'account_name' => 'GEOFlow 百家号 UID 账号',
+            'profile_url' => null,
+            'account_uid' => '778899',
+            'browser_adapter_enabled' => true,
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')->post(route('admin.manual-publications.settings.accounts.store'), [
+            'persona_id' => $persona->getKey(),
+            'platform' => ManualPublicationAccount::PLATFORM_SOHU_MEDIA,
+            'account_name' => '缺少账号标识的搜狐号',
+            'editor_url' => 'https://mp.sohu.com/mpfe/v4/contentManagement/news/add',
+            'browser_adapter_enabled' => '1',
+            'is_active' => '1',
+        ])->assertSessionHasErrors(['profile_url']);
+
         $sanitize = new \ReflectionMethod(AdminActivityLogger::class, 'sanitizePayload');
         $details = $sanitize->invoke(null, [
             'bio' => '这是一段不应完整进入审计日志的身份介绍。',

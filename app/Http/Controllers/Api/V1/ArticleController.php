@@ -18,11 +18,13 @@ use App\Services\GeoFlow\AiQualityAuditService;
 use App\Services\GeoFlow\ArticleAiOptimizationCoordinator;
 use App\Services\GeoFlow\ArticleAiOptimizationException;
 use App\Services\GeoFlow\ArticleGeoFlowService;
+use App\Services\SelfMedia\WebsitePublicationReceiptService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 
 /**
  * API v1 文章（articles）管理：列表、创建、详情、更新、审核、发布、软删除。
@@ -32,6 +34,52 @@ use Illuminate\Support\Facades\DB;
  */
 class ArticleController extends BaseApiController
 {
+    public function websitePublicationReceipt(
+        Request $request,
+        int $article,
+        WebsitePublicationReceiptService $receipts,
+    ): JsonResponse {
+        if (trim((string) $request->header('X-Idempotency-Key')) === '') {
+            throw new ApiException('idempotency_key_required', '缺少 X-Idempotency-Key', 422);
+        }
+        $validator = Validator::make($request->all(), [
+            'receipt_id' => ['nullable', 'string', 'max:255'],
+            'responsible_project_id' => ['required', 'in:HJ-WEB'],
+            'formal_url' => ['required', 'url:http,https', 'max:1000'],
+            'http_status' => ['required', 'integer', 'in:200'],
+            'source_hash' => ['required', 'regex:/\A[a-f0-9]{64}\z/D'],
+            'readback_hash' => ['required', 'regex:/\A[a-f0-9]{64}\z/D'],
+            'verified_at' => ['required', 'date'],
+        ]);
+        if ($validator->fails()) {
+            throw new ApiException('validation_failed', '官网发布回执格式无效', 422, ['field_errors' => $validator->errors()->toArray()]);
+        }
+
+        return IdempotencyService::executeJson($request, 'POST /articles/{id}/website-publication-receipt', function () use ($request, $article, $receipts, $validator): JsonResponse {
+            $admin = Admin::query()->whereKey($this->auth($request)->auditAdminId)->where('status', 'active')->first();
+            if (! $admin instanceof Admin) {
+                throw new ApiException('unauthorized', '管理员账号不可用', 401);
+            }
+            try {
+                $receipt = $receipts->record(Article::query()->findOrFail($article), $validator->validated(), $admin);
+            } catch (\DomainException $exception) {
+                throw new ApiException('website_readback_failed', $exception->getMessage(), 409);
+            }
+
+            return $this->success($request, [
+                'receipt' => [
+                    'id' => (int) $receipt->id,
+                    'article_id' => (int) $receipt->article_id,
+                    'formal_url' => (string) $receipt->formal_url,
+                    'http_status' => (int) $receipt->http_status,
+                    'source_hash' => (string) $receipt->source_hash,
+                    'readback_hash' => (string) $receipt->readback_hash,
+                    'verified_at' => $receipt->verified_at?->toIso8601String(),
+                ],
+            ], 201);
+        });
+    }
+
     /**
      * 分页列表，支持多维筛选。
      *

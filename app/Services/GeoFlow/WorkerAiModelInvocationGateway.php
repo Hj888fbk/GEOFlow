@@ -27,6 +27,7 @@ final readonly class WorkerAiModelInvocationGateway
      * @template TResult
      *
      * @param  Closure(array{model:AiModel,response:AgentResponse,receipt:array{model_id:int,request_id:string,configuration_digest:string}}): TResult  $persistResponse
+     * @param  array{call_key?:string,operation?:string,business_source?:string}  $usageIdentity
      * @return TResult
      */
     public function generate(
@@ -34,6 +35,7 @@ final readonly class WorkerAiModelInvocationGateway
         AiModel|int $model,
         string $prompt,
         Closure $persistResponse,
+        array $usageIdentity = [],
     ): mixed {
         $modelId = $model instanceof AiModel ? (int) $model->getKey() : $model;
         if ($modelId <= 0) {
@@ -55,7 +57,7 @@ final readonly class WorkerAiModelInvocationGateway
             $response = $this->generationService->generate(
                 $currentModel,
                 $prompt,
-                function (AiModel $providerModel) use (&$usageAttempt, $executionContext, $usageRequestId, $prompt): void {
+                function (AiModel $providerModel) use (&$usageAttempt, $executionContext, $usageRequestId, $prompt, $usageIdentity): void {
                     $usageAttempt = $this->usageAttempts->beginForAdmin(
                         model: $providerModel,
                         executionAdminId: $executionContext->modelAccessAdminId,
@@ -67,9 +69,9 @@ final readonly class WorkerAiModelInvocationGateway
                         ),
                         requestId: $usageRequestId,
                         requestPayload: $prompt,
-                        callKey: 'candidate-1',
-                        operation: 'article.generate',
-                        businessSource: 'worker_article_generation',
+                        callKey: trim((string) ($usageIdentity['call_key'] ?? 'candidate-1')) ?: 'candidate-1',
+                        operation: trim((string) ($usageIdentity['operation'] ?? 'article.generate')) ?: 'article.generate',
+                        businessSource: trim((string) ($usageIdentity['business_source'] ?? 'worker_article_generation')) ?: 'worker_article_generation',
                         sourceType: $executionContext->sourceType,
                         sourceId: $executionContext->sourceId,
                     );

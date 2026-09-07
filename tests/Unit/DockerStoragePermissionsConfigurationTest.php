@@ -150,11 +150,11 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
         $this->assertSame('18082', $second['services']['web']['ports'][0]['published'] ?? null);
         $this->assertStringEndsWith(
             '/docker-data/prod-a/postgres',
-            $first['services']['postgres']['volumes'][0]['source'] ?? ''
+            str_replace('\\', '/', $first['services']['postgres']['volumes'][0]['source'] ?? '')
         );
         $this->assertStringEndsWith(
             '/docker-data/prod-b/postgres',
-            $second['services']['postgres']['volumes'][0]['source'] ?? ''
+            str_replace('\\', '/', $second['services']['postgres']['volumes'][0]['source'] ?? '')
         );
 
         foreach ([['project' => 'geoflow-a', 'rendered' => $first], ['project' => 'geoflow-b', 'rendered' => $second]] as $scenario) {

@@ -6,7 +6,7 @@ import {
     getConnection, getCurrentTask, getPendingAuthorization, setConnection, setCurrentTask,
     setPendingAuthorization,
 } from '../lib/storage.js';
-import { observeZhihuAnswerResult, runZhihuAnswerAdapter } from '../adapters/zhihu-answer.js';
+import { adapterForAction, supportedAdapterActions } from '../adapters/registry.js';
 
 const VERSION = chrome.runtime.getManifest().version;
 const byId = (id) => document.getElementById(id);
@@ -14,8 +14,8 @@ const elements = Object.fromEntries([
     'connect-view', 'workspace-view', 'connect-form', 'base-url', 'pending-card', 'user-code',
     'open-approval', 'cancel-pairing', 'admin-name', 'connection-dot', 'refresh-tasks', 'disconnect',
     'queue-view', 'task-view', 'task-list', 'empty-state', 'queue-meta', 'back-to-queue',
-    'task-platform', 'task-status', 'task-title', 'task-account', 'task-content', 'claim-task',
-    'open-target', 'copy-content', 'fill-zhihu', 'release-task', 'result-panel', 'completion-url',
+    'task-platform', 'task-status', 'task-title', 'task-account', 'task-content', 'task-media', 'task-media-list', 'claim-task',
+    'open-target', 'copy-content', 'fill-draft', 'release-task', 'result-panel', 'completion-url',
     'result-note', 'observe-result', 'complete-task', 'unknown-task', 'cancel-task', 'fail-task', 'notice',
 ].map((id) => [id.replaceAll('-', '_'), byId(id)]));
 
@@ -51,6 +51,38 @@ function showConnected(connected) {
     elements.connect_view.classList.toggle('hidden', connected);
     elements.workspace_view.classList.toggle('hidden', ! connected);
     elements.connection_dot.classList.toggle('connected', connected);
+}
+
+function renderMediaManifest(task) {
+    const media = Array.isArray(task.publication_payload?.media_manifest)
+        ? task.publication_payload.media_manifest
+        : [];
+    elements.task_media_list.replaceChildren();
+    elements.task_media.classList.toggle('hidden', media.length === 0);
+
+    for (const item of media) {
+        const card = document.createElement('div');
+        card.className = 'media-item';
+        const preview = String(item.preview_url ?? '').trim();
+        if (preview) {
+            try {
+                const url = new URL(preview, connection?.baseUrl);
+                if (['https:', 'http:'].includes(url.protocol) && ! url.username && ! url.password) {
+                    const image = document.createElement('img');
+                    image.src = url.toString();
+                    image.alt = String(item.name ?? `#${item.image_id}`);
+                    image.loading = 'lazy';
+                    image.referrerPolicy = 'no-referrer';
+                    card.append(image);
+                }
+            } catch {}
+        }
+        const label = document.createElement('span');
+        const role = item.role === 'cover' ? message('coverImage') : message('bodyImage');
+        label.textContent = `${role} · ${String(item.name ?? `#${item.image_id}`)}`;
+        card.append(label);
+        elements.task_media_list.append(card);
+    }
 }
 
 async function handleOperationalError(error) {
@@ -200,7 +232,7 @@ async function selectTask(task) {
     }
 
     selectedTask = task;
-    if (task.status === 'in_progress') {
+    if (['in_progress', 'draft_filled'].includes(task.status)) {
         currentTask = resumeClaimedTask(currentTask, task);
         await setCurrentTask(currentTask);
     }
@@ -209,13 +241,18 @@ async function selectTask(task) {
     elements.task_platform.textContent = task.platform;
     elements.task_status.textContent = task.status;
     elements.task_title.textContent = task.publication_payload?.title || `${task.platform} #${task.id}`;
-    elements.task_account.textContent = task.account ? `${task.account.name} · ${task.account.profile_url}` : message('accountMissing');
+    const accountIdentifier = task.account?.profile_url || task.account?.account_uid || task.account?.homepage_identifier || '';
+    elements.task_account.textContent = task.account ? `${task.account.name}${accountIdentifier ? ` · ${accountIdentifier}` : ''}` : message('accountMissing');
     elements.task_content.textContent = task.publication_payload?.body_plain ?? '';
-    const claimed = task.status === 'in_progress';
+    renderMediaManifest(task);
+    const claimed = ['in_progress', 'draft_filled'].includes(task.status);
     elements.claim_task.classList.toggle('hidden', claimed);
-    elements.fill_zhihu.classList.toggle('hidden', ! claimed || task.publication_payload?.target_action !== 'zhihu_answer');
-    elements.release_task.classList.toggle('hidden', ! claimed);
+    const action = task.publication_payload?.target_action;
+    elements.fill_draft.classList.toggle('hidden', ! claimed || task.status === 'draft_filled' || ! supportedAdapterActions().includes(action));
+    elements.release_task.classList.toggle('hidden', ! claimed || task.status === 'draft_filled');
     elements.result_panel.classList.toggle('hidden', ! claimed);
+    const requiresReadback = Number(task.publication_payload?.schema_version ?? 1) >= 2;
+    elements.complete_task.disabled = requiresReadback && ! currentTask?.publicUrlReadback?.succeeded;
     if (claimed) startHeartbeat(task.id);
 }
 
@@ -264,25 +301,50 @@ async function waitForTab(tabId) {
     throw new Error(message('pageLoadTimeout'));
 }
 
-async function fillZhihu() {
+async function fillDraft() {
     try {
         let tabId = currentTask?.tabId;
         if (! tabId) tabId = (await openTarget())?.id;
         if (! tabId) return;
         await waitForTab(tabId);
-        let [execution] = await chrome.scripting.executeScript({
-            target: { tabId }, func: runZhihuAnswerAdapter,
-            args: [selectedTask.publication_payload, selectedTask.account.profile_url, false],
-        });
-        if (execution.result?.code === 'editor_not_empty' && window.confirm(message('replaceDraftConfirm'))) {
+        const action = selectedTask.publication_payload?.target_action;
+        const registered = adapterForAction(action);
+        if (! registered) throw new Error(message('adapter_not_implemented'));
+        const isLegacyZhihu = registered.kind === 'legacy_zhihu';
+        const adapter = registered.execute;
+        const args = isLegacyZhihu
+            ? [selectedTask.publication_payload, selectedTask.account.profile_url, false]
+            : [action, selectedTask.publication_payload, selectedTask.account, false];
+        let [execution] = await chrome.scripting.executeScript({ target: { tabId }, func: adapter, args });
+        if (isLegacyZhihu && execution.result?.code === 'editor_not_empty' && window.confirm(message('replaceDraftConfirm'))) {
             [execution] = await chrome.scripting.executeScript({
-                target: { tabId }, func: runZhihuAnswerAdapter,
+                target: { tabId }, func: registered.execute,
                 args: [selectedTask.publication_payload, selectedTask.account.profile_url, true],
             });
         }
         if (! execution.result?.ok) throw new Error(message(execution.result?.code, execution.result?.code));
         currentTask.observedProfileUrl = execution.result.observedProfileUrl;
+        currentTask.observedAccountProof = execution.result.accountProof || execution.result.observedProfileUrl;
+        currentTask.accountVerified = Boolean(currentTask.observedAccountProof);
+        if (! isLegacyZhihu) {
+            const observedHash = await sha256AccountProof(currentTask.observedAccountProof);
+            const data = await client.request(`/api/v1/manual-publications/${selectedTask.id}/draft-receipt`, {
+                method: 'POST',
+                body: {
+                    revision: selectedTask.revision,
+                    adapter_version: VERSION,
+                    target_origin: new URL(selectedTask.target_url).origin,
+                    observed_account_hash: observedHash,
+                    filled_fields: execution.result.filledFields,
+                    finished_at: new Date().toISOString(),
+                },
+                idempotencyKey: crypto.randomUUID(),
+            });
+            selectedTask = data.publication;
+            currentTask.publication = selectedTask;
+        }
         await setCurrentTask(currentTask);
+        await selectTask(selectedTask);
         showNotice(message('draftFilled'));
     } catch (error) {
         await handleOperationalError(error);
@@ -292,26 +354,44 @@ async function fillZhihu() {
 async function observeResult() {
     try {
         if (! currentTask?.tabId) throw new Error(message('targetMissing'));
-        const [execution] = await chrome.scripting.executeScript({ target: { tabId: currentTask.tabId }, func: observeZhihuAnswerResult });
+        const action = selectedTask.publication_payload?.target_action;
+        const registered = adapterForAction(action);
+        if (! registered) throw new Error(message('adapter_not_implemented'));
+        const [execution] = registered.kind === 'legacy_zhihu'
+            ? await chrome.scripting.executeScript({ target: { tabId: currentTask.tabId }, func: registered.observe })
+            : await chrome.scripting.executeScript({ target: { tabId: currentTask.tabId }, func: registered.observe, args: [action] });
         if (execution.result?.completionUrl) elements.completion_url.value = execution.result.completionUrl;
+        currentTask.publicUrlReadback = {
+            url: execution.result?.completionUrl ?? null,
+            status: execution.result?.readbackStatus ?? null,
+            succeeded: Boolean(execution.result?.readbackSucceeded),
+        };
+        await setCurrentTask(currentTask);
+        await selectTask(selectedTask);
         showNotice(message(execution.result?.outcome === 'completed' ? 'resultDetected' : 'resultUnknown'));
     } catch (error) {
         showNotice(error.message, true);
     }
 }
 
-async function sha256Profile(value) {
-    const url = new URL(String(value));
-    url.search = '';
-    url.hash = '';
-    const canonical = url.toString().replace(/\/$/, '').toLowerCase();
+async function sha256AccountProof(value) {
+    let canonical = String(value).trim().toLowerCase();
+    if (! canonical.startsWith('uid:') && ! canonical.startsWith('homepage:')) {
+        const url = new URL(canonical);
+        url.search = '';
+        url.hash = '';
+        canonical = url.toString().replace(/\/$/, '').toLowerCase();
+    }
     const bytes = new TextEncoder().encode(canonical);
     const digest = await crypto.subtle.digest('SHA-256', bytes);
     return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 async function copyTaskContent() {
-    const content = selectedTask.publication_payload?.body_plain ?? '';
+    const payload = selectedTask.publication_payload ?? {};
+    const content = Number(payload.schema_version ?? 1) >= 2
+        ? [payload.title, payload.summary, payload.body_markdown || payload.body_plain, (payload.tags || []).join('、')].filter(Boolean).join('\n\n')
+        : payload.body_plain ?? '';
     try {
         await navigator.clipboard.writeText(content);
     } catch {
@@ -332,9 +412,15 @@ async function submitReceipt(outcome) {
     try {
         const completionUrl = elements.completion_url.value.trim() || null;
         if (outcome === 'completed' && ! completionUrl) throw new Error(message('completionRequired'));
-        const requiresVerifiedAccount = selectedTask.publication_payload?.target_action === 'zhihu_answer'
+        if (outcome === 'completed'
+            && Number(selectedTask.publication_payload?.schema_version ?? 1) >= 2
+            && currentTask?.publicUrlReadback?.url !== completionUrl) {
+            throw new Error(message('publicUrlReadbackRequired'));
+        }
+        const requiresVerifiedAccount = (Number(selectedTask.publication_payload?.schema_version ?? 1) >= 2
+            || selectedTask.publication_payload?.target_action === 'zhihu_answer')
             && ['completed', 'outcome_unknown'].includes(outcome);
-        if (requiresVerifiedAccount && ! currentTask?.observedProfileUrl) {
+        if (requiresVerifiedAccount && ! currentTask?.accountVerified) {
             throw new Error(message('accountNotVerified'));
         }
         const targetOrigin = new URL(selectedTask.target_url).origin;
@@ -344,13 +430,16 @@ async function submitReceipt(outcome) {
             completion_url: completionUrl,
             adapter_version: VERSION,
             target_origin: targetOrigin,
-            observed_account_hash: currentTask?.observedProfileUrl
-                ? await sha256Profile(currentTask.observedProfileUrl)
+            observed_account_hash: currentTask?.observedAccountProof
+                ? await sha256AccountProof(currentTask.observedAccountProof)
                 : null,
             started_at: currentTask?.startedAt ?? new Date().toISOString(),
             finished_at: new Date().toISOString(),
             result_note: elements.result_note.value.trim() || null,
             error_code: outcome === 'failed' ? 'operator_reported_failure' : null,
+            public_url_readback_status: currentTask?.publicUrlReadback?.status ?? null,
+            public_url_readback_succeeded: Boolean(currentTask?.publicUrlReadback?.succeeded),
+            public_url_readback_url: currentTask?.publicUrlReadback?.url ?? null,
         };
         await client.request(`/api/v1/manual-publications/${selectedTask.id}/receipt`, {
             method: 'POST', body, idempotencyKey: crypto.randomUUID(),
@@ -413,7 +502,7 @@ elements.open_target.addEventListener('click', openTarget);
 elements.copy_content.addEventListener('click', async () => {
     try { await copyTaskContent(); } catch (error) { showNotice(error.message, true); }
 });
-elements.fill_zhihu.addEventListener('click', fillZhihu);
+elements.fill_draft.addEventListener('click', fillDraft);
 elements.release_task.addEventListener('click', releaseTask);
 elements.observe_result.addEventListener('click', observeResult);
 elements.complete_task.addEventListener('click', () => submitReceipt('completed'));

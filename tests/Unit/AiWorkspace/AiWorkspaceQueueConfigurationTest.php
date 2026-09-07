@@ -42,7 +42,7 @@ final class AiWorkspaceQueueConfigurationTest extends TestCase
         self::assertSame('default', $workspace['queue']);
         self::assertSame('redis', $workspace['interactive_connection']);
         self::assertSame('default', $workspace['interactive_queue']);
-        self::assertStringContainsString('--queue=system-updates,geoflow,distribution,theme-replication,default', $compose);
+        self::assertStringContainsString('--queue=system-updates,geoflow,distribution,theme-replication,self-media,default', $compose);
         self::assertContains('default', $horizon['defaults']['supervisor-1']['queue']);
     }
 

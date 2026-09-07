@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\ManualPublication;
+use App\Models\ManualPublicationBatch;
 use PHPUnit\Framework\TestCase;
 
 class ManualPublicationStateTest extends TestCase
@@ -33,5 +34,31 @@ class ManualPublicationStateTest extends TestCase
 
         $completed = new ManualPublication(['status' => ManualPublication::STATUS_COMPLETED]);
         $this->assertFalse($completed->isReopenTransition(ManualPublication::STATUS_READY));
+    }
+
+    public function test_batch_status_aggregates_active_pending_and_terminal_work_orders(): void
+    {
+        $this->assertSame(ManualPublicationBatch::STATUS_ACTIVE, ManualPublicationBatch::statusFromPublications([
+            ManualPublication::STATUS_DRAFT_FILLED,
+            ManualPublication::STATUS_READY,
+        ], ManualPublicationBatch::STATUS_PENDING_PLATFORM));
+        $this->assertSame(ManualPublicationBatch::STATUS_PENDING_VERIFICATION, ManualPublicationBatch::statusFromPublications([
+            ManualPublication::STATUS_OUTCOME_UNKNOWN,
+            ManualPublication::STATUS_COMPLETED,
+        ], ManualPublicationBatch::STATUS_ACTIVE));
+        $this->assertSame(ManualPublicationBatch::STATUS_PENDING_PLATFORM, ManualPublicationBatch::statusFromPublications([
+            ManualPublication::STATUS_READY,
+            ManualPublication::STATUS_COMPLETED,
+        ], ManualPublicationBatch::STATUS_ACTIVE));
+        $this->assertSame(ManualPublicationBatch::STATUS_COMPLETED, ManualPublicationBatch::statusFromPublications([
+            ManualPublication::STATUS_COMPLETED,
+        ], ManualPublicationBatch::STATUS_ACTIVE));
+        $this->assertSame(ManualPublicationBatch::STATUS_CANCELLED, ManualPublicationBatch::statusFromPublications([
+            ManualPublication::STATUS_CANCELLED,
+        ], ManualPublicationBatch::STATUS_ACTIVE));
+        $this->assertSame(ManualPublicationBatch::STATUS_FAILED, ManualPublicationBatch::statusFromPublications([
+            ManualPublication::STATUS_COMPLETED,
+            ManualPublication::STATUS_FAILED,
+        ], ManualPublicationBatch::STATUS_ACTIVE));
     }
 }

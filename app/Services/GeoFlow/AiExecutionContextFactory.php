@@ -5,6 +5,7 @@ namespace App\Services\GeoFlow;
 use App\Data\Ai\AiExecutionContext;
 use App\Exceptions\AiModelAccessException;
 use App\Models\Admin;
+use App\Models\ManualPublicationBatch;
 use App\Models\Task;
 use App\Models\TaskRun;
 use InvalidArgumentException;
@@ -106,6 +107,19 @@ final class AiExecutionContextFactory
         } catch (InvalidArgumentException) {
             throw AiModelAccessException::configAccessRevokedForAdminId(
                 (int) ($run->model_access_admin_id ?? 0),
+            );
+        }
+    }
+
+    public function fromSelfMediaBatch(
+        ManualPublicationBatch $batch,
+        string $platform,
+    ): AiExecutionContext {
+        try {
+            return AiExecutionContext::fromPersistedSelfMediaBatch($batch, $platform);
+        } catch (InvalidArgumentException) {
+            throw AiModelAccessException::configAccessRevokedForAdminId(
+                (int) ($batch->model_access_admin_id ?? 0),
             );
         }
     }

@@ -2,6 +2,7 @@
 
 namespace App\Data\Ai;
 
+use App\Models\ManualPublicationBatch;
 use App\Models\TaskRun;
 use InvalidArgumentException;
 
@@ -14,6 +15,10 @@ final readonly class AiExecutionContext
     public const CAPABILITY_EMBEDDING = 'embedding';
 
     public const CURRENT_RESOLVER_POLICY_VERSION = 1;
+
+    public const SOURCE_TASK = 'task';
+
+    public const SOURCE_SELF_MEDIA_BATCH = ManualPublicationBatch::class;
 
     private function __construct(
         public string $executionScope,
@@ -45,10 +50,15 @@ final readonly class AiExecutionContext
             || $this->sourceId <= 0
             || $this->resolverPolicyVersion <= 0
             || $this->requestId === ''
-            || $this->executionLeaseToken === ''
-            || $this->taskRunId === null
-            || $this->taskRunId <= 0) {
+            || $this->executionLeaseToken === '') {
             throw new InvalidArgumentException('Persisted AI execution source is incomplete.');
+        }
+        if ($this->sourceType === self::SOURCE_TASK
+            && ($this->taskRunId === null || $this->taskRunId <= 0)) {
+            throw new InvalidArgumentException('Persisted task execution source is incomplete.');
+        }
+        if ($this->sourceType === self::SOURCE_SELF_MEDIA_BATCH && $this->taskRunId !== null) {
+            throw new InvalidArgumentException('Self-media execution must not occupy a task run.');
         }
     }
 
@@ -64,12 +74,38 @@ final readonly class AiExecutionContext
             aiConfigAccessVersion: (int) $run->ai_config_access_version,
             requestedModelId: $run->requested_ai_model_id === null ? null : (int) $run->requested_ai_model_id,
             requiredCapability: self::CAPABILITY_CHAT,
-            sourceType: 'task',
+            sourceType: self::SOURCE_TASK,
             sourceId: $taskId,
             resolverPolicyVersion: (int) $run->resolver_policy_version,
             requestId: 'task-run:'.$runId,
             executionLeaseToken: trim((string) $run->execution_lease_token),
             taskRunId: $runId,
+        );
+    }
+
+    public static function fromPersistedSelfMediaBatch(
+        ManualPublicationBatch $batch,
+        string $platform,
+    ): self {
+        $batchId = (int) $batch->getKey();
+        $attempt = (int) $batch->generation_attempt;
+        $platform = trim($platform);
+
+        return new self(
+            executionScope: self::EXECUTION_SCOPE_PERSISTED_ADMIN,
+            modelAccessAdminId: (int) $batch->model_access_admin_id,
+            modelAccessAdminRole: (string) $batch->model_access_admin_role,
+            aiConfigAccessVersion: (int) $batch->ai_config_access_version,
+            requestedModelId: $batch->requested_ai_model_id === null
+                ? null
+                : (int) $batch->requested_ai_model_id,
+            requiredCapability: self::CAPABILITY_CHAT,
+            sourceType: self::SOURCE_SELF_MEDIA_BATCH,
+            sourceId: $batchId,
+            resolverPolicyVersion: (int) $batch->resolver_policy_version,
+            requestId: 'self-media-batch:'.$batchId.':attempt:'.$attempt.':platform:'.$platform,
+            executionLeaseToken: trim((string) $batch->execution_lease_token),
+            taskRunId: null,
         );
     }
 

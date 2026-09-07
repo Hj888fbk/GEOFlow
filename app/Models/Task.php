@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -269,6 +270,16 @@ class Task extends Model
     public function articles(): HasMany
     {
         return $this->hasMany(Article::class, 'task_id');
+    }
+
+    public function selfMediaPolicy(): HasOne
+    {
+        return $this->hasOne(SelfMediaPolicy::class);
+    }
+
+    public function manualPublicationBatches(): HasMany
+    {
+        return $this->hasMany(ManualPublicationBatch::class);
     }
 
     public function taskSchedules(): HasMany

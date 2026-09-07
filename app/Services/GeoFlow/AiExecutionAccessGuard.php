@@ -6,6 +6,7 @@ use App\Data\Ai\AiExecutionContext;
 use App\Exceptions\AiModelAccessException;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\ManualPublicationBatch;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Services\Admin\AdminAiModelAccessResolver;
@@ -213,6 +214,28 @@ final class AiExecutionAccessGuard
 
     private function assertExecutionLeaseCurrent(AiExecutionContext $context): void
     {
+        if ($context->sourceType === AiExecutionContext::SOURCE_SELF_MEDIA_BATCH) {
+            $batch = $this->lockWhenTransactional(
+                ManualPublicationBatch::query()->whereKey($context->sourceId),
+            )->first();
+            if (! $batch instanceof ManualPublicationBatch
+                || (string) $batch->status !== ManualPublicationBatch::STATUS_GENERATING
+                || $batch->invalidated_at !== null
+                || (int) ($batch->model_access_admin_id ?? 0) !== $context->modelAccessAdminId
+                || (string) ($batch->model_access_admin_role ?? '') !== $context->modelAccessAdminRole
+                || (int) ($batch->ai_config_access_version ?? 0) !== $context->aiConfigAccessVersion
+                || (int) ($batch->requested_ai_model_id ?? 0) !== (int) ($context->requestedModelId ?? 0)
+                || (int) ($batch->resolver_policy_version ?? 0) !== $context->resolverPolicyVersion
+                || trim((string) ($batch->execution_lease_token ?? '')) === ''
+                || ! hash_equals($context->executionLeaseToken(), (string) $batch->execution_lease_token)
+                || $batch->lease_expires_at === null
+                || $batch->lease_expires_at->isPast()) {
+                throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+            }
+
+            return;
+        }
+
         if ($context->taskRunId === null) {
             throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
         }

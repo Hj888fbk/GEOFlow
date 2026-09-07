@@ -89,7 +89,9 @@ final class AdminAiModelAccessSurfaceArchitectureTest extends TestCase
 
     private function relativePath(string $absolutePath): string
     {
-        return ltrim(str_replace($this->basePath(), '', $absolutePath), DIRECTORY_SEPARATOR);
+        $relative = ltrim(str_replace($this->basePath(), '', $absolutePath), DIRECTORY_SEPARATOR);
+
+        return str_replace('\\', '/', $relative);
     }
 
     private function basePath(string $path = ''): string

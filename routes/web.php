@@ -49,6 +49,7 @@ use App\Http\Controllers\Admin\ManualPublicationController;
 use App\Http\Controllers\Admin\ManualPublicationSettingsController;
 use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
+use App\Http\Controllers\Admin\SelfMediaController;
 use App\Http\Controllers\Admin\SiteSettingsController;
 use App\Http\Controllers\Admin\SiteThemeReplicationController;
 use App\Http\Controllers\Admin\SystemUpdateController;
@@ -355,6 +356,15 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('export', [ManualPublicationController::class, 'export'])->name('export');
             Route::get('create', [ManualPublicationController::class, 'create'])->name('create');
             Route::post('/', [ManualPublicationController::class, 'store'])->name('store');
+            Route::middleware('admin.super')->prefix('self-media')->name('self-media.')->group(function () {
+                Route::get('/', [SelfMediaController::class, 'index'])->name('index');
+                Route::post('website-receipts', [SelfMediaController::class, 'storeReceipt'])->name('receipts.store');
+                Route::post('batches', [SelfMediaController::class, 'storeBatch'])->name('batches.store');
+                Route::post('batches/{batchId}/generate', [SelfMediaController::class, 'generate'])->name('batches.generate')->whereNumber('batchId');
+                Route::post('batches/{batchId}/approve', [SelfMediaController::class, 'approve'])->name('batches.approve')->whereNumber('batchId');
+                Route::post('batches/{batchId}/cancel', [SelfMediaController::class, 'cancel'])->name('batches.cancel')->whereNumber('batchId');
+                Route::put('tasks/{taskId}/policy', [SelfMediaController::class, 'savePolicy'])->name('policies.update')->whereNumber('taskId');
+            });
             Route::middleware('admin.super')->prefix('settings')->name('settings.')->group(function () {
                 Route::get('/', [ManualPublicationSettingsController::class, 'index'])->name('index');
                 Route::post('personas', [ManualPublicationSettingsController::class, 'storePersona'])->name('personas.store');

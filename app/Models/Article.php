@@ -176,4 +176,14 @@ class Article extends Model
     {
         return $query->where('status', 'published')->whereNull('deleted_at');
     }
+
+    public function websitePublicationReceipts(): HasMany
+    {
+        return $this->hasMany(WebsitePublicationReceipt::class);
+    }
+
+    public function manualPublicationBatches(): HasMany
+    {
+        return $this->hasMany(ManualPublicationBatch::class);
+    }
 }

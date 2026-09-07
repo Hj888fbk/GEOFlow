@@ -83,6 +83,10 @@ class ManualPublicationSettingsController extends Controller
             'custom_platform' => trim((string) ($data['custom_platform'] ?? '')) ?: null,
             'account_name' => trim((string) $data['account_name']),
             'profile_url' => trim((string) ($data['profile_url'] ?? '')) ?: null,
+            'editor_url' => trim((string) ($data['editor_url'] ?? '')) ?: null,
+            'account_uid' => trim((string) ($data['account_uid'] ?? '')) ?: null,
+            'homepage_identifier' => trim((string) ($data['homepage_identifier'] ?? '')) ?: null,
+            'browser_adapter_enabled' => $request->boolean('browser_adapter_enabled'),
             'notes' => trim((string) ($data['notes'] ?? '')) ?: null,
             'is_active' => $request->boolean('is_active'),
         ];

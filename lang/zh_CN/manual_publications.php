@@ -24,7 +24,7 @@ return [
     'stats' => ['total' => '全部工单', 'ready' => '待执行', 'in_progress' => '执行中', 'completed' => '已完成'],
     'type' => ['post' => '发帖', 'comment' => '评论'],
     'status' => [
-        'draft' => '草稿', 'ready' => '待执行', 'in_progress' => '执行中', 'completed' => '已完成',
+        'draft' => '草稿', 'ready' => '待平台处理', 'in_progress' => '已领取', 'draft_filled' => '草稿已填充', 'completed' => '已发布',
         'failed' => '失败', 'skipped' => '已跳过', 'cancelled' => '已取消', 'outcome_unknown' => '结果待核验',
     ],
     'action' => [
@@ -37,6 +37,8 @@ return [
         'lost' => '连接已失联，恢复前请先核实平台结果', 'last_seen' => '最近心跳：:time',
     ],
     'platform' => [
+        'qq_penguin' => '企鹅号', 'zhihu_column' => '知乎专栏', 'baijiahao' => '百家号', 'netease_media' => '网易号',
+        'sohu_media' => '搜狐号', 'csdn' => 'CSDN', 'dayu' => '大鱼号',
         'zhihu' => '知乎', 'xiaohongshu' => '小红书', 'weibo' => '微博', 'wechat' => '微信公众号',
         'douyin' => '抖音', 'bilibili' => 'Bilibili', 'reddit' => 'Reddit', 'x' => 'X', 'linkedin' => 'LinkedIn', 'custom' => '自定义平台',
     ],

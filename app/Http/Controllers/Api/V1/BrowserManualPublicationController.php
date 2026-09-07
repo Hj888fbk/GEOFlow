@@ -101,6 +101,39 @@ final class BrowserManualPublicationController extends BaseApiController
         });
     }
 
+    public function draftReceipt(Request $request, int $manualPublicationId, ManualPublicationBrowserService $publications): JsonResponse
+    {
+        $this->requireIdempotencyKey($request);
+        $validator = Validator::make($request->all(), [
+            'revision' => ['required', 'integer', 'min:1'],
+            'adapter_version' => ['required', 'string', 'max:64'],
+            'target_origin' => ['required', 'url:http,https', 'max:255'],
+            'observed_account_hash' => ['required', 'regex:/\A[a-f0-9]{64}\z/D'],
+            'filled_fields' => ['required', 'array', 'min:1'],
+            'filled_fields.*' => ['string', 'in:title,summary,body,tags'],
+            'finished_at' => ['required', 'date'],
+        ]);
+        if ($validator->fails()) {
+            throw new ApiException('validation_failed', '草稿回执格式无效', 422, ['field_errors' => $validator->errors()->toArray()]);
+        }
+        $payload = $validator->validated();
+        [$admin, $tokenId] = $this->actor($request);
+
+        return IdempotencyService::executeJson($request, 'browser-publications.'.$manualPublicationId.'.draft-receipt', function () use ($request, $publications, $admin, $tokenId, $manualPublicationId, $payload): JsonResponse {
+            $publication = $publications->recordDraftFilled(
+                $admin,
+                $tokenId,
+                $manualPublicationId,
+                (int) $payload['revision'],
+                $payload,
+                (string) $request->attributes->get('browser_client_version'),
+            );
+            $this->audit($request, $admin, 'browser_publication.draft_filled', $publication);
+
+            return $this->success($request, ['publication' => $this->resource($publication)]);
+        });
+    }
+
     /** @return array{Admin,int} */
     private function actor(Request $request): array
     {
@@ -137,6 +170,9 @@ final class BrowserManualPublicationController extends BaseApiController
             'finished_at' => ['required', 'date'],
             'error_code' => ['nullable', 'string', 'max:80'],
             'result_note' => ['nullable', 'string', 'max:5000'],
+            'public_url_readback_status' => ['nullable', 'integer', 'min:100', 'max:599'],
+            'public_url_readback_succeeded' => ['nullable', 'boolean'],
+            'public_url_readback_url' => ['nullable', 'url:http,https', 'max:1000'],
         ]);
         if ($validator->fails()) {
             throw new ApiException('validation_failed', '执行凭证格式无效', 422, ['field_errors' => $validator->errors()->toArray()]);
@@ -165,6 +201,9 @@ final class BrowserManualPublicationController extends BaseApiController
             'scheduled_at' => $publication->scheduled_at?->toIso8601String(),
             'publication_payload' => $publication->publication_payload,
             'completion_url' => $publication->completion_url,
+            'account_verified' => $publication->status === ManualPublication::STATUS_DRAFT_FILLED
+                && is_array($publication->draft_filled_receipt)
+                && trim((string) ($publication->draft_filled_receipt['observed_account_hash'] ?? '')) !== '',
             'claim' => [
                 'claimed_at' => $publication->browser_claimed_at?->toIso8601String(),
                 'last_seen_at' => $publication->browser_last_seen_at?->toIso8601String(),
@@ -174,6 +213,9 @@ final class BrowserManualPublicationController extends BaseApiController
                 'id' => (int) $publication->account->id,
                 'name' => (string) $publication->account->account_name,
                 'profile_url' => (string) $publication->account->profile_url,
+                'editor_url' => (string) $publication->account->editor_url,
+                'account_uid' => $publication->account->account_uid,
+                'homepage_identifier' => $publication->account->homepage_identifier,
             ] : null,
             'persona' => $publication->persona ? [
                 'id' => (int) $publication->persona->id,

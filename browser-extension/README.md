@@ -18,8 +18,14 @@ After Chrome or the side panel restarts, reopen a claimed work order from the qu
 
 - Generic work orders: claim, open target, copy content, release, and report result.
 - Zhihu answers: verify the active profile, locate the answer editor, and fill plain text.
+- Self-media article v2: Baijiahao and Sohu adapters verify the domain and account, stop on verification challenges, inspect every target field before writing, and fill title, summary, body, and tags.
+- Prepared cover/body images are shown as a manual-upload checklist. The extension never uploads media by itself.
+- A filled v2 draft remains claimed, including across a Chrome restart. It cannot be released to another browser while the platform editor contains that draft.
+- A v2 work order can be marked published only after the extension detects a public URL and the server receives a successful HTTP 200 readback receipt.
 - The extension never clicks the final Publish button.
 - Platform cookies, passwords, and access tokens remain in Chrome and are never sent to GEOFlow.
+
+Other configured self-media platforms currently use the safe open-and-copy fallback. Their adapters must stay disabled until platform-specific UAT is complete.
 
 ## Verification and packaging
 

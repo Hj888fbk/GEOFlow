@@ -414,6 +414,162 @@ class BrowserOperationsApiTest extends TestCase
             ->assertUnauthorized();
     }
 
+    public function test_v2_self_media_work_order_separates_draft_receipt_from_verified_publication_receipt(): void
+    {
+        $admin = $this->admin();
+        $persona = ManualPublicationPersona::query()->create(['name' => '恒佳发布身份']);
+        $profileUrl = 'https://baijiahao.baidu.com/bjournal/profile/geoflow';
+        $account = ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+            'account_name' => '恒佳百家号',
+            'profile_url' => $profileUrl,
+            'account_uid' => '778899',
+            'editor_url' => 'https://baijiahao.baidu.com/builder/rc/edit',
+            'browser_adapter_enabled' => true,
+        ]);
+        $publication = ManualPublication::query()->create([
+            'type' => ManualPublication::TYPE_POST,
+            'persona_id' => $persona->id,
+            'account_id' => $account->id,
+            'assigned_admin_id' => $admin->id,
+            'platform' => ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+            'target_url' => $account->editor_url,
+            'content' => '百家号正文',
+            'content_fingerprint' => hash('sha256', '百家号正文'),
+            'identity_snapshot' => ['account' => ['profile_url' => $profileUrl]],
+            'status' => ManualPublication::STATUS_READY,
+            'status_changed_at' => now(),
+            'revision' => 1,
+            'draft_filled_receipt' => ['observed_account_hash' => str_repeat('a', 64)],
+            'publication_payload' => [
+                'schema_version' => 2,
+                'target_action' => 'baijiahao_article',
+                'title' => '百家号标题',
+                'body_plain' => '百家号正文',
+                'body_markdown' => '百家号正文',
+                'tags' => [],
+            ],
+        ]);
+        $token = $admin->createToken('Self media Chrome', [
+            'browser-operations:read', 'browser-operations:execute',
+        ])->plainTextToken;
+        $headers = $this->authenticatedHeaders($token);
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'claim-v2-self-media-publication'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/claim', ['revision' => 1])
+            ->assertOk()
+            ->assertJsonPath('data.publication.status', ManualPublication::STATUS_IN_PROGRESS)
+            ->assertJsonPath('data.publication.account_verified', false);
+        $this->assertSame(str_repeat('a', 64), $publication->refresh()->draft_filled_receipt['observed_account_hash']);
+
+        $accountHash = hash('sha256', 'uid:778899');
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'draft-v2-self-media-publication'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/draft-receipt', [
+                'revision' => 2,
+                'adapter_version' => '0.2.0',
+                'target_origin' => 'https://baijiahao.baidu.com',
+                'observed_account_hash' => $accountHash,
+                'filled_fields' => ['title', 'body'],
+                'finished_at' => now()->toIso8601String(),
+            ])->assertOk()
+            ->assertJsonPath('data.publication.status', ManualPublication::STATUS_DRAFT_FILLED)
+            ->assertJsonPath('data.publication.revision', 3)
+            ->assertJsonPath('data.publication.account_verified', true);
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'release-v2-after-draft-filled'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/release', ['revision' => 3])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'draft_already_filled');
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'complete-v2-without-readback'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/receipt', [
+                'revision' => 3,
+                'outcome' => 'completed',
+                'completion_url' => 'https://baijiahao.baidu.com/s?id=123456',
+                'adapter_version' => '0.2.0',
+                'target_origin' => 'https://baijiahao.baidu.com',
+                'observed_account_hash' => $accountHash,
+                'finished_at' => now()->toIso8601String(),
+            ])->assertStatus(422)
+            ->assertJsonPath('error.code', 'public_url_readback_required');
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'complete-v2-with-different-readback-url'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/receipt', [
+                'revision' => 3,
+                'outcome' => 'completed',
+                'completion_url' => 'https://baijiahao.baidu.com/s?id=123456',
+                'adapter_version' => '0.2.0',
+                'target_origin' => 'https://baijiahao.baidu.com',
+                'finished_at' => now()->toIso8601String(),
+                'public_url_readback_status' => 200,
+                'public_url_readback_succeeded' => true,
+                'public_url_readback_url' => 'https://baijiahao.baidu.com/s?id=999999',
+            ])->assertStatus(422)
+            ->assertJsonPath('error.code', 'public_url_readback_required');
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'complete-v2-with-readback'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/receipt', [
+                'revision' => 3,
+                'outcome' => 'completed',
+                'completion_url' => 'https://baijiahao.baidu.com/s?id=123456',
+                'adapter_version' => '0.2.0',
+                'target_origin' => 'https://baijiahao.baidu.com',
+                'finished_at' => now()->toIso8601String(),
+                'public_url_readback_status' => 200,
+                'public_url_readback_succeeded' => true,
+                'public_url_readback_url' => 'https://baijiahao.baidu.com/s?id=123456',
+            ])->assertOk()
+            ->assertJsonPath('data.publication.status', ManualPublication::STATUS_COMPLETED);
+
+        $publication->refresh();
+        $this->assertNotNull($publication->draft_filled_receipt);
+        $this->assertSame(2, $publication->draft_filled_receipt['schema_version']);
+        $this->assertSame(2, $publication->execution_receipt['schema_version']);
+        $this->assertTrue($publication->execution_receipt['public_url_readback_succeeded']);
+        $this->assertSame('https://baijiahao.baidu.com/s?id=123456', $publication->execution_receipt['public_url_readback_url']);
+        $this->assertSame($accountHash, $publication->execution_receipt['observed_account_hash']);
+        $this->assertNull($publication->browser_claimed_by_token_id);
+    }
+
+    public function test_one_browser_connection_cannot_claim_two_work_orders_concurrently(): void
+    {
+        $admin = $this->admin();
+        $persona = ManualPublicationPersona::query()->create(['name' => 'Single Chrome identity']);
+        $makePublication = function (string $content) use ($admin, $persona): ManualPublication {
+            return ManualPublication::query()->create([
+                'type' => ManualPublication::TYPE_COMMENT,
+                'persona_id' => $persona->id,
+                'assigned_admin_id' => $admin->id,
+                'platform' => ManualPublicationAccount::PLATFORM_CUSTOM,
+                'custom_platform' => 'Community',
+                'target_url' => 'https://community.example.com/editor',
+                'target_context' => '讨论上下文',
+                'content' => $content,
+                'content_fingerprint' => hash('sha256', $content),
+                'identity_snapshot' => [],
+                'status' => ManualPublication::STATUS_READY,
+                'status_changed_at' => now(),
+                'revision' => 1,
+                'publication_payload' => ['schema_version' => 1, 'target_action' => 'manual_comment', 'body_plain' => $content],
+            ]);
+        };
+        $first = $makePublication('第一条工作单');
+        $second = $makePublication('第二条工作单');
+        $token = $admin->createToken('One Chrome', [
+            'browser-operations:read', 'browser-operations:execute',
+        ])->plainTextToken;
+        $headers = $this->authenticatedHeaders($token);
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'single-browser-first-claim'])
+            ->postJson('/api/v1/manual-publications/'.$first->id.'/claim', ['revision' => 1])
+            ->assertOk();
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'single-browser-second-claim'])
+            ->postJson('/api/v1/manual-publications/'.$second->id.'/claim', ['revision' => 1])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'browser_concurrency_limit');
+    }
+
     /** @return array<string,string> */
     private function browserHeaders(): array
     {

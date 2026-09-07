@@ -9,6 +9,7 @@ use App\Models\Admin;
 use App\Models\Article;
 use App\Models\ManualPublication;
 use App\Models\ManualPublicationAccount;
+use App\Models\ManualPublicationBatch;
 use App\Models\ManualPublicationPersona;
 use App\Models\ManualPublicationTransition;
 use App\Services\BrowserOperations\PublicationPayloadBuilder;
@@ -96,6 +97,12 @@ class ManualPublicationService
         ?string $resultNote = null,
     ): ManualPublication {
         return DB::transaction(function () use ($manualPublication, $targetStatus, $expectedRevision, $actor, $completionUrl, $resultNote): ManualPublication {
+            $batchId = ManualPublication::query()
+                ->whereKey($manualPublication->getKey())
+                ->value('manual_publication_batch_id');
+            if ($batchId !== null) {
+                ManualPublicationBatch::query()->whereKey($batchId)->lockForUpdate()->first();
+            }
             $current = ManualPublication::query()
                 ->whereKey($manualPublication->getKey())
                 ->lockForUpdate()
@@ -182,6 +189,7 @@ class ManualPublicationService
                 $normalizedResultNote,
                 $transitionedAt,
             );
+            $this->syncBatchStatus($current);
 
             return $current->refresh();
         });
@@ -286,7 +294,9 @@ class ManualPublicationService
             'meta_description' => (string) ($persona->disclosure_text ?? ''),
         ]);
 
-        $sourceSnapshot = $existing?->source_snapshot;
+        $sourceSnapshot = is_array($data['source_snapshot'] ?? null)
+            ? $data['source_snapshot']
+            : $existing?->source_snapshot;
         if ($article instanceof Article && ((int) $existing?->article_id !== (int) $article->getKey() || ! is_array($sourceSnapshot))) {
             $sourceSnapshot = [
                 'article_id' => (int) $article->getKey(),
@@ -301,6 +311,9 @@ class ManualPublicationService
 
         return [
             'type' => $type,
+            'manual_publication_batch_id' => empty($data['manual_publication_batch_id'])
+                ? $existing?->manual_publication_batch_id
+                : (int) $data['manual_publication_batch_id'],
             'article_id' => $article?->getKey(),
             'persona_id' => $persona->getKey(),
             'account_id' => $account?->getKey(),
@@ -311,6 +324,13 @@ class ManualPublicationService
             'target_url_hash' => $targetUrlHash,
             'target_context' => $targetContext,
             'content' => $content,
+            'platform_title' => trim((string) ($data['platform_title'] ?? $existing?->platform_title ?? '')) ?: null,
+            'platform_summary' => trim((string) ($data['platform_summary'] ?? $existing?->platform_summary ?? '')) ?: null,
+            'body_markdown' => (string) ($data['body_markdown'] ?? $existing?->body_markdown ?? $content),
+            'body_html' => trim((string) ($data['body_html'] ?? $existing?->body_html ?? '')) ?: null,
+            'tags' => array_values((array) ($data['tags'] ?? $existing?->tags ?? [])),
+            'media_manifest' => array_values((array) ($data['media_manifest'] ?? $existing?->media_manifest ?? [])),
+            'source_hash' => trim((string) ($data['source_hash'] ?? $existing?->source_hash ?? '')) ?: null,
             'content_fingerprint' => $contentFingerprint,
             'source_snapshot' => $type === ManualPublication::TYPE_POST ? $sourceSnapshot : null,
             'identity_snapshot' => $this->identitySnapshot($persona, $account),
@@ -329,6 +349,14 @@ class ManualPublicationService
         }
         if (empty($attributes['assigned_admin_id'])) {
             throw new DomainException((string) __('admin.manual_publications.error.ready_requires_assignee'));
+        }
+        if (! empty($attributes['manual_publication_batch_id'])) {
+            if (! empty($attributes['source_stale_at'])) {
+                throw new DomainException('官网母稿已经变化，旧平台稿不能进入浏览器队列。');
+            }
+            if (empty($attributes['account_id']) || trim((string) ($attributes['target_url'] ?? '')) === '') {
+                throw new DomainException('请先为该平台配置有效账号和编辑入口。');
+            }
         }
     }
 
@@ -357,6 +385,10 @@ class ManualPublicationService
                 'platform' => (string) $account->platform,
                 'custom_platform' => $account->custom_platform,
                 'profile_url' => $account->profile_url,
+                'editor_url' => $account->editor_url,
+                'account_uid' => $account->account_uid,
+                'homepage_identifier' => $account->homepage_identifier,
+                'browser_adapter_enabled' => (bool) $account->browser_adapter_enabled,
             ] : null,
             'snapshotted_at' => now()->toAtomString(),
         ];
@@ -380,6 +412,32 @@ class ManualPublicationService
             'result_note' => $resultNote,
             'created_at' => $createdAt ?? now(),
         ]);
+    }
+
+    private function syncBatchStatus(ManualPublication $publication): void
+    {
+        if ($publication->manual_publication_batch_id === null) {
+            return;
+        }
+
+        $batch = ManualPublicationBatch::query()
+            ->whereKey($publication->manual_publication_batch_id)
+            ->lockForUpdate()
+            ->first();
+        if (! $batch instanceof ManualPublicationBatch) {
+            return;
+        }
+
+        $status = ManualPublicationBatch::statusFromPublications(
+            $batch->publications()->pluck('status')->all(),
+            (string) $batch->status,
+        );
+        if ($status !== $batch->status) {
+            $batch->forceFill([
+                'status' => $status,
+                'revision' => (int) $batch->revision + 1,
+            ])->save();
+        }
     }
 
     private function assertSourceArticleQuality(int $articleId, string $trigger): void

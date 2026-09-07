@@ -57,6 +57,7 @@ Route::prefix('v1')
                             Route::post('{manualPublicationId}/claim', [BrowserManualPublicationController::class, 'claim'])->whereNumber('manualPublicationId');
                             Route::post('{manualPublicationId}/heartbeat', [BrowserManualPublicationController::class, 'heartbeat'])->whereNumber('manualPublicationId');
                             Route::post('{manualPublicationId}/release', [BrowserManualPublicationController::class, 'release'])->whereNumber('manualPublicationId');
+                            Route::post('{manualPublicationId}/draft-receipt', [BrowserManualPublicationController::class, 'draftReceipt'])->whereNumber('manualPublicationId');
                             Route::post('{manualPublicationId}/receipt', [BrowserManualPublicationController::class, 'receipt'])->whereNumber('manualPublicationId');
                         });
                     });
@@ -134,6 +135,9 @@ Route::prefix('v1')
                 ->whereNumber('article')
                 ->middleware(['api.scope:articles:publish', 'throttle:60,1']);
             Route::post('articles/{article}/publish', [ArticleController::class, 'publish'])
+                ->whereNumber('article')
+                ->middleware(['api.scope:articles:publish', 'throttle:60,1']);
+            Route::post('articles/{article}/website-publication-receipt', [ArticleController::class, 'websitePublicationReceipt'])
                 ->whereNumber('article')
                 ->middleware(['api.scope:articles:publish', 'throttle:60,1']);
             Route::post('articles/{article}/ai-quality/recheck', [ArticleController::class, 'recheckAiQuality'])

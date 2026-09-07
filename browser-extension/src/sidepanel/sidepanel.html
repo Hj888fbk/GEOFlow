@@ -46,11 +46,16 @@
                     <h1 id="task-title"></h1>
                     <p id="task-account" class="muted"></p>
                     <div class="content-preview" id="task-content"></div>
+                    <div id="task-media" class="media-assets hidden">
+                        <strong data-i18n="mediaAssets">待手动上传的图片</strong>
+                        <div id="task-media-list" class="media-assets__list"></div>
+                        <p class="muted" data-i18n="mediaUploadHint">扩展只展示素材，不会代替你向平台上传图片。</p>
+                    </div>
                     <div class="action-grid">
                         <button class="button primary" id="claim-task" type="button" data-i18n="claimTask">领取工作单</button>
                         <button class="button" id="open-target" type="button" data-i18n="openTarget">打开目标页</button>
                         <button class="button" id="copy-content" type="button" data-i18n="copyContent">复制正文</button>
-                        <button class="button primary hidden" id="fill-zhihu" type="button" data-i18n="fillZhihu">填充知乎草稿</button>
+                        <button class="button primary hidden" id="fill-draft" type="button" data-i18n="fillDraft">填充平台草稿</button>
                         <button class="button quiet hidden" id="release-task" type="button" data-i18n="releaseTask">释放工作单</button>
                     </div>
                     <div id="result-panel" class="result-panel stack hidden">

@@ -73,7 +73,7 @@ class ArticleAiQualityQueueConfigurationTest extends TestCase
         $productionCompose = (string) file_get_contents($root.'/docker-compose.prod.yml');
         $prebuiltCompose = (string) file_get_contents($root.'/docker-compose.prebuilt.yml');
 
-        $this->assertStringContainsString('--queue=system-updates,geoflow,distribution,theme-replication,default --tries=1 --timeout=930', $dev);
+        $this->assertStringContainsString('--queue=system-updates,geoflow,distribution,theme-replication,self-media,default --tries=1 --timeout=930', $dev);
         $this->assertStringContainsString('geoflow:work-ai-quality front', $dev);
         $this->assertStringContainsString('geoflow:work-ai-quality backfill', $dev);
         $this->assertStringContainsString('geoflow:work-ai-optimization', $dev);

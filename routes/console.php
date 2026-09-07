@@ -8,6 +8,7 @@ use App\Data\Ai\SystemAiIdentity;
 use App\Models\KnowledgeFactGenerationRun;
 use App\Services\GeoFlow\ArticleMarkdownExportService;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
+use App\Services\SelfMedia\SelfMediaBatchGenerationService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -62,6 +63,16 @@ Artisan::command('geoflow:prune-article-exports', function (ArticleMarkdownExpor
 
     return 0;
 })->purpose('Delete expired Markdown article export files');
+
+Artisan::command(
+    'geoflow:recover-self-media-batches {--limit=50}',
+    function (SelfMediaBatchGenerationService $generation): int {
+        $recovered = $generation->recoverExpiredLeases((int) $this->option('limit'));
+        $this->info(sprintf('Recovered expired self-media batches: %d', $recovered));
+
+        return 0;
+    },
+)->purpose('Release expired self-media generation leases for safe manual retry');
 
 Artisan::command('geoflow:prune-knowledge-fact-generations {--limit=200} {--dry-run}', function (): int {
     $cutoff = now()->subDays((int) config('geoflow.knowledge_fact_generation_retention_days', 90));
@@ -129,6 +140,11 @@ Schedule::command('geoflow:recover-url-imports')
     ->withoutOverlapping(2);
 
 Schedule::command('geoflow:recover-enterprise-knowledge-drafts')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping(2);
+
+Schedule::command('geoflow:recover-self-media-batches')
     ->everyMinute()
     ->onOneServer()
     ->withoutOverlapping(2);

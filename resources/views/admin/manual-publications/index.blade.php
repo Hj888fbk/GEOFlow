@@ -13,6 +13,10 @@
                 {{ __('admin.manual_publications.button.export') }}
             </a>
             @if($canCreate)
+                <a href="{{ route('admin.manual-publications.self-media.index') }}" class="inline-flex items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100">
+                    <i data-lucide="send" class="h-4 w-4"></i>
+                    按需自媒体发布
+                </a>
                 <a href="{{ route('admin.manual-publications.settings.index') }}" class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
                     <i data-lucide="users-round" class="h-4 w-4"></i>
                     {{ __('admin.manual_publications.button.settings') }}

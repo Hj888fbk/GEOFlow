@@ -8,11 +8,36 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ManualPublicationAccount extends Model
 {
+    public const PLATFORM_QQ_PENGUIN = 'qq_penguin';
+
+    public const PLATFORM_ZHIHU_COLUMN = 'zhihu_column';
+
+    public const PLATFORM_BAIJIAHAO = 'baijiahao';
+
+    public const PLATFORM_NETEASE_MEDIA = 'netease_media';
+
+    public const PLATFORM_SOHU_MEDIA = 'sohu_media';
+
     public const PLATFORM_ZHIHU = 'zhihu';
 
     public const PLATFORM_XIAOHONGSHU = 'xiaohongshu';
 
     public const PLATFORM_WEIBO = 'weibo';
+
+    public const PLATFORM_CSDN = 'csdn';
+
+    public const PLATFORM_DAYU = 'dayu';
+
+    public const SELF_MEDIA_PLATFORMS = [
+        self::PLATFORM_QQ_PENGUIN,
+        self::PLATFORM_ZHIHU_COLUMN,
+        self::PLATFORM_BAIJIAHAO,
+        self::PLATFORM_NETEASE_MEDIA,
+        self::PLATFORM_SOHU_MEDIA,
+        self::PLATFORM_WEIBO,
+        self::PLATFORM_CSDN,
+        self::PLATFORM_DAYU,
+    ];
 
     public const PLATFORM_WECHAT = 'wechat';
 
@@ -29,9 +54,16 @@ class ManualPublicationAccount extends Model
     public const PLATFORM_CUSTOM = 'custom';
 
     public const PLATFORMS = [
+        self::PLATFORM_QQ_PENGUIN,
+        self::PLATFORM_ZHIHU_COLUMN,
+        self::PLATFORM_BAIJIAHAO,
+        self::PLATFORM_NETEASE_MEDIA,
+        self::PLATFORM_SOHU_MEDIA,
         self::PLATFORM_ZHIHU,
         self::PLATFORM_XIAOHONGSHU,
         self::PLATFORM_WEIBO,
+        self::PLATFORM_CSDN,
+        self::PLATFORM_DAYU,
         self::PLATFORM_WECHAT,
         self::PLATFORM_DOUYIN,
         self::PLATFORM_BILIBILI,
@@ -51,6 +83,10 @@ class ManualPublicationAccount extends Model
         'custom_platform',
         'account_name',
         'profile_url',
+        'editor_url',
+        'account_uid',
+        'homepage_identifier',
+        'browser_adapter_enabled',
         'notes',
         'is_active',
         'created_by_admin_id',
@@ -61,6 +97,7 @@ class ManualPublicationAccount extends Model
         return [
             'persona_id' => 'integer',
             'is_active' => 'boolean',
+            'browser_adapter_enabled' => 'boolean',
             'created_by_admin_id' => 'integer',
         ];
     }
