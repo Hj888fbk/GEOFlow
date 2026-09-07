@@ -169,6 +169,11 @@ Schedule::command('geoflow:reconcile-ai-quality')
     ->onOneServer()
     ->withoutOverlapping(2);
 
+Schedule::command('geoflow:poll-website-publications')
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping(4);
+
 Schedule::command('geoflow:reconcile-ai-optimization')
     ->everyMinute()
     ->onOneServer()
