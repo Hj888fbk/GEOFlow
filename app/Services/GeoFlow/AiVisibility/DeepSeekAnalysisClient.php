@@ -2,13 +2,15 @@
 
 namespace App\Services\GeoFlow\AiVisibility;
 
-use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Ai\Agents\DeepSeekVisibilityAnalysisAgent;
 use App\Models\AiModel;
 use App\Models\AiVisibilityRun;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Support\Collection;
 use JsonSerializable;
+use Laravel\Ai\Responses\Data\FinishReason;
 use RuntimeException;
 use Throwable;
 
@@ -47,11 +49,8 @@ final class DeepSeekAnalysisClient
 
         $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId);
         $providerName = OpenAiRuntimeProvider::registerProvider('ai_visibility_deepseek', $driver, $providerUrl, $apiKey);
-        $maxTokens = (int) ($options['max_tokens'] ?? config('geoflow.ai_visibility.default_analysis_max_tokens', 4096));
-        $agent = new MarkdownContentWriterAgent(
-            instructions: '你是 GEO/AI 可见性分析助手。请基于输入的 AI 回答和信源做可执行分析，明确区分事实、推断和投放建议。',
-            maxTokens: $maxTokens > 0 ? $maxTokens : null,
-        );
+        $maxTokens = $this->resolveMaxTokens($model, $options);
+        $agent = new DeepSeekVisibilityAnalysisAgent($maxTokens);
 
         $fullPrompt = $this->buildPrompt($prompt, $sources);
         $request = [
@@ -71,11 +70,10 @@ final class DeepSeekAnalysisClient
 
         $rawText = (string) ($response->text ?? '');
         $answerText = OpenAiRuntimeProvider::normalizeGeneratedText($rawText);
-        if ($answerText === '') {
-            throw new RuntimeException('DeepSeek 分析返回空内容');
-        }
-
         $usage = $this->extractUsage($response);
+        if ($answerText === '') {
+            throw new RuntimeException($this->emptyResponseMessage($response, $usage, $maxTokens));
+        }
 
         return $this->normalizer->normalizeTextAnalysis(
             providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
@@ -130,5 +128,56 @@ final class DeepSeekAnalysisClient
         }
 
         return is_array($usage) ? $usage : [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    private function resolveMaxTokens(AiModel $model, array $options): int
+    {
+        $requestedLimit = (int) ($options['max_tokens'] ?? 0);
+        if ($requestedLimit > 0) {
+            return $requestedLimit;
+        }
+
+        $modelLimit = (int) ($model->max_tokens ?? 0);
+        if ($modelLimit > 0) {
+            return $modelLimit;
+        }
+
+        return max(512, (int) config('geoflow.ai_visibility.default_analysis_max_tokens', 4096));
+    }
+
+    /**
+     * @param  array<string, mixed>  $usage
+     */
+    private function emptyResponseMessage(object $response, array $usage, int $maxTokens): string
+    {
+        $finishReason = $this->extractFinishReason($response);
+        $completionTokens = max(0, (int) ($usage['completion_tokens'] ?? 0));
+        $reasoningTokens = max(0, (int) ($usage['reasoning_tokens'] ?? 0));
+        $budgetExhausted = $finishReason === FinishReason::Length->value
+            || ($maxTokens > 0 && $completionTokens >= $maxTokens);
+        $cause = $budgetExhausted ? '输出令牌预算已用尽' : '未生成可见正文';
+
+        return sprintf(
+            'DeepSeek 分析返回空内容：%s（finish_reason=%s，completion_tokens=%d，reasoning_tokens=%d）',
+            $cause,
+            $finishReason,
+            $completionTokens,
+            $reasoningTokens,
+        );
+    }
+
+    private function extractFinishReason(object $response): string
+    {
+        $steps = $response->steps ?? null;
+        if (! $steps instanceof Collection) {
+            return FinishReason::Unknown->value;
+        }
+
+        $finishReason = $steps->last()?->finishReason ?? null;
+
+        return $finishReason instanceof FinishReason ? $finishReason->value : FinishReason::Unknown->value;
     }
 }

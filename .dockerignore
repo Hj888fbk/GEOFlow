@@ -24,6 +24,9 @@ tests
 # Vite 会在镜像构建阶段重新生成指纹资源，不复用宿主机产物。
 public/build
 
+# Windows 的 storage:link 是重解析点；生产镜像会在容器内重新创建该链接。
+public/storage
+
 # 本机 bootstrap 缓存可能含 dev 包发现结果；打进镜像会与 --no-dev 冲突
 bootstrap/cache/*
 !bootstrap/cache/.gitignore

@@ -330,9 +330,30 @@ class AiVisibilityServiceTest extends TestCase
 
     public function test_it_persists_deepseek_analysis_usage_from_ai_sdk_response(): void
     {
-        MarkdownContentWriterAgent::fake(['分析完成'])->preventStrayPrompts();
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://api.deepseek.com/v1/chat/completions' => Http::response([
+                'id' => 'chatcmpl_analysis_1',
+                'model' => 'deepseek-v4-flash',
+                'choices' => [[
+                    'index' => 0,
+                    'message' => [
+                        'role' => 'assistant',
+                        'content' => '分析完成',
+                    ],
+                    'finish_reason' => 'stop',
+                ]],
+                'usage' => [
+                    'prompt_tokens' => 120,
+                    'completion_tokens' => 80,
+                    'completion_tokens_details' => [
+                        'reasoning_tokens' => 0,
+                    ],
+                ],
+            ]),
+        ]);
 
-        $model = $this->createAiModel();
+        $model = $this->createAiModel(['max_tokens' => 6144]);
 
         $run = app(AiVisibilityService::class)->runDeepSeekAnalysis($model, 'GEOFlow', '请分析 GEOFlow 的 AI 可见性');
 
@@ -340,13 +361,68 @@ class AiVisibilityServiceTest extends TestCase
         $this->assertSame(AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS, $run->provider_type);
         $this->assertSame('分析完成', $run->answer_text);
         $this->assertSame([
-            'prompt_tokens' => 0,
-            'completion_tokens' => 0,
+            'prompt_tokens' => 120,
+            'completion_tokens' => 80,
             'cache_write_input_tokens' => 0,
             'cache_read_input_tokens' => 0,
             'reasoning_tokens' => 0,
         ], $run->usage_json);
         $this->assertSame(1, (int) $model->fresh()->used_today);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://api.deepseek.com/v1/chat/completions'
+            && ($request['model'] ?? null) === 'deepseek-v4-flash'
+            && ($request['max_completion_tokens'] ?? null) === 6144
+            && ! array_key_exists('max_tokens', (array) $request->data())
+            && ($request['thinking']['type'] ?? null) === 'disabled');
+    }
+
+    public function test_it_reports_safe_token_diagnostics_when_deepseek_returns_only_reasoning(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://api.deepseek.com/v1/chat/completions' => Http::response([
+                'id' => 'chatcmpl_analysis_reasoning_only',
+                'model' => 'deepseek-v4-flash',
+                'choices' => [[
+                    'index' => 0,
+                    'message' => [
+                        'role' => 'assistant',
+                        'content' => null,
+                        'reasoning_content' => '内部推理内容不应进入错误消息',
+                    ],
+                    'finish_reason' => 'length',
+                ]],
+                'usage' => [
+                    'prompt_tokens' => 3500,
+                    'completion_tokens' => 4096,
+                    'completion_tokens_details' => [
+                        'reasoning_tokens' => 4096,
+                    ],
+                ],
+            ]),
+        ]);
+
+        $model = $this->createAiModel();
+
+        try {
+            app(AiVisibilityService::class)->runDeepSeekAnalysis($model, 'GEOFlow', '请分析 GEOFlow 的 AI 可见性');
+            $this->fail('Expected reasoning-only DeepSeek response to fail.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('输出令牌预算已用尽', $exception->getMessage());
+            $this->assertStringContainsString('finish_reason=length', $exception->getMessage());
+            $this->assertStringContainsString('completion_tokens=4096', $exception->getMessage());
+            $this->assertStringContainsString('reasoning_tokens=4096', $exception->getMessage());
+            $this->assertStringNotContainsString('内部推理内容', $exception->getMessage());
+        }
+
+        $run = AiVisibilityRun::query()->firstOrFail();
+        $this->assertSame(AiVisibilityRun::STATUS_FAILED, $run->status);
+        $this->assertStringContainsString('输出令牌预算已用尽', (string) $run->error_message);
+        $this->assertSame(0, (int) $model->fresh()->used_today);
+
+        Http::assertSent(fn ($request): bool => ($request['max_completion_tokens'] ?? null) === 4096
+            && ! array_key_exists('max_tokens', (array) $request->data())
+            && ($request['thinking']['type'] ?? null) === 'disabled');
     }
 
     private function createSearchProvider(array $overrides = []): AiSourceProvider
