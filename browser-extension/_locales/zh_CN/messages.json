@@ -25,6 +25,7 @@
   "copyContent": { "message": "复制正文" },
   "mediaAssets": { "message": "待手动上传的图片" },
   "mediaUploadHint": { "message": "扩展只展示素材，不会代替你向平台上传图片。" },
+  "mediaPlaceholderHint": { "message": "封面传到平台封面位；正文图片按【图片N】占位符依次插入正文对应位置。" },
   "coverImage": { "message": "封面" },
   "bodyImage": { "message": "正文图片" },
   "fillZhihu": { "message": "填充知乎草稿" },

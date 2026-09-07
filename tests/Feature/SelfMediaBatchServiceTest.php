@@ -98,6 +98,53 @@ final class SelfMediaBatchServiceTest extends TestCase
         $this->assertSame(ManualPublicationBatch::STATUS_PENDING_REVIEW, $batch->status);
     }
 
+    public function test_body_html_is_derived_from_markdown_when_generator_returns_null(): void
+    {
+        $generator = new class implements SelfMediaContentGenerator
+        {
+            public function generateAndPersist(
+                ManualPublicationBatch $batch,
+                string $platform,
+                \Closure $persistVariant,
+            ): mixed {
+                return $persistVariant([
+                    'title' => $platform.'平台标题',
+                    'summary' => '平台摘要',
+                    'body_plain' => '平台正文纯文本',
+                    'body_markdown' => "## 平台小节\n\n平台**加粗**正文\n\n【图片1】",
+                    'body_html' => null,
+                    'tags' => ['橡胶软接头'],
+                ], null);
+            }
+        };
+        $this->app->instance(SelfMediaContentGenerator::class, $generator);
+        Queue::fake();
+        [$admin, , $article] = $this->fixtures();
+        ManualPublicationPersona::query()->create(['name' => '恒佳企业发布身份']);
+        $receipt = app(WebsitePublicationReceiptService::class)->record($article, $this->receipt($article), $admin);
+
+        $batch = app(SelfMediaBatchService::class)->createManual(
+            $article,
+            $receipt,
+            SelfMediaPlatformRouter::INTENT_PRODUCT_EDUCATION,
+            [ManualPublicationAccount::PLATFORM_BAIJIAHAO],
+            $admin,
+        );
+        $batch = app(SelfMediaBatchGenerationService::class)->generate($batch);
+
+        $publication = $batch->publications->firstWhere('platform', ManualPublicationAccount::PLATFORM_BAIJIAHAO);
+        $this->assertNotNull($publication);
+        // body_html 必须由服务端从 markdown 确定性渲染，且保留结构标签与图片占位符。
+        $this->assertNotNull($publication->body_html);
+        $this->assertStringContainsString('<h2>', (string) $publication->body_html);
+        $this->assertStringContainsString('<strong>加粗</strong>', (string) $publication->body_html);
+        $this->assertStringContainsString('【图片1】', (string) $publication->body_html);
+        $this->assertSame(
+            $publication->body_html,
+            $publication->publication_payload['body_html'],
+        );
+    }
+
     public function test_automatic_routing_is_deterministic_and_daily_limit_stops_new_batches_without_model_calls(): void
     {
         $generator = $this->fakeGenerator();

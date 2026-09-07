@@ -9,6 +9,12 @@ final class SelfMediaFactConstraintGuard
 {
     private const NUMBER_PATTERN = '/(?<![\pL\pN])\d+(?:\.\d+)?\s*(?:MPa|kPa|Pa|mm|cm|m|%|℃|小时|天|年|月|日)?/iu';
 
+    /**
+     * 正文图片占位符（如【图片1】）是版式标记而非事实数字，
+     * 扫描前整体剔除 token，不单独放行其中的数字，其他数字校验保持不变。
+     */
+    private const IMAGE_PLACEHOLDER_PATTERN = '/【图片\d+】/u';
+
     /** @param list<string> $sources
      * @return list<string>
      */
@@ -16,7 +22,7 @@ final class SelfMediaFactConstraintGuard
     {
         $numbers = [];
         foreach ($sources as $source) {
-            preg_match_all(self::NUMBER_PATTERN, $this->withoutListOrdinals($source), $matches);
+            preg_match_all(self::NUMBER_PATTERN, $this->withoutImagePlaceholders($this->withoutListOrdinals($source)), $matches);
             foreach ($matches[0] ?? [] as $match) {
                 $numbers[$this->canonicalNumber((string) $match)] = true;
             }
@@ -52,6 +58,11 @@ final class SelfMediaFactConstraintGuard
     private function withoutListOrdinals(string $value): string
     {
         return preg_replace('/^\s*\d+[.、)]\s+/mu', '', $value) ?? $value;
+    }
+
+    private function withoutImagePlaceholders(string $value): string
+    {
+        return preg_replace(self::IMAGE_PLACEHOLDER_PATTERN, '', $value) ?? $value;
     }
 
     private function canonicalNumber(string $number): string

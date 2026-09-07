@@ -25,6 +25,7 @@
   "copyContent": { "message": "Copy content" },
   "mediaAssets": { "message": "Images to upload manually" },
   "mediaUploadHint": { "message": "The extension displays prepared assets but never uploads them to the platform for you." },
+  "mediaPlaceholderHint": { "message": "Upload the cover to the platform's cover slot; insert body images at their 【图片N】 placeholders in order." },
   "coverImage": { "message": "Cover" },
   "bodyImage": { "message": "Body image" },
   "fillZhihu": { "message": "Fill Zhihu draft" },

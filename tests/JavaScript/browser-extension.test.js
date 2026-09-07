@@ -384,3 +384,25 @@ test('adapter registry enables only the first verified self-media adapters', () 
     assert.equal(adapterForAction('baijiahao_article').kind, 'self_media_article');
     assert.equal(adapterForAction('csdn_article'), null);
 });
+
+test('self-media body html sanitizer keeps structure and strips script/img/unknown tags', async () => {
+    const { sanitizeSelfMediaBodyHtml } = await import('../../browser-extension/src/adapters/self-media-article.js');
+    const out = sanitizeSelfMediaBodyHtml(
+        '<h2>标题</h2><p>正文<strong>加粗</strong></p><script>alert(1)</script><img src="x.jpg"><div>保留文本</div><table><tr><td>单元格</td></tr></table><p>【图片1】</p>',
+    );
+    assert.ok(out.includes('<h2>标题</h2>'));
+    assert.ok(out.includes('<strong>加粗</strong>'));
+    assert.ok(out.includes('<table><tr><td>单元格</td></tr></table>'));
+    assert.ok(out.includes('【图片1】'));
+    assert.ok(! out.includes('script'));
+    assert.ok(! out.includes('<img'));
+    assert.ok(! out.includes('<div'));
+    assert.ok(out.includes('保留文本'));
+});
+
+test('self-media body html sanitizer tolerates empty and non-string input', async () => {
+    const { sanitizeSelfMediaBodyHtml } = await import('../../browser-extension/src/adapters/self-media-article.js');
+    assert.equal(sanitizeSelfMediaBodyHtml(''), '');
+    assert.equal(sanitizeSelfMediaBodyHtml(null), '');
+    assert.equal(sanitizeSelfMediaBodyHtml(undefined), '');
+});

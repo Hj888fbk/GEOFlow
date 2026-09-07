@@ -1,3 +1,42 @@
+const SELF_MEDIA_BODY_HTML_TAGS = new Set([
+    'h1', 'h2', 'h3', 'h4', 'p', 'strong', 'em', 'b',
+    'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th',
+    'blockquote', 'br', 'hr',
+]);
+
+// 只允许正文结构标签：剥离其余标签但保留文本；script/style 连同内容删除；img 一律删除
+// （图片由运营人工上传，正文里的【图片N】占位文本段落会自然保留）。
+export function sanitizeSelfMediaBodyHtml(html) {
+    let result = String(html ?? '');
+    result = result.replace(/<!--[\s\S]*?-->/g, '');
+    result = result.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
+    result = result.replace(/<(script|style)\b[^>]*>[\s\S]*$/gi, '');
+    result = result.replace(/<img\b[^>]*>/gi, '');
+    result = result.replace(/<(\/?)([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g, (match, closingSlash, name) => {
+        const tag = name.toLowerCase();
+        if (! SELF_MEDIA_BODY_HTML_TAGS.has(tag)) return '';
+        if (tag === 'br' || tag === 'hr') return closingSlash ? '' : `<${tag}>`;
+        return `<${closingSlash ? '/' : ''}${tag}>`;
+    });
+    return result.trim();
+}
+
+function plainTextFromBodyHtml(html) {
+    return String(html ?? '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(?:h[1-4]|p|li|tr|blockquote|table|ul|ol)>/gi, '\n')
+        .replace(/<\/?[a-zA-Z][a-zA-Z0-9]*[^>]*>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#0?39;|&apos;/gi, "'")
+        .replace(/&amp;/gi, '&')
+        .replace(/[ \t]*\n[ \t]*/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 export function runSelfMediaArticleAdapter(action, payload, account, replaceExisting = false) {
     const configs = {
         baijiahao_article: {
@@ -94,9 +133,50 @@ export function runSelfMediaArticleAdapter(action, payload, account, replaceExis
         dispatch(node);
         dispatch(node, 'change');
     };
+    // 富文本正文走粘贴事件：ProseMirror/contenteditable 自行把 text/html 解析成文档结构，
+    // 标题、表格、加粗等格式得以保留；编辑器未消费该事件时退化为 insertHTML / 纯文本。
+    const fillBodyWithHtml = (node, html, plainText) => {
+        node.focus?.();
+        let handled = false;
+        const DataTransferConstructor = globalThis.DataTransfer;
+        const ClipboardEventConstructor = globalThis.ClipboardEvent;
+        if (typeof DataTransferConstructor === 'function' && typeof ClipboardEventConstructor === 'function') {
+            try {
+                const clipboard = new DataTransferConstructor();
+                clipboard.setData('text/html', html);
+                clipboard.setData('text/plain', plainText);
+                const pasteEvent = new ClipboardEventConstructor('paste', {
+                    bubbles: true,
+                    cancelable: true,
+                    clipboardData: clipboard,
+                });
+                if (! pasteEvent.clipboardData) {
+                    Object.defineProperty(pasteEvent, 'clipboardData', { value: clipboard });
+                }
+                node.dispatchEvent(pasteEvent);
+                handled = Boolean(pasteEvent.defaultPrevented) || String(node.textContent ?? '').trim() !== '';
+            } catch {
+                handled = false;
+            }
+        }
+        if (! handled) {
+            const inserted = typeof document.execCommand === 'function'
+                && document.execCommand('insertHTML', false, html);
+            if (! inserted) node.textContent = plainText;
+        }
+        dispatch(node);
+        dispatch(node, 'change');
+    };
     const titleText = String(payload?.title ?? '').trim();
     const summaryText = String(payload?.summary ?? '').trim();
-    const bodyText = String(payload?.body_plain ?? payload?.body_markdown ?? '').trim();
+    // body_html 非空时走 HTML 粘贴路径；消毒后没有实际文本（例如只剩图片）则回退纯文本。
+    const rawBodyHtml = typeof payload?.body_html === 'string' ? payload.body_html.trim() : '';
+    let bodyHtml = rawBodyHtml ? sanitizeSelfMediaBodyHtml(rawBodyHtml) : '';
+    if (bodyHtml && ! plainTextFromBodyHtml(bodyHtml)) bodyHtml = '';
+    const bodyText = bodyHtml
+        ? plainTextFromBodyHtml(bodyHtml)
+        : String(payload?.body_plain ?? payload?.body_markdown ?? '').trim();
+    const bodyPlainText = String(payload?.body_plain ?? '').trim() || bodyText;
     const tagsText = Array.isArray(payload?.tags) ? payload.tags.map(String).map((tag) => tag.trim()).filter(Boolean).join('、') : '';
     if (! titleText || ! bodyText) return { ok: false, code: 'empty_content' };
 
@@ -111,7 +191,8 @@ export function runSelfMediaArticleAdapter(action, payload, account, replaceExis
     }
 
     fill(title, titleText);
-    fill(body, bodyText);
+    if (bodyHtml && ! ('value' in body)) fillBodyWithHtml(body, bodyHtml, bodyPlainText);
+    else fill(body, bodyText);
     const filledFields = ['title', 'body'];
     if (summary && summaryText) {
         fill(summary, summaryText);
@@ -133,7 +214,7 @@ export function runSelfMediaArticleAdapter(action, payload, account, replaceExis
                 ? `uid:${expectedUid.toLowerCase()}`
                 : `homepage:${expectedHomepage.toLowerCase()}`,
         filledFields,
-        characterCount: String(payload?.body_plain ?? '').length,
+        characterCount: bodyText.length,
     };
 }
 

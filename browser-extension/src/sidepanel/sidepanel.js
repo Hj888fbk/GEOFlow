@@ -55,31 +55,43 @@ function showConnected(connected) {
 
 function renderMediaManifest(task) {
     const media = Array.isArray(task.publication_payload?.media_manifest)
-        ? task.publication_payload.media_manifest
+        ? [...task.publication_payload.media_manifest]
         : [];
+    media.sort((left, right) => {
+        const leftPosition = Number.isFinite(Number(left?.position)) ? Number(left.position) : Number.MAX_SAFE_INTEGER;
+        const rightPosition = Number.isFinite(Number(right?.position)) ? Number(right.position) : Number.MAX_SAFE_INTEGER;
+        return leftPosition - rightPosition;
+    });
     elements.task_media_list.replaceChildren();
     elements.task_media.classList.toggle('hidden', media.length === 0);
 
-    for (const item of media) {
+    for (const [index, item] of media.entries()) {
         const card = document.createElement('div');
         card.className = 'media-item';
-        const preview = String(item.preview_url ?? '').trim();
+        const position = Number.isFinite(Number(item?.position)) ? Number(item.position) : index;
+        const isCover = item?.role === 'cover' || position === 0;
+        const preview = String(item?.preview_url ?? '').trim();
         if (preview) {
             try {
                 const url = new URL(preview, connection?.baseUrl);
                 if (['https:', 'http:'].includes(url.protocol) && ! url.username && ! url.password) {
                     const image = document.createElement('img');
                     image.src = url.toString();
-                    image.alt = String(item.name ?? `#${item.image_id}`);
+                    image.alt = String(item?.name ?? `#${item?.image_id}`);
                     image.loading = 'lazy';
                     image.referrerPolicy = 'no-referrer';
                     card.append(image);
                 }
             } catch {}
         }
+        // 醒目徽标告诉运营这张图传到哪里：封面 → 平台封面位；正文图 → 正文【图片N】占位处。
+        const badge = document.createElement('span');
+        badge.className = 'media-item__placeholder';
+        badge.textContent = isCover ? message('coverImage') : `【图片${position}】`;
+        card.append(badge);
         const label = document.createElement('span');
-        const role = item.role === 'cover' ? message('coverImage') : message('bodyImage');
-        label.textContent = `${role} · ${String(item.name ?? `#${item.image_id}`)}`;
+        const role = isCover ? message('coverImage') : message('bodyImage');
+        label.textContent = `#${position} · ${role} · ${String(item?.name ?? `#${item?.image_id}`)}`;
         card.append(label);
         elements.task_media_list.append(card);
     }

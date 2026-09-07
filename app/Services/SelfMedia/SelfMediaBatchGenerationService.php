@@ -12,6 +12,7 @@ use App\Models\ManualPublicationPersona;
 use App\Services\BrowserOperations\PublicationPayloadBuilder;
 use App\Services\GeoFlow\ManualPublicationService;
 use App\Services\GeoFlow\WorkerAiModelInvocationGateway;
+use App\Support\Site\ArticleHtmlPresenter;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -211,7 +212,7 @@ final readonly class SelfMediaBatchGenerationService
                 'platform_title' => $variant['title'],
                 'platform_summary' => $variant['summary'],
                 'body_markdown' => $variant['body_markdown'],
-                'body_html' => $variant['body_html'],
+                'body_html' => $this->resolveBodyHtml($variant),
                 'tags' => $variant['tags'],
                 'media_manifest' => $current->media_manifest,
                 'source_hash' => (string) $current->source_hash,
@@ -231,6 +232,23 @@ final readonly class SelfMediaBatchGenerationService
 
             return $publication->refresh();
         }, 3);
+    }
+
+    /**
+     * body_html 为空时从 body_markdown 确定性渲染；body_markdown 也为空则保持 null。
+     *
+     * @param  array{body_markdown?:string,body_html?:?string}  $variant
+     */
+    private function resolveBodyHtml(array $variant): ?string
+    {
+        $html = trim((string) ($variant['body_html'] ?? ''));
+        if ($html !== '') {
+            return $html;
+        }
+
+        $markdown = trim((string) ($variant['body_markdown'] ?? ''));
+
+        return $markdown === '' ? null : ArticleHtmlPresenter::markdownToHtml($markdown);
     }
 
     /** @param array<string,string> $errors */

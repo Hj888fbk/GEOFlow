@@ -68,6 +68,7 @@ textarea { resize: vertical; }
 .media-assets__list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .media-item { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: 11px; }
 .media-item img { width: 100%; aspect-ratio: 4 / 3; border-radius: 5px; background: #f2f4f7; object-fit: cover; }
+.media-item__placeholder { justify-self: start; padding: 1px 6px; border-radius: 4px; background: #eff4ff; color: #3538cd; font-size: 11px; font-weight: 700; }
 .media-item span { overflow-wrap: anywhere; }
 .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .action-grid .primary { grid-column: 1 / -1; }
