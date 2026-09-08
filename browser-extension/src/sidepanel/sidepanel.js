@@ -313,6 +313,36 @@ async function waitForTab(tabId) {
     throw new Error(message('pageLoadTimeout'));
 }
 
+// 把 media_manifest 里的图片从 GEOFlow 预取为 base64，供注入页面的 API 适配器上传平台图床。
+// 扩展页有 host 权限可跨域读 GEOFlow；页面上下文做不到（CORS）。取失败的图片跳过，不阻断正文。
+async function withMediaData(payload) {
+    const manifest = Array.isArray(payload?.media_manifest) ? payload.media_manifest : [];
+    if (manifest.length === 0 || ! connection?.baseUrl) return payload;
+    const mediaData = [];
+    for (const item of manifest) {
+        const preview = String(item?.preview_url ?? '').trim();
+        if (! preview) continue;
+        try {
+            const url = new URL(preview, connection.baseUrl).toString();
+            const response = await fetch(url);
+            if (! response.ok) continue;
+            const buffer = await response.arrayBuffer();
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const chunk = 0x8000;
+            for (let offset = 0; offset < bytes.length; offset += chunk) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(offset, offset + chunk));
+            }
+            mediaData.push({
+                image_id: item.image_id,
+                mimeType: response.headers.get('content-type') || 'image/jpeg',
+                dataBase64: btoa(binary),
+            });
+        } catch { /* 单图失败不阻断 */ }
+    }
+    return { ...payload, _mediaData: mediaData };
+}
+
 async function fillDraft() {
     try {
         let tabId = currentTask?.tabId;
@@ -324,9 +354,15 @@ async function fillDraft() {
         if (! registered) throw new Error(message('adapter_not_implemented'));
         const isLegacyZhihu = registered.kind === 'legacy_zhihu';
         const adapter = registered.execute;
+        // API 直发适配器：页面上下文跨域拉不到 GEOFlow 图片（CORS），
+        // 在扩展侧（有 host 权限）预取并 base64 编码后随参数传入。
+        let payloadForInjection = selectedTask.publication_payload;
+        if (registered.kind === 'self_media_article') {
+            payloadForInjection = await withMediaData(selectedTask.publication_payload);
+        }
         const args = isLegacyZhihu
             ? [selectedTask.publication_payload, selectedTask.account.profile_url, false]
-            : [action, selectedTask.publication_payload, selectedTask.account, false];
+            : [action, payloadForInjection, selectedTask.account, false];
         let [execution] = await chrome.scripting.executeScript({ target: { tabId }, func: adapter, args });
         if (isLegacyZhihu && execution.result?.code === 'editor_not_empty' && window.confirm(message('replaceDraftConfirm'))) {
             [execution] = await chrome.scripting.executeScript({

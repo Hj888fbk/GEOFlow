@@ -406,3 +406,83 @@ test('self-media body html sanitizer tolerates empty and non-string input', asyn
     assert.equal(sanitizeSelfMediaBodyHtml(null), '');
     assert.equal(sanitizeSelfMediaBodyHtml(undefined), '');
 });
+
+test('baijiahao api draft: auth check, token, image upload, placeholder replace, draft save', async () => {
+    const { runSelfMediaApiDraft } = await import('../../browser-extension/src/adapters/self-media-api.js');
+    const calls = [];
+    globalThis.fetch = async (url, options = {}) => {
+        calls.push({ url: String(url), method: options.method ?? 'GET', body: options.body });
+        const u = String(url);
+        if (u.includes('/builder/app/appinfo')) {
+            return new Response(JSON.stringify({ errno: 0, errmsg: 'success', data: { user: { userid: '1788421461433111', name: '恒佳' } } }));
+        }
+        if (u.includes('/builder/rc/edit') && ! options.method) {
+            return new Response('<script>window.__BJH__INIT__AUTH__="tok123"</script>');
+        }
+        if (u.includes('/pcui/picture/uploadproxy')) {
+            return new Response(JSON.stringify({ errno: 0, errmsg: 'success', ret: { https_url: 'https://bcebos.com/img1.jpg' } }));
+        }
+        if (u.includes('/pcui/article/save')) {
+            return new Response('bjhdraft({"errno":0,"errmsg":"success","ret":{"article_id":"999888"}})');
+        }
+        throw new Error('unexpected url: ' + u);
+    };
+    const payload = {
+        title: '测试标题',
+        body_html: '<h2>小节</h2><p>正文</p><p>【图片1】</p>',
+        summary: '摘要',
+        media_manifest: [{ role: 'body', position: 1, image_id: 77 }],
+        _mediaData: [{ image_id: 77, mimeType: 'image/jpeg', dataBase64: Buffer.from('fakeimg').toString('base64') }],
+    };
+    const result = await runSelfMediaApiDraft('baijiahao_article', payload, { account_uid: '1788421461433111' });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(result.draftUrl, 'https://baijiahao.baidu.com/builder/rc/edit?type=news&article_id=999888');
+    const saveCall = calls.find((c) => c.url.includes('/pcui/article/save'));
+    const bodyText = String(saveCall.body);
+    assert.ok(bodyText.includes('bcebos.com%2Fimg1.jpg') || bodyText.includes('bcebos.com/img1.jpg'));
+    assert.ok(! bodyText.includes('%E5%9B%BE%E7%89%871')); // 【图片1】已被替换
+});
+
+test('baijiahao api draft: account mismatch blocks saving', async () => {
+    const { runSelfMediaApiDraft } = await import('../../browser-extension/src/adapters/self-media-api.js');
+    globalThis.fetch = async () => new Response(JSON.stringify({ errno: 0, errmsg: 'success', data: { user: { userid: '999', name: '别的号' } } }));
+    const result = await runSelfMediaApiDraft('baijiahao_article', { title: 't', body_html: '<p>x</p>' }, { account_uid: '1788421461433111' });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'account_mismatch');
+});
+
+test('sohu api draft: account match, image + cover upload, draft save', async () => {
+    const { runSelfMediaApiDraft } = await import('../../browser-extension/src/adapters/self-media-api.js');
+    const calls = [];
+    globalThis.fetch = async (url, options = {}) => {
+        calls.push(String(url));
+        const u = String(url);
+        if (u.includes('/mpbp/bp/account/list')) {
+            return new Response(JSON.stringify({ code: 2000000, data: { data: [{ accounts: [{ id: '121896784', nickName: '恒佳' }] }] } }));
+        }
+        if (u.includes('outerUpload/image/file')) {
+            return new Response(JSON.stringify({ url: 'https://sohu.com/up/1.jpg' }));
+        }
+        if (u.includes('/news/draft/v2')) {
+            return new Response(JSON.stringify({ success: true, data: 555666 }));
+        }
+        throw new Error('unexpected url: ' + u);
+    };
+    const payload = {
+        title: '搜狐标题',
+        body_html: '<p>正文</p><p>【图片1】</p>',
+        summary: '摘要',
+        media_manifest: [
+            { role: 'cover', position: 0, image_id: 88 },
+            { role: 'body', position: 1, image_id: 77 },
+        ],
+        _mediaData: [
+            { image_id: 88, mimeType: 'image/jpeg', dataBase64: Buffer.from('cover').toString('base64') },
+            { image_id: 77, mimeType: 'image/jpeg', dataBase64: Buffer.from('body').toString('base64') },
+        ],
+    };
+    const result = await runSelfMediaApiDraft('sohu_media_article', payload, { account_uid: '121896784' });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.ok(result.draftUrl.includes('id=555666'));
+    assert.equal(result.imageCount, 1);
+});
