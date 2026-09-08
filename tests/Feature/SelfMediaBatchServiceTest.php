@@ -98,6 +98,36 @@ final class SelfMediaBatchServiceTest extends TestCase
         $this->assertSame(ManualPublicationBatch::STATUS_PENDING_REVIEW, $batch->status);
     }
 
+    public function test_cancelled_batch_is_revived_when_same_plan_is_created_again(): void
+    {
+        $this->fakeGenerator();
+        Queue::fake();
+        [$admin, , $article] = $this->fixtures();
+        ManualPublicationPersona::query()->create(['name' => '恒佳企业发布身份']);
+        $receipt = app(WebsitePublicationReceiptService::class)->record($article, $this->receipt($article), $admin);
+        $service = app(SelfMediaBatchService::class);
+
+        $batch = $service->createManual(
+            $article,
+            $receipt,
+            SelfMediaPlatformRouter::INTENT_PRODUCT_EDUCATION,
+            [ManualPublicationAccount::PLATFORM_BAIJIAHAO],
+            $admin,
+        );
+        $batch->forceFill(['status' => ManualPublicationBatch::STATUS_CANCELLED])->save();
+
+        $revived = $service->createManual(
+            $article,
+            $receipt->fresh(),
+            SelfMediaPlatformRouter::INTENT_PRODUCT_EDUCATION,
+            [ManualPublicationAccount::PLATFORM_BAIJIAHAO],
+            $admin,
+        );
+
+        $this->assertSame((int) $batch->id, (int) $revived->id);
+        $this->assertSame(ManualPublicationBatch::STATUS_PLANNED, $revived->status);
+    }
+
     public function test_body_html_is_derived_from_markdown_when_generator_returns_null(): void
     {
         $generator = new class implements SelfMediaContentGenerator

@@ -4,6 +4,7 @@ namespace App\Services\SelfMedia;
 
 use App\Models\Admin;
 use App\Models\Article;
+use App\Models\ManualPublication;
 use App\Models\ManualPublicationBatch;
 use App\Models\SelfMediaPolicy;
 use App\Models\WebsitePublicationReceipt;
@@ -95,6 +96,20 @@ final readonly class SelfMediaBatchService
             ]));
             $existing = ManualPublicationBatch::query()->where('idempotency_hash', $idempotencyHash)->first();
             if ($existing instanceof ManualPublicationBatch) {
+                if ($existing->status === ManualPublicationBatch::STATUS_CANCELLED) {
+                    // 幂等复活：取消只终止推进，不改变“这篇文章+这组平台”的幂等意图。
+                    // 清空取消态与已取消的工作单，让批次回到 planned 重新生成，
+                    // 避免用户取消后无法对同一文章再次发起同一平台组合。
+                    $existing->publications()
+                        ->where('status', ManualPublication::STATUS_CANCELLED)
+                        ->delete();
+                    $existing->forceFill([
+                        'status' => ManualPublicationBatch::STATUS_PLANNED,
+                        'generation_errors' => null,
+                        'invalidated_at' => null,
+                    ])->save();
+                }
+
                 return $existing;
             }
 
@@ -110,10 +125,10 @@ final readonly class SelfMediaBatchService
 
             if ($trigger === ManualPublicationBatch::TRIGGER_AUTOMATIC) {
                 $dailyLimit = max(1, (int) ($policy?->daily_source_limit ?? self::DEFAULT_DAILY_SOURCE_LIMIT));
+                // 同上：PG 不允许聚合加锁；每日自动上限是软闸，回执行锁已串行化同文章创建。
                 $todayCount = ManualPublicationBatch::query()
                     ->where('trigger', ManualPublicationBatch::TRIGGER_AUTOMATIC)
                     ->whereDate('created_at', today())
-                    ->lockForUpdate()
                     ->count();
                 if ($todayCount >= $dailyLimit) {
                     throw new DomainException('今日自动来源文章已达到上限。');
