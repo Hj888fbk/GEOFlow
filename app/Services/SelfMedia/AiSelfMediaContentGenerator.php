@@ -119,6 +119,14 @@ final readonly class AiSelfMediaContentGenerator implements SelfMediaContentGene
         $text = preg_replace('/\A```(?:json)?\s*|\s*```\z/u', '', $text) ?? $text;
         $decoded = json_decode($text, true);
         if (! is_array($decoded)) {
+            // 模型偶尔在 JSON 外包裹说明文字：截取首个 { 到末个 } 再解析一次。
+            $start = strpos($text, '{');
+            $end = strrpos($text, '}');
+            if ($start !== false && $end !== false && $end > $start) {
+                $decoded = json_decode(substr($text, $start, $end - $start + 1), true);
+            }
+        }
+        if (! is_array($decoded)) {
             throw new DomainException('平台改写结果不是有效 JSON。');
         }
 
