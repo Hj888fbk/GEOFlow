@@ -39,6 +39,14 @@ final readonly class AiSelfMediaContentGenerator implements SelfMediaContentGene
             function (array $invocation) use ($batch, $context, $persistVariant, $platform): mixed {
                 $response = $invocation['response'];
                 $text = trim((string) ($response->text ?? ''));
+                if ($text === '') {
+                    // 推理型模型（如 deepseek-v4-flash）可能把 max_tokens 全部耗在思考链上，
+                    // 正文 content 返回空；报成 JSON 解析错误会误导排障。
+                    $reasoning = (int) data_get($response->usage ?? [], 'reasoning_tokens', 0);
+                    throw new DomainException(
+                        '模型返回空内容（reasoning_tokens='.$reasoning.'，疑似推理耗尽输出预算，请调高该模型 max_tokens）。'
+                    );
+                }
                 $decoded = $this->decodeJson($text);
                 $source = (array) $batch->source_snapshot;
                 // 只让模型产出 body_markdown；body_plain 服务端从 markdown 确定性派生，

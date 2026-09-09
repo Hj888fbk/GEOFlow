@@ -51,7 +51,18 @@ final class SelfMediaFactConstraintGuard
             static fn (string $number): bool => ! isset($allowed[$number]),
         ));
         if ($unexpected !== []) {
-            throw new DomainException('平台改写增加了事实约束包之外的数字：'.implode('、', $unexpected));
+            // 附带上数字所在上下文，便于区分「版式序号误伤」与「真实事实性数字」。
+            $contexts = [];
+            foreach ($unexpected as $number) {
+                $pattern = '/(?<![\pL\pN])'.preg_quote($number, '/').'(?![\pN])/u';
+                if (preg_match($pattern, $variantText, $m, PREG_OFFSET_CAPTURE)) {
+                    $charPos = mb_strlen(substr($variantText, 0, $m[0][1]));
+                    $contexts[] = $number.'@「'.str_replace("\n", '\n', mb_substr($variantText, max(0, $charPos - 40), 85)).'」';
+                } else {
+                    $contexts[] = $number;
+                }
+            }
+            throw new DomainException('平台改写增加了事实约束包之外的数字：'.implode('；', $contexts));
         }
     }
 
