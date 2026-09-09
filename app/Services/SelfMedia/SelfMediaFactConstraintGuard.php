@@ -68,7 +68,11 @@ final class SelfMediaFactConstraintGuard
 
     private function withoutListOrdinals(string $value): string
     {
-        return preg_replace('/^\s*\d+[.、)]\s+/mu', '', $value) ?? $value;
+        // 行首序号（2. / 3、/ 4)）与 HTML 段落内序号（<p>2. …）都是版式标记。
+        $value = preg_replace('/(^|>)\s*\d+[.、)]\s+/mu', '$1', $value) ?? $value;
+
+        // 「TOP 2」「TOP2：」等榜单小标题同样是版式标记，不是事实数字。
+        return preg_replace('/(?<![\pL\pN])TOP\s*\d+\s*[:：|｜]?\s*/iu', '', $value) ?? $value;
     }
 
     private function withoutImagePlaceholders(string $value): string
