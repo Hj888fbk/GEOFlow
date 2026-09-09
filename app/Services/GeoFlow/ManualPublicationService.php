@@ -340,6 +340,14 @@ class ManualPublicationService
             'risk_status' => (string) Arr::get($riskResult, 'status', 'clean'),
             'risk_result' => $riskResult,
             'scheduled_at' => $data['scheduled_at'] ?? null,
+            'document_schema_version' => trim((string) ($data['document_schema_version'] ?? $existing?->document_schema_version ?? '')) ?: null,
+            'portable_document' => is_array($data['portable_document'] ?? null)
+                ? $data['portable_document']
+                : $existing?->portable_document,
+            'render_fingerprint' => is_array($data['render_fingerprint'] ?? null)
+                ? $data['render_fingerprint']
+                : $existing?->render_fingerprint,
+            'content_type' => trim((string) ($data['content_type'] ?? $existing?->content_type ?? '')) ?: null,
         ];
     }
 
