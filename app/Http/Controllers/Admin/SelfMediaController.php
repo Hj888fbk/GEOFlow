@@ -41,12 +41,12 @@ final class SelfMediaController extends Controller
 
         return view('admin.self-media.index', [
             'pageTitle' => '按需自媒体发布',
-            'activeMenu' => 'articles',
+            'activeMenu' => 'publishing',
             'adminSiteName' => AdminWeb::siteName(),
             'eligibleReceipts' => $receipts,
             'batches' => ManualPublicationBatch::query()->with(['article:id,title', 'publications:id,manual_publication_batch_id,platform,status,source_stale_at'])->latest()->paginate(30),
             'tasks' => Task::query()->with('selfMediaPolicy')->orderBy('name')->get(['id', 'name', 'status']),
-            'platforms' => ManualPublicationAccount::SELF_MEDIA_PLATFORMS,
+            'platforms' => ManualPublicationAccount::DRAFT_SYNC_PLATFORMS,
             'intents' => SelfMediaPlatformRouter::INTENTS,
             'counts' => [
                 'eligible' => $receipts->count(),
@@ -62,8 +62,8 @@ final class SelfMediaController extends Controller
         $data = $request->validate([
             'website_publication_receipt_id' => ['required', 'integer', Rule::exists('website_publication_receipts', 'id')],
             'content_intent' => ['required', Rule::in(SelfMediaPlatformRouter::INTENTS)],
-            'platforms' => ['required', 'array', 'min:1', 'max:8'],
-            'platforms.*' => ['required', Rule::in(ManualPublicationAccount::SELF_MEDIA_PLATFORMS)],
+            'platforms' => ['required', 'array', 'min:1', 'max:10'],
+            'platforms.*' => ['required', Rule::in(ManualPublicationAccount::DRAFT_SYNC_PLATFORMS)],
         ]);
         $receipt = WebsitePublicationReceipt::query()->with('article')->findOrFail((int) $data['website_publication_receipt_id']);
         try {
@@ -159,6 +159,10 @@ final class SelfMediaController extends Controller
                         'platform_summary' => $publication->platform_summary,
                         'body_markdown' => $publication->body_markdown,
                         'body_html' => $publication->body_html,
+                        'document_schema_version' => $publication->document_schema_version,
+                        'portable_document' => $publication->portable_document,
+                        'render_fingerprint' => $publication->render_fingerprint,
+                        'content_type' => $publication->content_type,
                         'tags' => $publication->tags,
                         'media_manifest' => $publication->media_manifest,
                         'source_hash' => $publication->source_hash,
@@ -208,8 +212,8 @@ final class SelfMediaController extends Controller
         $data = $request->validate([
             'enabled' => ['nullable', 'boolean'],
             'content_intent' => ['required', Rule::in(SelfMediaPlatformRouter::INTENTS)],
-            'platform_override' => ['nullable', 'array', 'max:8'],
-            'platform_override.*' => ['required', Rule::in(ManualPublicationAccount::SELF_MEDIA_PLATFORMS)],
+            'platform_override' => ['nullable', 'array', 'max:10'],
+            'platform_override.*' => ['required', Rule::in(ManualPublicationAccount::DRAFT_SYNC_PLATFORMS)],
             'daily_source_limit' => ['required', 'integer', 'in:1'],
             'pending_batch_limit' => ['required', 'integer', 'between:1,2'],
         ]);

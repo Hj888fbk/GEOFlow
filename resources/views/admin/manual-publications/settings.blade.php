@@ -12,6 +12,40 @@
         </a>
     </div>
 
+    <section class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+                <h2 class="text-lg font-semibold text-gray-950">GEOFlow Chrome 草稿助手 {{ $extensionVersion }}</h2>
+                <p class="mt-2 text-sm leading-6 text-gray-700">扩展只保存草稿或填充编辑器，不会点击发布。Cookie、密码和平台 Token 始终留在专用 Chrome 环境。</p>
+                @if($extensionSha256)
+                    <p class="mt-2 break-all font-mono text-xs text-gray-600">SHA-256：{{ $extensionSha256 }}</p>
+                @else
+                    <p class="mt-2 text-sm font-medium text-amber-700">安装包尚未构建，请先运行扩展打包流程。</p>
+                @endif
+            </div>
+            @if($extensionSha256)
+                <a href="{{ route('admin.manual-publications.settings.extension.download') }}" class="inline-flex shrink-0 items-center justify-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">下载扩展 ZIP</a>
+            @endif
+        </div>
+        <ol class="mt-4 list-decimal space-y-1 pl-5 text-sm leading-6 text-gray-700">
+            <li>下载 ZIP 并解压到固定目录，不要直接打开 ZIP。</li>
+            <li>Chrome 打开 <span class="font-mono">chrome://extensions</span>，开启“开发者模式”。</li>
+            <li>点击“加载已解压的扩展程序”，选择解压后的目录。</li>
+            <li>打开扩展侧栏连接 GEOFlow；首次连接需回到后台批准设备。</li>
+        </ol>
+    </section>
+
+    <section class="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <h2 class="text-lg font-semibold text-gray-900">平台账号公开信息填写说明</h2>
+        <p class="mt-2 text-sm leading-6 text-gray-600">只填写公开主页、公开 UID/主页标识和编辑入口；禁止把 Cookie、密码、短信验证码或 Token 填入任何字段。</p>
+        <div class="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+            @foreach($editorUrlPresets as $platform => $url)
+                <div class="rounded-lg border border-gray-200 px-3 py-2"><span class="font-semibold text-gray-800">{{ __('admin.manual_publications.platform.'.$platform) }}</span><div class="mt-1 text-xs font-medium text-amber-700">实验中 · {{ $platformDraftModes[$platform] ?? '待验收' }}</div><div class="mt-1 break-all text-xs text-gray-500">{{ $url }}</div></div>
+            @endforeach
+        </div>
+        <p class="mt-3 text-xs leading-5 text-gray-600">只有真实账号重新打开草稿并通过结构、图片数量与顺序验收后，平台才可改为正式可用；本页不会把本地测试通过显示成平台完成。</p>
+    </section>
+
     <div class="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
         <section class="space-y-5">
             <form method="POST" action="{{ route('admin.manual-publications.settings.personas.store') }}" class="rounded-xl border border-blue-200 bg-white p-6 shadow-sm">
@@ -51,11 +85,11 @@
                 <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.manual_publications.settings.new_account') }}</h2>
                 <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div><label class="block text-sm font-medium text-gray-700">{{ __('admin.manual_publications.field.persona') }} *</label><select name="persona_id" required class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm"><option value="">{{ __('admin.manual_publications.option.select_persona') }}</option>@foreach($personas as $persona)<option value="{{ $persona->id }}">{{ $persona->name }}</option>@endforeach</select></div>
-                    <div><label class="block text-sm font-medium text-gray-700">{{ __('admin.manual_publications.field.platform') }} *</label><select name="platform" required class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm">@foreach($platforms as $platform)<option value="{{ $platform }}">{{ __('admin.manual_publications.platform.'.$platform) }}</option>@endforeach</select></div>
+                    <div><label class="block text-sm font-medium text-gray-700">{{ __('admin.manual_publications.field.platform') }} *</label><select id="new-account-platform" name="platform" required class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm">@foreach($platforms as $platform)<option value="{{ $platform }}">{{ __('admin.manual_publications.platform.'.$platform) }}</option>@endforeach</select></div>
                     <div><label class="block text-sm font-medium text-gray-700">{{ __('admin.manual_publications.field.account') }} *</label><input name="account_name" required maxlength="160" class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm"></div>
                     <div><label class="block text-sm font-medium text-gray-700">{{ __('admin.manual_publications.field.custom_platform') }}</label><input name="custom_platform" maxlength="120" class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm"></div>
                     <div class="sm:col-span-2"><label class="block text-sm font-medium text-gray-700">{{ __('admin.manual_publications.settings.profile_url') }}</label><input type="url" name="profile_url" maxlength="1000" class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm"></div>
-                    <div class="sm:col-span-2"><label class="block text-sm font-medium text-gray-700">平台编辑入口</label><input type="url" name="editor_url" maxlength="1000" class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm" placeholder="https://..."></div>
+                    <div class="sm:col-span-2"><label class="block text-sm font-medium text-gray-700">平台编辑入口</label><input id="new-account-editor-url" type="url" name="editor_url" maxlength="1000" class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm" placeholder="https://..."></div>
                     <div><label class="block text-sm font-medium text-gray-700">账号 UID</label><input name="account_uid" maxlength="255" class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm"></div>
                     <div><label class="block text-sm font-medium text-gray-700">主页标识</label><input name="homepage_identifier" maxlength="255" class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm"></div>
                     <label class="sm:col-span-2 flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm"><input type="hidden" name="browser_adapter_enabled" value="0"><input type="checkbox" name="browser_adapter_enabled" value="1">启用浏览器适配器（只填不发）</label>
@@ -89,3 +123,18 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const presets = @json($editorUrlPresets);
+    const platform = document.getElementById('new-account-platform');
+    const editor = document.getElementById('new-account-editor-url');
+    const applyPreset = () => {
+        if (editor && !editor.value.trim() && presets[platform?.value]) editor.value = presets[platform.value];
+    };
+    platform?.addEventListener('change', applyPreset);
+    applyPreset();
+});
+</script>
+@endpush

@@ -27,7 +27,7 @@ final class SelfMediaPlatformRouter
     ];
 
     /** @return array{platforms:list<string>,version:string,reason:string} */
-    public function route(string $intent, ?array $override = null): array
+    public function route(string $intent, ?array $override = null, string $routingVersion = SelfMediaPolicy::ROUTING_VERSION): array
     {
         if (! in_array($intent, self::INTENTS, true)) {
             throw new DomainException('未知的自媒体分发意图。');
@@ -41,12 +41,12 @@ final class SelfMediaPlatformRouter
 
             return [
                 'platforms' => $platforms,
-                'version' => SelfMediaPolicy::ROUTING_VERSION,
+                'version' => $routingVersion,
                 'reason' => 'manual_override:'.$intent,
             ];
         }
 
-        $platforms = match ($intent) {
+        $legacyPlatforms = match ($intent) {
             self::INTENT_ENTERPRISE_NEWS => [
                 ManualPublicationAccount::PLATFORM_QQ_PENGUIN,
                 ManualPublicationAccount::PLATFORM_BAIJIAHAO,
@@ -75,9 +75,43 @@ final class SelfMediaPlatformRouter
             self::INTENT_SHORT_UPDATE => [ManualPublicationAccount::PLATFORM_WEIBO],
         };
 
+        $platforms = $routingVersion === SelfMediaPolicy::ROUTING_VERSION
+            ? match ($intent) {
+                self::INTENT_ENTERPRISE_NEWS => [
+                    ManualPublicationAccount::PLATFORM_QQ_PENGUIN,
+                    ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+                    ManualPublicationAccount::PLATFORM_NETEASE_MEDIA,
+                    ManualPublicationAccount::PLATFORM_SOHU_MEDIA,
+                    ManualPublicationAccount::PLATFORM_DAYU,
+                    ManualPublicationAccount::PLATFORM_TOUTIAO,
+                ],
+                self::INTENT_PRODUCT_EDUCATION => [
+                    ManualPublicationAccount::PLATFORM_ZHIHU_COLUMN,
+                    ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+                    ManualPublicationAccount::PLATFORM_SOHU_MEDIA,
+                    ManualPublicationAccount::PLATFORM_DAYU,
+                    ManualPublicationAccount::PLATFORM_JIANSHU,
+                ],
+                self::INTENT_SELECTION_DECISION => [
+                    ManualPublicationAccount::PLATFORM_ZHIHU_COLUMN,
+                    ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+                    ManualPublicationAccount::PLATFORM_SOHU_MEDIA,
+                    ManualPublicationAccount::PLATFORM_JIANSHU,
+                ],
+                self::INTENT_ENGINEERING_DIGITAL => [
+                    ManualPublicationAccount::PLATFORM_ZHIHU_COLUMN,
+                    ManualPublicationAccount::PLATFORM_CSDN,
+                    ManualPublicationAccount::PLATFORM_NETEASE_MEDIA,
+                    ManualPublicationAccount::PLATFORM_SOHU_MEDIA,
+                    ManualPublicationAccount::PLATFORM_JIANSHU,
+                ],
+                self::INTENT_SHORT_UPDATE => [ManualPublicationAccount::PLATFORM_TOUTIAO],
+            }
+            : $legacyPlatforms;
+
         return [
             'platforms' => $platforms,
-            'version' => SelfMediaPolicy::ROUTING_VERSION,
+            'version' => $routingVersion,
             'reason' => 'deterministic_rule:'.$intent,
         ];
     }

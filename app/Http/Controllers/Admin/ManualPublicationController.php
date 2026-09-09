@@ -43,7 +43,7 @@ class ManualPublicationController extends Controller
 
         return view('admin.manual-publications.index', [
             'pageTitle' => __('admin.manual_publications.page_title'),
-            'activeMenu' => 'articles',
+            'activeMenu' => 'publishing',
             'adminSiteName' => AdminWeb::siteName(),
             'publications' => $publications,
             'filters' => $request->only(['status', 'type', 'platform', 'assigned_admin_id', 'article_id', 'scheduled_from', 'scheduled_to', 'search']),
@@ -97,7 +97,7 @@ class ManualPublicationController extends Controller
 
         return view('admin.manual-publications.show', [
             'pageTitle' => __('admin.manual_publications.detail_title', ['id' => $publication->getKey()]),
-            'activeMenu' => 'articles',
+            'activeMenu' => 'publishing',
             'adminSiteName' => AdminWeb::siteName(),
             'publication' => $publication,
             'duplicates' => $this->service->duplicatesFor($publication)
@@ -249,7 +249,7 @@ class ManualPublicationController extends Controller
             'pageTitle' => $publication === null
                 ? __('admin.manual_publications.create_title')
                 : __('admin.manual_publications.edit_title', ['id' => $publication->getKey()]),
-            'activeMenu' => 'articles',
+            'activeMenu' => 'publishing',
             'adminSiteName' => AdminWeb::siteName(),
             'publication' => $publication,
             'selectedArticle' => $selectedArticle,

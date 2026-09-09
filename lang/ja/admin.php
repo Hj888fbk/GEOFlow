@@ -94,6 +94,7 @@ return array_replace_recursive($base, [
         'dashboard' => 'ダッシュボード',
         'tasks' => 'タスク',
         'articles' => '記事',
+        'publishing' => '公開管理',
         'materials' => 'コンテンツ資産',
         'ai_config' => 'AI設定',
         'site_settings' => 'サイト設定',

@@ -145,7 +145,7 @@
                             <td class="px-5 py-4 text-sm text-gray-700">{{ $publication->assignee?->name ?? __('admin.manual_publications.unassigned') }}</td>
                             <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600">{{ $publication->scheduled_at?->format('Y-m-d H:i') ?? __('admin.manual_publications.unscheduled') }}</td>
                             <td class="px-5 py-4 text-sm">
-                                <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $statusClass }}">{{ __('admin.manual_publications.status.'.$publication->status) }}</span>
+                                <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $statusClass }}">{{ $publication->status === \App\Models\ManualPublication::STATUS_DRAFT_FILLED && data_get($publication->draft_filled_receipt, 'persistence') === 'remote_saved' ? '平台草稿已保存' : __('admin.manual_publications.status.'.$publication->status) }}</span>
                                 @if($publication->risk_status !== 'clean')
                                     <div class="mt-1 text-xs font-medium text-red-600">{{ __('admin.manual_publications.risk.'.$publication->risk_status) }}</div>
                                 @endif

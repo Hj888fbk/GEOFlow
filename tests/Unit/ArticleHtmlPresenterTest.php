@@ -52,4 +52,14 @@ MD);
             ArticleHtmlPresenter::cardSummary($article)
         );
     }
+
+    public function test_whole_document_markdown_fence_is_removed_but_inner_code_block_is_preserved(): void
+    {
+        $html = ArticleHtmlPresenter::markdownToHtml("```markdown\n# 主标题\n\n## 二级标题\n\n正文\n\n```php\necho 1;\n```\n```");
+
+        $this->assertStringContainsString('<h1>主标题</h1>', $html);
+        $this->assertStringContainsString('<h2>二级标题</h2>', $html);
+        $this->assertStringContainsString('<code class="language-php">echo 1;', $html);
+        $this->assertStringNotContainsString('language-markdown', $html);
+    }
 }

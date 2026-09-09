@@ -128,6 +128,11 @@ final class ManualPublicationBatch extends Model
         return $this->hasMany(ManualPublication::class, 'manual_publication_batch_id');
     }
 
+    public function mediaSnapshots(): HasMany
+    {
+        return $this->hasMany(SelfMediaMediaSnapshot::class, 'manual_publication_batch_id');
+    }
+
     /** @param list<string> $publicationStatuses */
     public static function statusFromPublications(array $publicationStatuses, string $currentStatus): string
     {

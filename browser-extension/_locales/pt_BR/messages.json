@@ -41,6 +41,7 @@
   "pageLoadTimeout": { "message": "A página de destino demorou demais para carregar." },
   "replaceDraftConfirm": { "message": "O editor já tem conteúdo. Substituir o rascunho atual?" },
   "draftFilled": { "message": "Rascunho preenchido. Revise e clique em Publicar pessoalmente." },
+  "draftSaved": { "message": "O rascunho foi salvo e verificado. Revise e publique pessoalmente." },
   "resultDetected": { "message": "A URL publicada foi detectada." },
   "resultUnknown": { "message": "Não foi possível confirmar o resultado. Verifique manualmente." },
   "completionRequired": { "message": "Uma URL é necessária para confirmar a publicação." },

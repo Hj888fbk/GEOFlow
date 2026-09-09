@@ -47,6 +47,7 @@
   "pageLoadTimeout": { "message": "The target page took too long to load." },
   "replaceDraftConfirm": { "message": "The editor already has content. Replace the current draft?" },
   "draftFilled": { "message": "Draft filled. Review it and click Publish yourself." },
+  "draftSaved": { "message": "The platform draft was saved and verified. Review it and publish yourself." },
   "resultDetected": { "message": "Published result URL detected." },
   "resultUnknown": { "message": "The result could not be confirmed. Verify it manually." },
   "completionRequired": { "message": "A result URL is required to confirm publication." },

@@ -7,7 +7,6 @@ use App\Models\ManualPublicationAccount;
 use App\Models\ManualPublicationBatch;
 use App\Services\GeoFlow\AiExecutionContextFactory;
 use App\Services\GeoFlow\WorkerAiModelInvocationGateway;
-use App\Support\Site\ArticleHtmlPresenter;
 use Closure;
 use DomainException;
 use Illuminate\Support\Arr;
@@ -19,6 +18,7 @@ final readonly class AiSelfMediaContentGenerator implements SelfMediaContentGene
     public function __construct(
         private AiExecutionContextFactory $contextFactory,
         private WorkerAiModelInvocationGateway $invocationGateway,
+        private PortableArticleDocumentService $portableDocuments,
     ) {}
 
     public function generateAndPersist(
@@ -36,25 +36,33 @@ final readonly class AiSelfMediaContentGenerator implements SelfMediaContentGene
             $context,
             $modelId,
             $this->prompt($batch, $platform),
-            function (array $invocation) use ($batch, $context, $persistVariant): mixed {
+            function (array $invocation) use ($batch, $context, $persistVariant, $platform): mixed {
                 $response = $invocation['response'];
                 $text = trim((string) ($response->text ?? ''));
                 $decoded = $this->decodeJson($text);
                 $source = (array) $batch->source_snapshot;
                 // 只让模型产出 body_markdown；body_plain 服务端从 markdown 确定性派生，
                 // 避免同一正文在 JSON 里输出两遍导致 max_tokens 撞顶截断。
+                $title = trim((string) Arr::get($decoded, 'title', Arr::get($source, 'title', '')));
                 $bodyMarkdown = trim((string) Arr::get($decoded, 'body_markdown', ''));
-                $body = $this->stripImagePlaceholders($this->markdownToPlainText($bodyMarkdown));
-                if ($body === '') {
-                    throw new DomainException('平台改写返回了空正文。');
-                }
+                $document = $this->portableDocuments->build(
+                    $title,
+                    $bodyMarkdown,
+                    array_values((array) $batch->media_manifest),
+                    $platform,
+                );
+                $body = trim((string) ($document['plain_text'] ?? ''));
 
                 return $persistVariant([
-                    'title' => trim((string) Arr::get($decoded, 'title', Arr::get($source, 'title', ''))),
+                    'title' => $title,
                     'summary' => trim((string) Arr::get($decoded, 'summary', Arr::get($source, 'excerpt', ''))),
                     'body_plain' => $body,
-                    'body_markdown' => $bodyMarkdown,
-                    'body_html' => null,
+                    'body_markdown' => (string) $document['markdown'],
+                    'body_html' => (string) $document['html'],
+                    'document_schema_version' => PortableArticleDocumentService::SCHEMA_VERSION,
+                    'portable_document' => $document,
+                    'render_fingerprint' => (array) $document['render_fingerprint'],
+                    'content_type' => $this->contentType($platform),
                     'tags' => array_values(array_slice(array_unique(array_filter(array_map(
                         static fn ($tag): string => trim((string) $tag),
                         (array) Arr::get($decoded, 'tags', []),
@@ -93,9 +101,9 @@ final readonly class AiSelfMediaContentGenerator implements SelfMediaContentGene
         if ($bodyImages !== []) {
             $lines[] = '正文配图清单（共'.count($bodyImages).'张，按位置顺序编号 1 到 '.count($bodyImages).'）：';
             foreach ($bodyImages as $index => $image) {
-                $lines[] = '【图片'.($index + 1).'】'.trim((string) ($image['name'] ?? ''));
+                $lines[] = '{{media:'.(string) ($image['media_key'] ?? '').'}} '.trim((string) ($image['name'] ?? ''));
             }
-            $lines[] = 'body_markdown 必须在合适位置为每张正文配图保留占位行【图片N】，N 与清单编号一致；占位符必须单独成行，不得遗漏、重复或更改编号。';
+            $lines[] = 'body_markdown 必须逐字保留每个 {{media:...}} 图片节点，单独成行，数量和顺序必须一致；不得遗漏、重复或更改 media_key。';
         }
 
         $lines[] = '仅输出 JSON：{"title":"","summary":"","body_markdown":"","tags":[]}（不要输出 body_plain 和 body_html，正文只写 markdown 版本）';
@@ -116,22 +124,13 @@ final readonly class AiSelfMediaContentGenerator implements SelfMediaContentGene
         return trim($text);
     }
 
-    /**
-     * markdown → 可读纯文本：先经发布管线同款渲染成 HTML，块级标签转换为换行后再剥离。
-     */
-    private function markdownToPlainText(string $markdown): string
+    private function contentType(string $platform): string
     {
-        if (trim($markdown) === '') {
-            return '';
-        }
-        $html = ArticleHtmlPresenter::markdownToHtml($markdown);
-        $html = preg_replace('/<br\s*\/?>/i', "\n", (string) $html) ?? $html;
-        $html = preg_replace('/<\/(?:h[1-6]|p|li|tr|blockquote|table|ul|ol)>/i', "\n", $html) ?? $html;
-        $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $text = preg_replace('/[ \t]*\R[ \t]*/u', "\n", $text) ?? $text;
-        $text = preg_replace('/\R{3,}/u', "\n\n", $text) ?? $text;
-
-        return trim($text);
+        return match ($platform) {
+            ManualPublicationAccount::PLATFORM_DOUYIN => 'douyin_article',
+            ManualPublicationAccount::PLATFORM_WEIBO => 'weibo_post',
+            default => 'article',
+        };
     }
 
     /** @return array<string,mixed> */

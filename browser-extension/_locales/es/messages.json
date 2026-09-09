@@ -41,6 +41,7 @@
   "pageLoadTimeout": { "message": "La página tardó demasiado en cargar." },
   "replaceDraftConfirm": { "message": "El editor ya tiene contenido. ¿Sustituir el borrador actual?" },
   "draftFilled": { "message": "Borrador completado. Revísalo y pulsa Publicar personalmente." },
+  "draftSaved": { "message": "El borrador se guardó y verificó. Revísalo y publícalo personalmente." },
   "resultDetected": { "message": "Se detectó la URL publicada." },
   "resultUnknown": { "message": "No se pudo confirmar el resultado. Verifícalo manualmente." },
   "completionRequired": { "message": "Se necesita una URL para confirmar la publicación." },

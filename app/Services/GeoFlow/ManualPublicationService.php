@@ -129,7 +129,9 @@ class ManualPublicationService
                 $isStale = $current->browser_claimed_by_token_id === null
                     || $current->browser_last_seen_at === null
                     || $current->browser_last_seen_at->lte(now()->subMinutes(10));
-                if (! $isBrowserClaim || ! $isStale) {
+                // 仅浏览器认领的工单需要「失联十分钟」守卫；人工转入 in_progress
+                // （无浏览器认领字段）的工单允许管理员随时释放回 ready，否则会永久卡死。
+                if ($isBrowserClaim && ! $isStale) {
                     throw new DomainException((string) __('admin.manual_publications.error.browser_claim_active'));
                 }
             }

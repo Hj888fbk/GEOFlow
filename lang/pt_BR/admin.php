@@ -86,6 +86,7 @@ return array_replace_recursive($base, [
         'dashboard' => 'Painel',
         'tasks' => 'Tarefas',
         'articles' => 'Artigos',
+        'publishing' => 'Publicação',
         'materials' => 'Ativos de conteúdo',
         'ai_config' => 'Configuração de IA',
         'site_settings' => 'Configurações do Site',

@@ -3,11 +3,19 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\Article;
+use App\Models\Author;
+use App\Models\Category;
 use App\Models\ManualPublication;
 use App\Models\ManualPublicationAccount;
+use App\Models\ManualPublicationBatch;
 use App\Models\ManualPublicationPersona;
+use App\Models\SelfMediaMediaSnapshot;
+use App\Models\Task;
+use App\Models\WebsitePublicationReceipt;
 use App\Services\Api\ApiTokenService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class BrowserOperationsApiTest extends TestCase
@@ -570,6 +578,274 @@ class BrowserOperationsApiTest extends TestCase
             ->assertJsonPath('error.code', 'browser_concurrency_limit');
     }
 
+    public function test_v3_work_order_requires_extension_030_and_remote_saved_receipt_must_match_fingerprint(): void
+    {
+        $admin = $this->admin();
+        $persona = ManualPublicationPersona::query()->create(['name' => 'V3 identity']);
+        $account = ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+            'account_name' => 'V3 account',
+            'account_uid' => '778899',
+            'editor_url' => 'https://baijiahao.baidu.com/builder/rc/edit',
+            'browser_adapter_enabled' => true,
+        ]);
+        $publication = ManualPublication::query()->create([
+            'type' => ManualPublication::TYPE_POST,
+            'persona_id' => $persona->id,
+            'account_id' => $account->id,
+            'assigned_admin_id' => $admin->id,
+            'platform' => ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+            'target_url' => $account->editor_url,
+            'content' => '正文',
+            'content_fingerprint' => hash('sha256', 'v3-content'),
+            'identity_snapshot' => ['account' => ['account_uid' => '778899']],
+            'status' => ManualPublication::STATUS_READY,
+            'status_changed_at' => now(),
+            'revision' => 1,
+            'publication_payload' => [
+                'schema_version' => 3,
+                'target_action' => 'baijiahao_article',
+                'required_extension_version' => '0.3.0',
+                'draft_policy' => 'draft_only',
+                'title' => '标题',
+            'body_plain' => '正文',
+                'media_manifest' => [
+                    ['media_key' => 'm_aaaaaaaaaaaaaaaaaaaaaaaa', 'sha256' => str_repeat('a', 64), 'role' => 'body', 'required' => true, 'position' => 1],
+                    ['media_key' => 'm_bbbbbbbbbbbbbbbbbbbbbbbb', 'sha256' => str_repeat('b', 64), 'role' => 'body', 'required' => true, 'position' => 2],
+                ],
+                'render_fingerprint' => [
+                    'text_sha256' => hash('sha256', '正文'),
+                    'heading_outline' => [],
+                    'image_order' => ['m_aaaaaaaaaaaaaaaaaaaaaaaa', 'm_bbbbbbbbbbbbbbbbbbbbbbbb'],
+                ],
+            ],
+            'document_schema_version' => 'portable-article-document/v1',
+        ]);
+        $token = $admin->createToken('V3 Chrome', ['browser-operations:read', 'browser-operations:execute'])->plainTextToken;
+        $oldHeaders = $this->authenticatedHeaders($token);
+
+        $this->withHeaders($oldHeaders)->getJson('/api/v1/manual-publications')
+            ->assertOk()
+            ->assertJsonCount(0, 'data.items');
+        $this->withHeaders($oldHeaders + ['X-Idempotency-Key' => 'old-extension-v3-claim'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/claim', ['revision' => 1])
+            ->assertStatus(426)
+            ->assertJsonPath('error.code', 'extension_upgrade_required');
+
+        $headers = $this->authenticatedHeaders($token, '0.3.0');
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'new-extension-v3-claim'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/claim', ['revision' => 1])
+            ->assertOk()
+            ->assertJsonPath('data.publication.status', ManualPublication::STATUS_IN_PROGRESS);
+
+        $receipt = [
+            'revision' => 2,
+            'adapter_version' => '0.3.0',
+            'target_origin' => 'https://baijiahao.baidu.com',
+            'observed_account_hash' => hash('sha256', 'uid:778899'),
+            'filled_fields' => ['title', 'body'],
+            'persistence' => 'remote_saved',
+            'draft_id' => 'draft-123',
+            'draft_url' => 'https://baijiahao.baidu.com/builder/rc/edit?article_id=draft-123',
+            'rendered_text_hash' => str_repeat('0', 64),
+            'heading_outline' => [],
+            'expected_image_count' => 2,
+            'observed_image_count' => 2,
+            'media_upload_receipts' => [
+                ['media_key' => 'm_aaaaaaaaaaaaaaaaaaaaaaaa', 'source_sha256' => str_repeat('a', 64), 'platform_url' => 'https://bcebos.com/a.jpg'],
+                ['media_key' => 'm_bbbbbbbbbbbbbbbbbbbbbbbb', 'source_sha256' => str_repeat('b', 64), 'platform_url' => 'https://bcebos.com/b.jpg'],
+            ],
+            'finished_at' => now()->toIso8601String(),
+        ];
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'v3-mismatched-draft-receipt'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/draft-receipt', $receipt)
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'draft_text_mismatch');
+
+        $receipt['rendered_text_hash'] = hash('sha256', '正文');
+        $oldAdapterReceipt = array_replace($receipt, ['adapter_version' => '0.2.0']);
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'v3-old-adapter-draft-receipt'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/draft-receipt', $oldAdapterReceipt)
+            ->assertStatus(426)
+            ->assertJsonPath('error.code', 'extension_upgrade_required');
+
+        $missingDraftUrlReceipt = array_replace($receipt, ['draft_url' => null]);
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'v3-missing-url-draft-receipt'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/draft-receipt', $missingDraftUrlReceipt)
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'draft_url_required');
+
+        $wrongDraftUrlReceipt = array_replace($receipt, ['draft_url' => 'https://evil.example/draft-123']);
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'v3-wrong-url-draft-receipt'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/draft-receipt', $wrongDraftUrlReceipt)
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'invalid_draft_url');
+
+        $reversedMediaReceipt = array_replace($receipt, ['media_upload_receipts' => array_reverse($receipt['media_upload_receipts'])]);
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'v3-reversed-media-draft-receipt'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/draft-receipt', $reversedMediaReceipt)
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'draft_media_receipt_mismatch');
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'v3-matched-draft-receipt'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/draft-receipt', $receipt)
+            ->assertOk()
+            ->assertJsonPath('data.publication.status', ManualPublication::STATUS_DRAFT_FILLED);
+        $this->assertSame('remote_saved', $publication->refresh()->draft_filled_receipt['persistence']);
+    }
+
+    public function test_protected_media_is_available_only_while_the_requesting_device_owns_the_claim(): void
+    {
+        Storage::fake('local');
+        $admin = $this->admin();
+        $task = Task::query()->create(['name' => '受保护媒体测试任务', 'status' => 'active']);
+        $category = Category::query()->create(['name' => '测试分类', 'slug' => uniqid('browser-media-category-')]);
+        $author = Author::query()->create(['name' => '测试作者']);
+        $article = Article::query()->create([
+            'title' => '受保护媒体测试文章',
+            'slug' => uniqid('browser-media-article-'),
+            'content' => '正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'task_id' => $task->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+        $sourceHash = hash('sha256', 'protected-media-source');
+        $websiteReceipt = WebsitePublicationReceipt::query()->create([
+            'article_id' => $article->id,
+            'formal_url' => 'https://www.example.com/'.$article->slug,
+            'http_status' => 200,
+            'source_hash' => $sourceHash,
+            'readback_hash' => $sourceHash,
+            'readback_succeeded' => true,
+            'verified_at' => now(),
+        ]);
+        $batch = ManualPublicationBatch::query()->create([
+            'article_id' => $article->id,
+            'task_id' => $task->id,
+            'website_publication_receipt_id' => $websiteReceipt->id,
+            'created_by_admin_id' => $admin->id,
+            'trigger' => ManualPublicationBatch::TRIGGER_MANUAL,
+            'content_intent' => 'engineering_technical',
+            'routing_version' => 'self-media-routing-v2',
+            'target_platforms' => [ManualPublicationAccount::PLATFORM_BAIJIAHAO],
+            'platform_combination_hash' => hash('sha256', 'baijiahao'),
+            'source_url' => $websiteReceipt->formal_url,
+            'website_readback' => ['http_status' => 200],
+            'source_hash' => $sourceHash,
+            'source_snapshot' => ['title' => $article->title, 'content' => $article->content],
+            'fact_constraints' => [],
+            'idempotency_hash' => hash('sha256', 'protected-media-batch'),
+            'status' => ManualPublicationBatch::STATUS_PENDING_PLATFORM,
+        ]);
+        $persona = ManualPublicationPersona::query()->create(['name' => '受保护媒体身份']);
+        $account = ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+            'account_name' => '受保护媒体账号',
+            'account_uid' => '778899',
+            'editor_url' => 'https://baijiahao.baidu.com/builder/rc/edit',
+            'browser_adapter_enabled' => true,
+        ]);
+        $publication = ManualPublication::query()->create([
+            'type' => ManualPublication::TYPE_POST,
+            'manual_publication_batch_id' => $batch->id,
+            'article_id' => $article->id,
+            'persona_id' => $persona->id,
+            'account_id' => $account->id,
+            'assigned_admin_id' => $admin->id,
+            'platform' => ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+            'target_url' => $account->editor_url,
+            'content' => '正文',
+            'content_fingerprint' => hash('sha256', 'protected-media-content'),
+            'identity_snapshot' => ['account' => ['account_uid' => '778899']],
+            'status' => ManualPublication::STATUS_READY,
+            'status_changed_at' => now(),
+            'revision' => 1,
+            'publication_payload' => [
+                'schema_version' => 3,
+                'target_action' => 'baijiahao_article',
+                'required_extension_version' => '0.3.0',
+                'draft_policy' => 'draft_only',
+                'body_plain' => '正文',
+            ],
+        ]);
+        $bytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true);
+        $this->assertIsString($bytes);
+        $sha256 = hash('sha256', $bytes);
+        $mediaKey = 'media_12345678';
+        $storagePath = 'self-media/test/'.$mediaKey.'.png';
+        Storage::disk('local')->put($storagePath, $bytes);
+        SelfMediaMediaSnapshot::query()->create([
+            'manual_publication_batch_id' => $batch->id,
+            'media_key' => $mediaKey,
+            'position' => 1,
+            'source_type' => 'body_markdown',
+            'source_url' => 'https://www.example.com/image.png',
+            'storage_disk' => 'local',
+            'storage_path' => $storagePath,
+            'sha256' => $sha256,
+            'mime_type' => 'image/png',
+            'file_size' => strlen($bytes),
+            'width' => 1,
+            'height' => 1,
+            'status' => 'ready',
+        ]);
+        $ownerToken = $admin->createToken('Media owner Chrome', ['browser-operations:read', 'browser-operations:execute']);
+        $otherToken = $admin->createToken('Other Chrome', ['browser-operations:read', 'browser-operations:execute']);
+        $ownerHeaders = $this->authenticatedHeaders($ownerToken->plainTextToken, '0.3.0');
+        $otherHeaders = $this->authenticatedHeaders($otherToken->plainTextToken, '0.3.0');
+        $mediaUrl = '/api/v1/manual-publications/'.$publication->id.'/media/'.$mediaKey;
+
+        $this->withHeaders($ownerHeaders)->get($mediaUrl)
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'claim_owned_by_another_client');
+
+        $this->withHeaders($ownerHeaders + ['X-Idempotency-Key' => 'claim-protected-media-owner'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/claim', ['revision' => 1])
+            ->assertOk();
+
+        $this->withHeaders($otherHeaders)->get($mediaUrl)
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'claim_owned_by_another_client');
+
+        $this->withHeaders($ownerHeaders)->get($mediaUrl)
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png')
+            ->assertHeader('X-Content-SHA256', $sha256)
+            ->assertHeader('ETag', '"'.$sha256.'"')
+            ->assertStreamedContent($bytes);
+
+        $this->withHeaders($ownerHeaders + ['X-Idempotency-Key' => 'release-protected-media-owner'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/release', ['revision' => 2])
+            ->assertOk();
+        $this->withHeaders($ownerHeaders)->get($mediaUrl)
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'claim_owned_by_another_client');
+
+        $this->withHeaders($ownerHeaders + ['X-Idempotency-Key' => 'reclaim-protected-media-owner'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/claim', ['revision' => 3])
+            ->assertOk();
+        $this->withHeaders($ownerHeaders + ['X-Idempotency-Key' => 'disable-structural-adapter-owner'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/adapter-failure', [
+                'revision' => 4,
+                'adapter_version' => '0.3.0',
+                'target_origin' => 'https://baijiahao.baidu.com',
+                'finished_at' => now()->toIso8601String(),
+                'error_code' => 'draft_heading_mismatch',
+            ])->assertOk()
+            ->assertJsonPath('data.publication.status', ManualPublication::STATUS_FAILED)
+            ->assertJsonPath('data.publication.account.browser_adapter_enabled', false);
+        $this->assertFalse($account->refresh()->browser_adapter_enabled);
+        $this->assertTrue($publication->refresh()->execution_receipt['adapter_auto_disabled']);
+        $this->withHeaders($ownerHeaders)->get($mediaUrl)
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'claim_owned_by_another_client');
+    }
+
     /** @return array<string,string> */
     private function browserHeaders(): array
     {
@@ -580,9 +856,12 @@ class BrowserOperationsApiTest extends TestCase
     }
 
     /** @return array<string,string> */
-    private function authenticatedHeaders(string $plainToken): array
+    private function authenticatedHeaders(string $plainToken, string $version = '0.1.0'): array
     {
-        return $this->browserHeaders() + ['Authorization' => 'Bearer '.$plainToken];
+        return array_replace($this->browserHeaders(), [
+            'X-GEOFlow-Client-Version' => $version,
+            'Authorization' => 'Bearer '.$plainToken,
+        ]);
     }
 
     private function admin(string $role = 'admin'): Admin

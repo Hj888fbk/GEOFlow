@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class AdminCredentialRevocationTest extends TestCase
@@ -145,5 +146,51 @@ class AdminCredentialRevocationTest extends TestCase
         $secondRequestView->revokeAuthenticationCredentials();
 
         $this->assertSame(3, (int) $admin->fresh()->auth_version);
+    }
+
+    public function test_reset_credentials_command_updates_password_and_revokes_existing_credentials(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'owner',
+            'password' => 'old-secret-123',
+            'email' => 'owner@example.com',
+            'display_name' => 'Owner',
+            'role' => 'super_admin',
+            'status' => 'locked',
+        ]);
+        $tokenId = $admin->createToken('existing-token', ['catalog:read'])->accessToken->id;
+
+        $this->artisan('geoflow:admin-reset-credentials', [
+            'username' => 'owner',
+            '--new-username' => 'admin',
+        ])
+            ->expectsQuestion('New password', 'admin123')
+            ->assertSuccessful();
+
+        $admin->refresh();
+
+        $this->assertSame('admin', $admin->username);
+        $this->assertSame('active', $admin->status);
+        $this->assertTrue(Hash::check('admin123', (string) $admin->password));
+        $this->assertSame(2, (int) $admin->auth_version);
+        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $tokenId]);
+    }
+
+    public function test_reset_credentials_command_rejects_short_passwords(): void
+    {
+        Admin::query()->create([
+            'username' => 'owner',
+            'password' => 'old-secret-123',
+            'email' => 'owner@example.com',
+            'display_name' => 'Owner',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $this->artisan('geoflow:admin-reset-credentials', ['username' => 'owner'])
+            ->expectsQuestion('New password', 'short')
+            ->assertExitCode(2);
+
+        $this->assertTrue(Hash::check('old-secret-123', (string) Admin::query()->where('username', 'owner')->value('password')));
     }
 }

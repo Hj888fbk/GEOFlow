@@ -23,7 +23,7 @@
         <div>
             <div class="flex flex-wrap items-center gap-3">
                 <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.manual_publications.detail_title', ['id' => $publication->id]) }}</h1>
-                <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 {{ $statusClass }}">{{ __('admin.manual_publications.status.'.$publication->status) }}</span>
+                <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 {{ $statusClass }}">{{ $publication->status === \App\Models\ManualPublication::STATUS_DRAFT_FILLED && data_get($publication->draft_filled_receipt, 'persistence') === 'remote_saved' ? '平台草稿已保存' : __('admin.manual_publications.status.'.$publication->status) }}</span>
             </div>
             <p class="mt-1 text-sm text-gray-600">{{ __('admin.manual_publications.type.'.$publication->type) }} · {{ $publication->platformDisplayName() }}</p>
         </div>

@@ -316,6 +316,18 @@ class AdminManualPublicationsTest extends TestCase
             'is_active' => '1',
         ])->assertSessionHasErrors(['profile_url']);
 
+        $this->actingAs($superAdmin, 'admin')->post(route('admin.manual-publications.settings.accounts.store'), [
+            'persona_id' => $persona->getKey(),
+            'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+            'account_name' => '禁止保存凭据测试',
+            'profile_url' => 'https://blog.csdn.net/geoflow',
+            'editor_url' => 'https://editor.csdn.net/md/?token=must-not-be-stored',
+            'notes' => 'Cookie: SESSION_ID=must-not-be-stored',
+            'browser_adapter_enabled' => '1',
+            'is_active' => '1',
+        ])->assertSessionHasErrors(['editor_url', 'notes']);
+        $this->assertDatabaseMissing('manual_publication_accounts', ['account_name' => '禁止保存凭据测试']);
+
         $sanitize = new \ReflectionMethod(AdminActivityLogger::class, 'sanitizePayload');
         $details = $sanitize->invoke(null, [
             'bio' => '这是一段不应完整进入审计日志的身份介绍。',
@@ -325,6 +337,38 @@ class AdminManualPublicationsTest extends TestCase
         $this->assertStringStartsWith('[text:', $details['bio']);
         $this->assertStringStartsWith('[text:', $details['disclosure_text']);
         $this->assertStringStartsWith('[text:', $details['target_context']);
+    }
+
+    public function test_extension_download_exposes_the_verified_030_package_only_to_super_admin(): void
+    {
+        $superAdmin = $this->admin('super_admin');
+        $worker = $this->admin('admin');
+        $path = base_path('dist/browser-extension/geoflow-chrome-operator-0.3.0.zip');
+        $this->assertFileExists($path);
+        $sha256 = hash_file('sha256', $path);
+        $this->assertIsString($sha256);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.manual-publications.settings.index'))
+            ->assertOk()
+            ->assertSee('GEOFlow Chrome 草稿助手 0.3.0')
+            ->assertSee($sha256)
+            ->assertSee('实验中');
+        $this->actingAs($worker, 'admin')
+            ->get(route('admin.manual-publications.settings.extension.download'))
+            ->assertForbidden();
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.manual-publications.settings.extension.download'))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/zip')
+            ->assertHeader('X-Content-SHA256', $sha256);
+
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($path) === true);
+        $manifest = json_decode((string) $zip->getFromName('manifest.json'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('0.3.0', $manifest['version'] ?? null);
+        $this->assertNotFalse($zip->locateName('src/adapters/self-media-dom-draft.js'));
+        $zip->close();
     }
 
     public function test_export_is_scoped_to_worker_and_protects_spreadsheet_cells(): void

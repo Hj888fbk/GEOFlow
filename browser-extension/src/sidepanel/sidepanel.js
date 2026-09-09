@@ -313,20 +313,41 @@ async function waitForTab(tabId) {
     throw new Error(message('pageLoadTimeout'));
 }
 
-// 把 media_manifest 里的图片从 GEOFlow 预取为 base64，供注入页面的 API 适配器上传平台图床。
-// 扩展页有 host 权限可跨域读 GEOFlow；页面上下文做不到（CORS）。取失败的图片跳过，不阻断正文。
+// 从工作单专用受保护接口读取图片；任何必需图片缺失或哈希不一致都终止整条草稿。
 async function withMediaData(payload) {
     const manifest = Array.isArray(payload?.media_manifest) ? payload.media_manifest : [];
     if (manifest.length === 0 || ! connection?.baseUrl) return payload;
     const mediaData = [];
-    for (const item of manifest) {
-        const preview = String(item?.preview_url ?? '').trim();
-        if (! preview) continue;
-        try {
-            const url = new URL(preview, connection.baseUrl).toString();
-            const response = await fetch(url);
+    if (Number(payload?.schema_version ?? 1) < 3) {
+        for (const item of manifest) {
+            const preview = String(item?.preview_url ?? '').trim();
+            if (! preview) continue;
+            const response = await fetch(new URL(preview, connection.baseUrl).toString());
             if (! response.ok) continue;
             const buffer = await response.arrayBuffer();
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(offset, offset + 0x8000));
+            mediaData.push({ image_id: item.image_id, mimeType: response.headers.get('content-type') || 'image/jpeg', dataBase64: btoa(binary) });
+        }
+        return { ...payload, _mediaData: mediaData };
+    }
+    for (const item of manifest) {
+        const mediaKey = String(item?.media_key ?? '').trim();
+        const path = String(item?.download_path ?? '').trim();
+        if (! mediaKey || ! path) {
+            if (item?.required !== false) throw new Error('media_manifest_invalid');
+            continue;
+        }
+        try {
+            const response = await client.requestBlob(path);
+            const buffer = await response.blob.arrayBuffer();
+            const digestBuffer = await crypto.subtle.digest('SHA-256', buffer);
+            const digest = [...new Uint8Array(digestBuffer)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+            const expectedHash = String(item?.sha256 ?? response.sha256 ?? '').toLowerCase();
+            if (! expectedHash || digest !== expectedHash || (response.sha256 && response.sha256 !== expectedHash)) {
+                throw new Error('media_hash_mismatch');
+            }
             let binary = '';
             const bytes = new Uint8Array(buffer);
             const chunk = 0x8000;
@@ -334,12 +355,17 @@ async function withMediaData(payload) {
                 binary += String.fromCharCode.apply(null, bytes.subarray(offset, offset + chunk));
             }
             mediaData.push({
-                image_id: item.image_id,
-                mimeType: response.headers.get('content-type') || 'image/jpeg',
+                media_key: mediaKey,
+                sha256: digest,
+                mimeType: response.mimeType,
                 dataBase64: btoa(binary),
             });
-        } catch { /* 单图失败不阻断 */ }
+        } catch (error) {
+            if (item?.required !== false) throw error;
+        }
     }
+    const requiredCount = manifest.filter((item) => item?.required !== false && (item?.role ?? 'body') === 'body').length;
+    if (mediaData.length < requiredCount) throw new Error('media_download_incomplete');
     return { ...payload, _mediaData: mediaData };
 }
 
@@ -370,7 +396,31 @@ async function fillDraft() {
                 args: [selectedTask.publication_payload, selectedTask.account.profile_url, true],
             });
         }
-        if (! execution.result?.ok) throw new Error(message(execution.result?.code, execution.result?.code));
+        if (! execution.result?.ok) {
+            const autoDisableCodes = new Set([
+                'editor_dom_changed', 'draft_readback_empty', 'draft_text_mismatch', 'draft_heading_mismatch',
+                'draft_image_mismatch', 'draft_image_order_mismatch', 'article_permission_required',
+            ]);
+            if (autoDisableCodes.has(execution.result?.code)) {
+                try {
+                    const data = await client.request(`/api/v1/manual-publications/${selectedTask.id}/adapter-failure`, {
+                        method: 'POST',
+                        body: {
+                            revision: selectedTask.revision,
+                            adapter_version: VERSION,
+                            error_code: execution.result.code,
+                            target_origin: new URL(selectedTask.target_url).origin,
+                            finished_at: new Date().toISOString(),
+                        },
+                        idempotencyKey: crypto.randomUUID(),
+                    });
+                    selectedTask = data.publication;
+                    currentTask.publication = selectedTask;
+                    await setCurrentTask(currentTask);
+                } catch { /* 保留原始平台错误作为用户可见结果 */ }
+            }
+            throw new Error(message(execution.result?.code, execution.result?.code));
+        }
         currentTask.observedProfileUrl = execution.result.observedProfileUrl;
         currentTask.observedAccountProof = execution.result.accountProof || execution.result.observedProfileUrl;
         currentTask.accountVerified = Boolean(currentTask.observedAccountProof);
@@ -384,6 +434,14 @@ async function fillDraft() {
                     target_origin: new URL(selectedTask.target_url).origin,
                     observed_account_hash: observedHash,
                     filled_fields: execution.result.filledFields,
+                    persistence: execution.result.persistence ?? 'editor_filled',
+                    draft_id: execution.result.draftId ?? null,
+                    draft_url: execution.result.draftUrl ?? null,
+                    rendered_text_hash: execution.result.renderedTextHash ?? null,
+                    heading_outline: execution.result.headingOutline ?? [],
+                    expected_image_count: execution.result.expectedImageCount ?? 0,
+                    observed_image_count: execution.result.observedImageCount ?? 0,
+                    media_upload_receipts: execution.result.mediaUploadReceipts ?? [],
                     finished_at: new Date().toISOString(),
                 },
                 idempotencyKey: crypto.randomUUID(),
@@ -393,7 +451,7 @@ async function fillDraft() {
         }
         await setCurrentTask(currentTask);
         await selectTask(selectedTask);
-        showNotice(message('draftFilled'));
+        showNotice(message(execution.result.persistence === 'remote_saved' ? 'draftSaved' : 'draftFilled'));
     } catch (error) {
         await handleOperationalError(error);
     }

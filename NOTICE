@@ -25,3 +25,12 @@ DeepSeek Harness Desktop 2.0.2
 Copyright (c) 2026 Anywhere Labs
 Licensed under the MIT License. The complete license text is available at
 docs/licenses/deepseek-harness-desktop-MIT.txt.
+
+The browser-extension draft API adapters for Jianshu and CSDN include
+adaptations from MultiPost-Extension at commit
+fdbc6c3b2f3c03f57be8a59b46e33860689ba509.
+
+MultiPost-Extension
+Copyright (c) leaperone and contributors
+Licensed under the Apache License, Version 2.0. The complete license text is
+available at docs/licenses/Apache-2.0.txt.

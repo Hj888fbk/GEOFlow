@@ -96,6 +96,7 @@ return [
         'tasks' => '任务管理',
         'distribution' => '分发管理',
         'articles' => '内容管理',
+        'publishing' => '发布管理',
         'materials' => '内容资产',
         'ai_config' => 'AI配置器',
         'site_settings' => '网站设置',

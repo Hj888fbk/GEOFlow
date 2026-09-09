@@ -29,6 +29,7 @@ final readonly class SelfMediaBatchGenerationService
         private PublicationPayloadBuilder $payloadBuilder,
         private SelfMediaFactConstraintGuard $factGuard,
         private WorkerAiModelInvocationGateway $invocationGateway,
+        private PortableArticleDocumentService $portableDocuments,
     ) {}
 
     public function generate(ManualPublicationBatch $batch): ManualPublicationBatch
@@ -152,7 +153,7 @@ final readonly class SelfMediaBatchGenerationService
     }
 
     /**
-     * @param  array{title:string,summary:string,body_plain:string,body_markdown:string,body_html:?string,tags:list<string>}  $variant
+     * @param  array<string,mixed>  $variant
      * @param  array{context?:AiExecutionContext,receipt?:array<string,mixed>}|null  $invocation
      */
     private function persistVariant(
@@ -174,6 +175,22 @@ final readonly class SelfMediaBatchGenerationService
                 $this->invalidateLockedBatch($current);
                 throw new DomainException('官网母稿已经变化，旧批次已失效。');
             }
+
+            $document = is_array($variant['portable_document'] ?? null)
+                ? $variant['portable_document']
+                : $this->portableDocuments->build(
+                    (string) ($variant['title'] ?? ''),
+                    (string) ($variant['body_markdown'] ?? ''),
+                    array_values((array) $current->media_manifest),
+                    $platform,
+                );
+            $variant['body_markdown'] = (string) ($document['markdown'] ?? '');
+            $variant['body_html'] = (string) ($document['html'] ?? '');
+            $variant['body_plain'] = (string) ($document['plain_text'] ?? '');
+            $variant['document_schema_version'] = (string) ($document['schema_version'] ?? PortableArticleDocumentService::SCHEMA_VERSION);
+            $variant['portable_document'] = $document;
+            $variant['render_fingerprint'] = (array) ($document['render_fingerprint'] ?? []);
+            $variant['content_type'] = (string) ($variant['content_type'] ?? ($platform === ManualPublicationAccount::PLATFORM_DOUYIN ? 'douyin_article' : 'article'));
 
             $context = $invocation['context'] ?? null;
             $receipt = $invocation['receipt'] ?? null;
@@ -213,6 +230,10 @@ final readonly class SelfMediaBatchGenerationService
                 'platform_summary' => $variant['summary'],
                 'body_markdown' => $variant['body_markdown'],
                 'body_html' => $this->resolveBodyHtml($variant),
+                'document_schema_version' => $variant['document_schema_version'] ?? PortableArticleDocumentService::SCHEMA_VERSION,
+                'portable_document' => $variant['portable_document'] ?? null,
+                'render_fingerprint' => $variant['render_fingerprint'] ?? null,
+                'content_type' => $variant['content_type'] ?? 'article',
                 'tags' => $variant['tags'],
                 'media_manifest' => $current->media_manifest,
                 'source_hash' => (string) $current->source_hash,
@@ -222,12 +243,14 @@ final readonly class SelfMediaBatchGenerationService
             ], $creator);
 
             $publication->forceFill([
-                'publication_payload' => $this->payloadBuilder->build($publication->getAttributes() + [
+                'publication_payload' => $this->payloadBuilder->build(array_merge($publication->getAttributes(), [
                     'source_snapshot' => $publication->source_snapshot,
                     'identity_snapshot' => $publication->identity_snapshot,
                     'tags' => $publication->tags,
                     'media_manifest' => $publication->media_manifest,
-                ]),
+                    'portable_document' => $publication->portable_document,
+                    'render_fingerprint' => $publication->render_fingerprint,
+                ])),
             ])->save();
 
             return $publication->refresh();

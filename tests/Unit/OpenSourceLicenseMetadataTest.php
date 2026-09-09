@@ -34,6 +34,8 @@ class OpenSourceLicenseMetadataTest extends TestCase
         $pullRequestTemplate = (string) file_get_contents(base_path('.github/pull_request_template.md'));
 
         $this->assertStringContainsString('docs/licenses/Apache-2.0.txt', $notice);
+        $this->assertStringContainsString('MultiPost-Extension', $notice);
+        $this->assertStringContainsString('fdbc6c3b2f3c03f57be8a59b46e33860689ba509', $notice);
         $this->assertStringContainsString('Apache License', $apacheLicense);
         $this->assertStringContainsString('right to sublicense through multiple tiers', $cla);
         $this->assertStringContainsString('commercial, or proprietary licenses', $cla);

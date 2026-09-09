@@ -46,7 +46,7 @@ return [
     ],
     'platform' => [
         'qq_penguin' => 'Penguin Media', 'zhihu_column' => 'Zhihu Column', 'baijiahao' => 'Baijiahao', 'netease_media' => 'NetEase Media',
-        'sohu_media' => 'Sohu Media', 'csdn' => 'CSDN', 'dayu' => 'Dayu Media',
+        'sohu_media' => 'Sohu Media', 'csdn' => 'CSDN', 'dayu' => 'Dayu Media', 'toutiao' => 'Toutiao', 'jianshu' => 'Jianshu',
         'zhihu' => 'Zhihu', 'xiaohongshu' => 'Xiaohongshu', 'weibo' => 'Weibo', 'wechat' => 'WeChat Official Account',
         'douyin' => 'Douyin', 'bilibili' => 'Bilibili', 'reddit' => 'Reddit', 'x' => 'X', 'linkedin' => 'LinkedIn', 'custom' => 'Custom platform',
     ],

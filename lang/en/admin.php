@@ -96,6 +96,7 @@ return [
         'tasks' => 'Tasks',
         'distribution' => 'Distribution',
         'articles' => 'Content Management',
+        'publishing' => 'Publishing',
         'materials' => 'Content Assets',
         'ai_config' => 'AI Configurator',
         'site_settings' => 'Site Settings',

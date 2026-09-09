@@ -11,6 +11,9 @@ use App\Support\AdminActivityLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class BrowserManualPublicationController extends BaseApiController
 {
@@ -18,7 +21,7 @@ final class BrowserManualPublicationController extends BaseApiController
     {
         [$admin, $tokenId] = $this->actor($request);
         $perPage = min(50, max(1, (int) $request->query('per_page', 20)));
-        $page = $publications->queue($admin, $tokenId, $perPage);
+        $page = $publications->queue($admin, $tokenId, $perPage, (string) $request->attributes->get('browser_client_version'));
 
         return $this->success($request, [
             'items' => collect($page->items())->map(fn (ManualPublication $item): array => $this->resource($item))->values()->all(),
@@ -41,6 +44,32 @@ final class BrowserManualPublicationController extends BaseApiController
         )]);
     }
 
+    public function media(Request $request, int $manualPublicationId, string $mediaKey, ManualPublicationBrowserService $publications): StreamedResponse
+    {
+        [$admin, $tokenId] = $this->actor($request);
+        $snapshot = $publications->media($admin, $tokenId, $manualPublicationId, $mediaKey);
+        $disk = Storage::disk((string) $snapshot->storage_disk);
+        if (! $disk->exists((string) $snapshot->storage_path)) {
+            throw new ApiException('media_unavailable', '工作单媒体文件不可用', 410);
+        }
+
+        return response()->streamDownload(static function () use ($disk, $snapshot): void {
+            $stream = $disk->readStream((string) $snapshot->storage_path);
+            if (! is_resource($stream)) {
+                return;
+            }
+            fpassthru($stream);
+            fclose($stream);
+        }, $snapshot->media_key, [
+            'Content-Type' => (string) $snapshot->mime_type,
+            'Content-Length' => (string) $snapshot->file_size,
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'ETag' => '"'.(string) $snapshot->sha256.'"',
+            'X-Content-SHA256' => (string) $snapshot->sha256,
+            'X-Content-Type-Options' => 'nosniff',
+        ], 'inline');
+    }
+
     public function claim(Request $request, int $manualPublicationId, ManualPublicationBrowserService $publications): JsonResponse
     {
         $this->requireIdempotencyKey($request);
@@ -48,7 +77,7 @@ final class BrowserManualPublicationController extends BaseApiController
         [$admin, $tokenId] = $this->actor($request);
 
         return IdempotencyService::executeJson($request, 'browser-publications.'.$manualPublicationId.'.claim', function () use ($request, $publications, $admin, $tokenId, $manualPublicationId, $revision): JsonResponse {
-            $publication = $publications->claim($admin, $tokenId, $manualPublicationId, $revision);
+            $publication = $publications->claim($admin, $tokenId, $manualPublicationId, $revision, (string) $request->attributes->get('browser_client_version'));
             $this->audit($request, $admin, 'browser_publication.claimed', $publication);
 
             return $this->success($request, ['publication' => $this->resource($publication)]);
@@ -110,7 +139,20 @@ final class BrowserManualPublicationController extends BaseApiController
             'target_origin' => ['required', 'url:http,https', 'max:255'],
             'observed_account_hash' => ['required', 'regex:/\A[a-f0-9]{64}\z/D'],
             'filled_fields' => ['required', 'array', 'min:1'],
-            'filled_fields.*' => ['string', 'in:title,summary,body,tags'],
+            'filled_fields.*' => ['string', 'in:title,summary,body,tags,images,cover,category'],
+            'persistence' => ['nullable', 'in:remote_saved,editor_filled'],
+            'draft_id' => ['nullable', 'string', 'max:255'],
+            'draft_url' => ['nullable', 'url:http,https', 'max:1000'],
+            'rendered_text_hash' => ['nullable', 'regex:/\A[a-f0-9]{64}\z/D'],
+            'heading_outline' => ['nullable', 'array'],
+            'heading_outline.*.level' => ['required', 'integer', 'min:1', 'max:6'],
+            'heading_outline.*.text' => ['required', 'string', 'max:500'],
+            'expected_image_count' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'observed_image_count' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'media_upload_receipts' => ['nullable', 'array'],
+            'media_upload_receipts.*.media_key' => ['required', 'string', 'max:80'],
+            'media_upload_receipts.*.source_sha256' => ['required', 'regex:/\A[a-f0-9]{64}\z/D'],
+            'media_upload_receipts.*.platform_url' => ['required', 'url:http,https', 'max:2000'],
             'finished_at' => ['required', 'date'],
         ]);
         if ($validator->fails()) {
@@ -129,6 +171,37 @@ final class BrowserManualPublicationController extends BaseApiController
                 (string) $request->attributes->get('browser_client_version'),
             );
             $this->audit($request, $admin, 'browser_publication.draft_filled', $publication);
+
+            return $this->success($request, ['publication' => $this->resource($publication)]);
+        });
+    }
+
+    public function adapterFailure(Request $request, int $manualPublicationId, ManualPublicationBrowserService $publications): JsonResponse
+    {
+        $this->requireIdempotencyKey($request);
+        $validator = Validator::make($request->all(), [
+            'revision' => ['required', 'integer', 'min:1'],
+            'adapter_version' => ['required', 'string', 'max:64'],
+            'error_code' => ['required', Rule::in(ManualPublicationBrowserService::AUTO_DISABLE_ERROR_CODES)],
+            'target_origin' => ['required', 'url:http,https', 'max:255'],
+            'finished_at' => ['required', 'date'],
+        ]);
+        if ($validator->fails()) {
+            throw new ApiException('validation_failed', '适配器失败回执格式无效', 422, ['field_errors' => $validator->errors()->toArray()]);
+        }
+        $payload = $validator->validated();
+        [$admin, $tokenId] = $this->actor($request);
+
+        return IdempotencyService::executeJson($request, 'browser-publications.'.$manualPublicationId.'.adapter-failure', function () use ($request, $publications, $admin, $tokenId, $manualPublicationId, $payload): JsonResponse {
+            $publication = $publications->recordAdapterFailure(
+                $admin,
+                $tokenId,
+                $manualPublicationId,
+                (int) $payload['revision'],
+                $payload,
+                (string) $request->attributes->get('browser_client_version'),
+            );
+            $this->audit($request, $admin, 'browser_publication.adapter_disabled', $publication);
 
             return $this->success($request, ['publication' => $this->resource($publication)]);
         });
@@ -216,6 +289,7 @@ final class BrowserManualPublicationController extends BaseApiController
                 'editor_url' => (string) $publication->account->editor_url,
                 'account_uid' => $publication->account->account_uid,
                 'homepage_identifier' => $publication->account->homepage_identifier,
+                'browser_adapter_enabled' => (bool) $publication->account->browser_adapter_enabled,
             ] : null,
             'persona' => $publication->persona ? [
                 'id' => (int) $publication->persona->id,

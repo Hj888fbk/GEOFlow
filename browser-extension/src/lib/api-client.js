@@ -52,4 +52,30 @@ export class GeoFlowApiClient {
 
         return envelope.data;
     }
+
+    async requestBlob(path) {
+        const headers = {
+            Accept: 'image/*',
+            'X-GEOFlow-Browser-Protocol': PROTOCOL_VERSION,
+            'X-GEOFlow-Client-Version': this.version,
+        };
+        if (this.token) headers.Authorization = `Bearer ${this.token}`;
+        let response;
+        try {
+            response = await fetch(`${this.baseUrl}${path}`, {
+                method: 'GET', headers, credentials: 'omit', cache: 'no-store',
+            });
+        } catch {
+            throw new GeoFlowApiError('network_error', 'Could not reach GEOFlow.', 0);
+        }
+        if (! response.ok) {
+            throw new GeoFlowApiError('media_download_failed', `GEOFlow returned HTTP ${response.status}.`, response.status);
+        }
+
+        return {
+            blob: await response.blob(),
+            sha256: String(response.headers.get('x-content-sha256') ?? '').toLowerCase(),
+            mimeType: String(response.headers.get('content-type') ?? 'application/octet-stream').split(';')[0],
+        };
+    }
 }

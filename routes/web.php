@@ -367,6 +367,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             });
             Route::middleware('admin.super')->prefix('settings')->name('settings.')->group(function () {
                 Route::get('/', [ManualPublicationSettingsController::class, 'index'])->name('index');
+                Route::get('browser-extension/download', [ManualPublicationSettingsController::class, 'downloadExtension'])->name('extension.download');
                 Route::post('personas', [ManualPublicationSettingsController::class, 'storePersona'])->name('personas.store');
                 Route::put('personas/{personaId}', [ManualPublicationSettingsController::class, 'updatePersona'])->name('personas.update')->whereNumber('personaId');
                 Route::post('accounts', [ManualPublicationSettingsController::class, 'storeAccount'])->name('accounts.store');

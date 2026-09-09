@@ -47,6 +47,7 @@
   "pageLoadTimeout": { "message": "目标页面加载超时。" },
   "replaceDraftConfirm": { "message": "编辑器已有内容，确认覆盖当前草稿吗？" },
   "draftFilled": { "message": "草稿已填充，请检查后由你点击发布。" },
+  "draftSaved": { "message": "平台草稿已保存并回读通过，请检查后由你点击发布。" },
   "resultDetected": { "message": "已识别到发布结果 URL。" },
   "resultUnknown": { "message": "暂时无法确认发布结果，请人工核验。" },
   "completionRequired": { "message": "确认发布前需要填写结果 URL。" },

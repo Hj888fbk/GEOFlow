@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 final class SelfMediaPolicy extends Model
 {
-    public const ROUTING_VERSION = 'self-media-routing-v1';
+    public const LEGACY_ROUTING_VERSION = 'self-media-routing-v1';
+
+    public const ROUTING_VERSION = 'self-media-routing-v2';
 
     protected $fillable = [
         'task_id',

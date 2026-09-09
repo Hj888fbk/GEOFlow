@@ -16,7 +16,7 @@ final class ArticleHtmlPresenter
      */
     public static function markdownToHtml(string $markdown): string
     {
-        $markdown = self::normalizeMarkdownImages(trim($markdown));
+        $markdown = self::normalizeMarkdownImages(self::stripOuterMarkdownFence(trim($markdown)));
         if ($markdown === '') {
             return '';
         }
@@ -27,6 +27,15 @@ final class ArticleHtmlPresenter
         ]);
 
         return self::decorateRenderedHtml($converter->convert($markdown)->getContent());
+    }
+
+    public static function stripOuterMarkdownFence(string $markdown): string
+    {
+        if (preg_match('/\A```(?:markdown|md)[ \t]*\n([\s\S]*?)\n```[ \t]*\z/i', trim($markdown), $matches) === 1) {
+            return trim((string) $matches[1]);
+        }
+
+        return $markdown;
     }
 
     /**

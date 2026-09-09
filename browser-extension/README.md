@@ -1,4 +1,4 @@
-# GEOFlow Chrome Operator
+# GEOFlow Chrome Draft Operator 0.3.0
 
 Manifest V3 extension for human-confirmed publishing work. It connects to a self-hosted GEOFlow instance, claims assigned manual-publication work orders, opens target pages, and fills supported editors. The operator reviews the draft and performs the final publish action.
 
@@ -18,14 +18,16 @@ After Chrome or the side panel restarts, reopen a claimed work order from the qu
 
 - Generic work orders: claim, open target, copy content, release, and report result.
 - Zhihu answers: verify the active profile, locate the answer editor, and fill plain text.
-- Self-media article v2: Baijiahao and Sohu adapters verify the domain and account, stop on verification challenges, inspect every target field before writing, and fill title, summary, body, and tags.
-- Prepared cover/body images are shown as a manual-upload checklist. The extension never uploads media by itself.
-- A filled v2 draft remains claimed, including across a Chrome restart. It cannot be released to another browser while the platform editor contains that draft.
+- Self-media article v3 consumes the server-validated Portable Article Document and downloads required media only from the claimed work order's protected endpoint. Every file is checked against its SHA-256 before use.
+- Baijiahao, Sohu, Jianshu, and CSDN have draft-only Web API adapters. They upload every required body image, reuse the first body image as cover when configured, save as a draft, read the draft back, and compare text, heading outline, image count, and image order. These adapters remain experimental until real-account UAT succeeds.
+- Zhihu Column, Toutiao, NetEase Media, Penguin, Dayu, and Douyin Article use conservative editor-only adapters. They report `editor_filled`, never `remote_saved`, and remain experimental until a reliable draft readback is implemented and verified.
+- Structural editor/readback failures automatically disable only the affected account adapter. Login expiry, CAPTCHA, account mismatch, and transient network errors stop safely without automatic publication.
+- A filled v3 draft remains claimed, including across a Chrome restart. It cannot be released to another browser while the platform editor contains that draft.
 - A v2 work order can be marked published only after the extension detects a public URL and the server receives a successful HTTP 200 readback receipt.
 - The extension never clicks the final Publish button.
 - Platform cookies, passwords, and access tokens remain in Chrome and are never sent to GEOFlow.
 
-Other configured self-media platforms currently use the safe open-and-copy fallback. Their adapters must stay disabled until platform-specific UAT is complete.
+If an adapter cannot prove the account or editor structure, the operator keeps the work order safe and the user can use the open-and-copy fallback. No adapter is considered production-ready without a real draft reopened from that platform's draft manager.
 
 ## Verification and packaging
 

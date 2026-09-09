@@ -26,6 +26,7 @@ use App\Services\SelfMedia\WebsitePublicationReceiptService;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 final class SelfMediaBatchServiceTest extends TestCase
@@ -48,22 +49,25 @@ final class SelfMediaBatchServiceTest extends TestCase
         $this->assertFalse($task->selfMediaPolicy()->exists());
     }
 
-    public function test_manual_two_platform_plan_generates_exactly_two_v2_work_orders(): void
+    public function test_manual_two_platform_plan_generates_exactly_two_v3_work_orders(): void
     {
         $generator = $this->fakeGenerator();
         Queue::fake();
         [$admin, , $article] = $this->fixtures();
         ManualPublicationPersona::query()->create(['name' => '恒佳企业发布身份']);
         $library = ImageLibrary::query()->create(['name' => '自媒体图片库']);
+        Storage::fake('public');
+        Storage::fake('local');
+        Storage::disk('public')->put('uploads/cover.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='));
         $image = Image::query()->create([
             'library_id' => $library->id,
-            'filename' => 'cover.webp',
-            'original_name' => '橡胶软接头封面.webp',
-            'file_name' => 'cover.webp',
-            'file_path' => 'storage/uploads/cover.webp',
-            'managed_path_hash' => hash('sha256', 'storage/uploads/cover.webp'),
+            'filename' => 'cover.png',
+            'original_name' => '橡胶软接头封面.png',
+            'file_name' => 'cover.png',
+            'file_path' => 'storage/uploads/cover.png',
+            'managed_path_hash' => hash('sha256', 'storage/uploads/cover.png'),
             'file_size' => 1024,
-            'mime_type' => 'image/webp',
+            'mime_type' => 'image/png',
             'width' => 1200,
             'height' => 900,
         ]);
@@ -82,20 +86,111 @@ final class SelfMediaBatchServiceTest extends TestCase
         $batch = app(SelfMediaBatchGenerationService::class)->generate($batch);
 
         $this->assertSame(2, $generator->calls);
-        $this->assertCount(2, $batch->publications);
+        $this->assertCount(2, $batch->publications, json_encode($batch->generation_errors, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: 'no generation errors');
         $this->assertEqualsCanonicalizing(
             [ManualPublicationAccount::PLATFORM_BAIJIAHAO, ManualPublicationAccount::PLATFORM_SOHU_MEDIA],
             $batch->publications->pluck('platform')->all(),
         );
         $this->assertTrue($batch->publications->every(
-            static fn (ManualPublication $publication): bool => (int) $publication->publication_payload['schema_version'] === 2,
+            static fn (ManualPublication $publication): bool => (int) $publication->publication_payload['schema_version'] === 3,
         ));
-        $this->assertSame('cover', $batch->media_manifest[0]['role']);
-        $this->assertSame('/storage/uploads/cover.webp', $batch->media_manifest[0]['preview_url']);
+        $this->assertSame('body', $batch->media_manifest[0]['role']);
+        $this->assertTrue($batch->media_manifest[0]['is_cover']);
+        $this->assertNotEmpty($batch->media_manifest[0]['media_key']);
         $this->assertTrue($batch->publications->every(
-            static fn (ManualPublication $publication): bool => $publication->publication_payload['media_manifest'][0]['image_id'] > 0,
+            static fn (ManualPublication $publication): bool => str_contains($publication->publication_payload['media_manifest'][0]['download_path'], (string) $publication->id),
         ));
         $this->assertSame(ManualPublicationBatch::STATUS_PENDING_REVIEW, $batch->status);
+    }
+
+    public function test_manual_plan_accepts_the_complete_ten_platform_draft_sync_set_without_generating_content(): void
+    {
+        Queue::fake();
+        [$admin, , $article] = $this->fixtures();
+        $receipt = app(WebsitePublicationReceiptService::class)->record($article, $this->receipt($article), $admin);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.manual-publications.self-media.batches.store'), [
+                'website_publication_receipt_id' => $receipt->id,
+                'content_intent' => SelfMediaPlatformRouter::INTENT_ENTERPRISE_NEWS,
+                'platforms' => ManualPublicationAccount::DRAFT_SYNC_PLATFORMS,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $batch = ManualPublicationBatch::query()->firstOrFail();
+        $this->assertEqualsCanonicalizing(ManualPublicationAccount::DRAFT_SYNC_PLATFORMS, $batch->target_platforms);
+        $this->assertDatabaseCount('manual_publications', 0);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_routing_v2_uses_only_the_ten_platform_scope_while_v1_keeps_legacy_weibo_rules(): void
+    {
+        $router = app(SelfMediaPlatformRouter::class);
+        $v2 = $router->route(SelfMediaPlatformRouter::INTENT_ENTERPRISE_NEWS, null, SelfMediaPolicy::ROUTING_VERSION);
+        $v1 = $router->route(SelfMediaPlatformRouter::INTENT_ENTERPRISE_NEWS, null, SelfMediaPolicy::LEGACY_ROUTING_VERSION);
+
+        $this->assertContains(ManualPublicationAccount::PLATFORM_TOUTIAO, $v2['platforms']);
+        $this->assertNotContains(ManualPublicationAccount::PLATFORM_WEIBO, $v2['platforms']);
+        $this->assertContains(ManualPublicationAccount::PLATFORM_WEIBO, $v1['platforms']);
+        $this->assertNotContains(ManualPublicationAccount::PLATFORM_TOUTIAO, $v1['platforms']);
+    }
+
+    public function test_body_markdown_html_and_attachment_images_are_frozen_in_body_order_and_deduplicated(): void
+    {
+        Storage::fake('public');
+        Storage::fake('local');
+        [$admin, , $article] = $this->fixtures();
+        $library = ImageLibrary::query()->create(['name' => '正文图片库']);
+        $base = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=');
+        $images = [];
+        foreach (['a', 'b', 'c'] as $index => $name) {
+            $bytes = $base.str_repeat("\0", $index + 1);
+            Storage::disk('public')->put('uploads/'.$name.'.png', $bytes);
+            $images[$name] = Image::query()->create([
+                'library_id' => $library->id,
+                'filename' => $name.'.png',
+                'original_name' => strtoupper($name).'.png',
+                'file_name' => $name.'.png',
+                'file_path' => 'storage/uploads/'.$name.'.png',
+                'managed_path_hash' => hash('sha256', 'storage/uploads/'.$name.'.png'),
+                'file_size' => strlen($bytes),
+                'mime_type' => 'image/png',
+                'width' => 1,
+                'height' => 1,
+            ]);
+            ArticleImage::query()->create(['article_id' => $article->id, 'image_id' => $images[$name]->id, 'position' => $index]);
+        }
+        $article->update(['content' => <<<'MD'
+正文开始。
+
+![B图](/storage/uploads/b.png)
+
+![A图](/storage/uploads/a.png)
+
+![重复B](/storage/uploads/b.png)
+
+<img src="/storage/uploads/c.png" alt="C图">
+MD]);
+        $receipt = app(WebsitePublicationReceiptService::class)->record($article->fresh(), $this->receipt($article->fresh()), $admin);
+
+        $batch = app(SelfMediaBatchService::class)->createManual(
+            $article->fresh(),
+            $receipt,
+            SelfMediaPlatformRouter::INTENT_PRODUCT_EDUCATION,
+            [ManualPublicationAccount::PLATFORM_BAIJIAHAO],
+            $admin,
+        );
+
+        $this->assertCount(3, $batch->media_manifest);
+        $this->assertSame(['B图', 'A图', 'C图'], array_column($batch->media_manifest, 'name'));
+        $this->assertTrue($batch->media_manifest[0]['is_cover']);
+        $this->assertSame(['body_markdown', 'body_markdown', 'body_html'], array_map(
+            static fn ($snapshot): string => $snapshot->source_type,
+            $batch->mediaSnapshots()->orderBy('position')->get()->all(),
+        ));
+        $this->assertStringContainsString('{{media:'.$batch->media_manifest[0]['media_key'].'}}', $batch->source_snapshot['content']);
+        $this->assertDatabaseCount('self_media_media_snapshots', 3);
     }
 
     public function test_cancelled_batch_is_revived_when_same_plan_is_created_again(): void
@@ -141,7 +236,7 @@ final class SelfMediaBatchServiceTest extends TestCase
                     'title' => $platform.'平台标题',
                     'summary' => '平台摘要',
                     'body_plain' => '平台正文纯文本',
-                    'body_markdown' => "## 平台小节\n\n平台**加粗**正文\n\n【图片1】",
+                    'body_markdown' => "## 平台小节\n\n平台**加粗**正文",
                     'body_html' => null,
                     'tags' => ['橡胶软接头'],
                 ], null);
@@ -164,11 +259,11 @@ final class SelfMediaBatchServiceTest extends TestCase
 
         $publication = $batch->publications->firstWhere('platform', ManualPublicationAccount::PLATFORM_BAIJIAHAO);
         $this->assertNotNull($publication);
-        // body_html 必须由服务端从 markdown 确定性渲染，且保留结构标签与图片占位符。
+        // body_html 必须由服务端从 markdown 确定性渲染并保留结构标签。
         $this->assertNotNull($publication->body_html);
         $this->assertStringContainsString('<h2>', (string) $publication->body_html);
         $this->assertStringContainsString('<strong>加粗</strong>', (string) $publication->body_html);
-        $this->assertStringContainsString('【图片1】', (string) $publication->body_html);
+        $this->assertStringNotContainsString('```markdown', (string) $publication->body_html);
         $this->assertSame(
             $publication->body_html,
             $publication->publication_payload['body_html'],
@@ -202,6 +297,7 @@ final class SelfMediaBatchServiceTest extends TestCase
             ManualPublicationAccount::PLATFORM_CSDN,
             ManualPublicationAccount::PLATFORM_NETEASE_MEDIA,
             ManualPublicationAccount::PLATFORM_SOHU_MEDIA,
+            ManualPublicationAccount::PLATFORM_JIANSHU,
         ], $batch->target_platforms);
         $this->assertSame(0, $generator->calls);
         Queue::assertPushed(GenerateSelfMediaBatchJob::class, 1);
@@ -592,11 +688,16 @@ final class SelfMediaBatchServiceTest extends TestCase
             ): mixed {
                 $this->calls++;
 
+                $mediaNodes = array_map(
+                    static fn (array $item): string => '{{media:'.(string) $item['media_key'].'}}',
+                    array_values((array) $batch->media_manifest),
+                );
+
                 return $persistVariant([
                     'title' => $platform.'平台标题',
                     'summary' => '平台摘要',
                     'body_plain' => $platform.'平台正文',
-                    'body_markdown' => '## '.$platform."\n\n平台正文",
+                    'body_markdown' => '## '.$platform."\n\n平台正文".($mediaNodes === [] ? '' : "\n\n".implode("\n\n", $mediaNodes)),
                     'body_html' => '<h2>'.$platform.'</h2><p>平台正文</p>',
                     'tags' => ['橡胶软接头', '恒佳'],
                 ], null);

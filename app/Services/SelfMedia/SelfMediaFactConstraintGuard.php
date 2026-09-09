@@ -13,7 +13,7 @@ final class SelfMediaFactConstraintGuard
      * 正文图片占位符（如【图片1】）是版式标记而非事实数字，
      * 扫描前整体剔除 token，不单独放行其中的数字，其他数字校验保持不变。
      */
-    private const IMAGE_PLACEHOLDER_PATTERN = '/【图片\d+】/u';
+    private const IMAGE_PLACEHOLDER_PATTERN = '/【图片\d+】|\{\{media:[a-z0-9_-]+\}\}/iu';
 
     /** @param list<string> $sources
      * @return list<string>

@@ -38,7 +38,7 @@ return [
     ],
     'platform' => [
         'qq_penguin' => '企鹅号', 'zhihu_column' => '知乎专栏', 'baijiahao' => '百家号', 'netease_media' => '网易号',
-        'sohu_media' => '搜狐号', 'csdn' => 'CSDN', 'dayu' => '大鱼号',
+        'sohu_media' => '搜狐号', 'csdn' => 'CSDN', 'dayu' => '大鱼号', 'toutiao' => '今日头条', 'jianshu' => '简书',
         'zhihu' => '知乎', 'xiaohongshu' => '小红书', 'weibo' => '微博', 'wechat' => '微信公众号',
         'douyin' => '抖音', 'bilibili' => 'Bilibili', 'reddit' => 'Reddit', 'x' => 'X', 'linkedin' => 'LinkedIn', 'custom' => '自定义平台',
     ],

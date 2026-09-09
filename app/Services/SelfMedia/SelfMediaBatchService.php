@@ -8,9 +8,9 @@ use App\Models\ManualPublication;
 use App\Models\ManualPublicationBatch;
 use App\Models\SelfMediaPolicy;
 use App\Models\WebsitePublicationReceipt;
-use App\Support\GeoFlow\ImageUrlNormalizer;
 use DomainException;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 final readonly class SelfMediaBatchService
 {
@@ -27,6 +27,8 @@ final readonly class SelfMediaBatchService
         private SelfMediaPlatformRouter $router,
         private SelfMediaFactConstraintGuard $factGuard,
         private SelfMediaAiExecutionGuard $aiExecutionGuard,
+        private SelfMediaMediaSnapshotService $mediaSnapshots,
+        private PortableArticleDocumentService $portableDocuments,
     ) {}
 
     /** @param list<string> $platforms */
@@ -37,7 +39,7 @@ final readonly class SelfMediaBatchService
         array $platforms,
         Admin $actor,
     ): ManualPublicationBatch {
-        $route = $this->router->route($intent, $platforms);
+        $route = $this->router->route($intent, $platforms, SelfMediaPolicy::ROUTING_VERSION);
 
         return $this->create($article, $receipt, ManualPublicationBatch::TRIGGER_MANUAL, $intent, $route, $actor);
     }
@@ -60,7 +62,7 @@ final readonly class SelfMediaBatchService
         $override = is_array($policy->platform_override) && $policy->platform_override !== []
             ? $policy->platform_override
             : null;
-        $route = $this->router->route($intent, $override);
+        $route = $this->router->route($intent, $override, (string) ($policy->routing_version ?: SelfMediaPolicy::LEGACY_ROUTING_VERSION));
 
         return $this->create($article, $receipt, ManualPublicationBatch::TRIGGER_AUTOMATIC, $intent, $route, $actor, $policy);
     }
@@ -77,7 +79,9 @@ final readonly class SelfMediaBatchService
         Admin $actor,
         ?SelfMediaPolicy $policy = null,
     ): ManualPublicationBatch {
-        return DB::transaction(function () use ($article, $receipt, $trigger, $intent, $route, $actor, $policy): ManualPublicationBatch {
+        $stagedBatchId = null;
+        try {
+            return DB::transaction(function () use ($article, $receipt, $trigger, $intent, $route, $actor, $policy, &$stagedBatchId): ManualPublicationBatch {
             $sourceHash = $this->hasher->hash($article);
             $lockedReceipt = WebsitePublicationReceipt::query()->whereKey($receipt->id)->lockForUpdate()->first();
             if (! $lockedReceipt instanceof WebsitePublicationReceipt
@@ -135,31 +139,6 @@ final readonly class SelfMediaBatchService
                 }
             }
 
-            $article->loadMissing('articleImages.image');
-            $media = $article->articleImages
-                ->sortBy('position')
-                ->values()
-                ->map(static function ($item, int $index): array {
-                    $image = $item->image;
-                    $previewUrl = ImageUrlNormalizer::toPublicUrl((string) ($image?->file_path ?? ''));
-                    if (str_starts_with(strtolower($previewUrl), 'data:')) {
-                        $previewUrl = '';
-                    }
-
-                    return [
-                        'article_image_id' => (int) $item->id,
-                        'image_id' => (int) $item->image_id,
-                        'position' => (int) $item->position,
-                        'role' => $index === 0 ? 'cover' : 'body',
-                        'name' => (string) ($image?->original_name ?: $image?->file_name ?: $image?->filename ?: '图片 #'.$item->image_id),
-                        'preview_url' => $previewUrl ?: null,
-                        'mime_type' => $image?->mime_type,
-                        'width' => $image?->width,
-                        'height' => $image?->height,
-                        'file_size' => $image?->file_size,
-                        'upload_required' => true,
-                    ];
-                })->all();
             $sourceSnapshot = [
                 'article_id' => (int) $article->id,
                 'title' => (string) $article->title,
@@ -185,7 +164,7 @@ final readonly class SelfMediaBatchService
                 $article->task_id === null ? null : (int) $article->task_id,
             );
 
-            return ManualPublicationBatch::query()->create(array_merge([
+            $created = ManualPublicationBatch::query()->create(array_merge([
                 'article_id' => (int) $article->id,
                 'task_id' => $article->task_id,
                 'website_publication_receipt_id' => (int) $lockedReceipt->id,
@@ -207,11 +186,30 @@ final readonly class SelfMediaBatchService
                 'source_hash' => $sourceHash,
                 'source_snapshot' => $sourceSnapshot,
                 'fact_constraints' => $constraints,
-                'media_manifest' => $media,
+                'media_manifest' => [],
                 'idempotency_hash' => $idempotencyHash,
                 'status' => ManualPublicationBatch::STATUS_PLANNED,
             ], $aiExecution));
-        }, 3);
+            $stagedBatchId = (int) $created->id;
+            $media = $this->mediaSnapshots->freeze($created, $article);
+            $sourceSnapshot['content'] = $this->portableDocuments->injectSourceMediaTokens(
+                (string) $sourceSnapshot['content'],
+                $media,
+            );
+            $created->forceFill([
+                'media_manifest' => $media,
+                'source_snapshot' => $sourceSnapshot,
+            ])->save();
+
+            return $created->refresh();
+            }, 3);
+        } catch (Throwable $exception) {
+            if ($stagedBatchId !== null) {
+                $this->mediaSnapshots->purgeBatchFiles($stagedBatchId);
+            }
+
+            throw $exception;
+        }
     }
 
     public function invalidateForChangedArticle(Article $article): int

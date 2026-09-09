@@ -11,6 +11,7 @@ use App\Models\ManualPublication;
 use App\Models\ManualPublicationAccount;
 use App\Models\ManualPublicationBatch;
 use App\Models\ManualPublicationTransition;
+use App\Models\SelfMediaMediaSnapshot;
 use App\Services\GeoFlow\ArticlePublicationQualityGate;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -20,9 +21,19 @@ final class ManualPublicationBrowserService
 {
     public const STALE_AFTER_MINUTES = 10;
 
+    public const AUTO_DISABLE_ERROR_CODES = [
+        'editor_dom_changed',
+        'draft_readback_empty',
+        'draft_text_mismatch',
+        'draft_heading_mismatch',
+        'draft_image_mismatch',
+        'draft_image_order_mismatch',
+        'article_permission_required',
+    ];
+
     public function __construct(private readonly ArticlePublicationQualityGate $publicationQualityGate) {}
 
-    public function queue(Admin $admin, int $tokenId, int $perPage): LengthAwarePaginator
+    public function queue(Admin $admin, int $tokenId, int $perPage, string $clientVersion = '0.1.0'): LengthAwarePaginator
     {
         return ManualPublication::query()
             ->visibleTo($admin)
@@ -30,6 +41,11 @@ final class ManualPublicationBrowserService
             ->whereNotNull('publication_payload')
             ->whereNotNull('target_url')
             ->whereNull('source_stale_at')
+            ->when(version_compare($clientVersion, '0.3.0', '<'), static function ($query): void {
+                // 避免 SQLite/MySQL/PostgreSQL 对 JSON 数字比较语义不一致。
+                // v3 工作单始终持久化 document_schema_version；历史 v1/v2 保持 null。
+                $query->whereNull('document_schema_version');
+            })
             ->where(function ($query) use ($tokenId): void {
                 $query->where('status', ManualPublication::STATUS_READY)
                     ->orWhere(function ($claimed) use ($tokenId): void {
@@ -60,9 +76,9 @@ final class ManualPublicationBrowserService
         return $publication;
     }
 
-    public function claim(Admin $admin, int $tokenId, int $publicationId, int $revision): ManualPublication
+    public function claim(Admin $admin, int $tokenId, int $publicationId, int $revision, string $clientVersion = '0.1.0'): ManualPublication
     {
-        return DB::transaction(function () use ($admin, $tokenId, $publicationId, $revision): ManualPublication {
+        return DB::transaction(function () use ($admin, $tokenId, $publicationId, $revision, $clientVersion): ManualPublication {
             $publication = $this->lockVisible($admin, $publicationId);
             $this->assertRevision($publication, $revision);
             if ($publication->status !== ManualPublication::STATUS_READY) {
@@ -95,6 +111,7 @@ final class ManualPublicationBrowserService
                 && (! $publication->account || ! $publication->account->browser_adapter_enabled)) {
                 throw new ApiException('browser_adapter_disabled', '该平台账号的浏览器适配器尚未启用', 409);
             }
+            $this->assertRequiredExtensionVersion($publication, $clientVersion);
             if ((int) ($publication->publication_payload['schema_version'] ?? 1) >= 2
                 && trim((string) ($publication->account?->profile_url ?? '')) === ''
                 && trim((string) ($publication->account?->account_uid ?? '')) === ''
@@ -128,6 +145,25 @@ final class ManualPublicationBrowserService
 
             return $publication->refresh();
         });
+    }
+
+    public function media(Admin $admin, int $tokenId, int $publicationId, string $mediaKey): SelfMediaMediaSnapshot
+    {
+        $publication = $this->lockVisible($admin, $publicationId);
+        $this->assertClaimOwner($publication, $tokenId);
+        if ($publication->manual_publication_batch_id === null) {
+            throw new ApiException('media_not_found', '工作单没有受保护媒体', 404);
+        }
+        $snapshot = SelfMediaMediaSnapshot::query()
+            ->where('manual_publication_batch_id', (int) $publication->manual_publication_batch_id)
+            ->where('media_key', $mediaKey)
+            ->where('status', 'ready')
+            ->first();
+        if (! $snapshot instanceof SelfMediaMediaSnapshot) {
+            throw new ApiException('media_not_found', '工作单媒体不存在', 404);
+        }
+
+        return $snapshot;
     }
 
     public function release(Admin $admin, int $tokenId, int $publicationId, int $revision): ManualPublication
@@ -169,6 +205,7 @@ final class ManualPublicationBrowserService
             $publication = $this->lockVisible($admin, $publicationId);
             $this->assertRevision($publication, $revision);
             $this->assertClaimOwner($publication, $tokenId);
+            $this->assertRequiredExtensionVersion($publication, $clientVersion, (string) ($receipt['adapter_version'] ?? ''));
 
             $outcome = (string) $receipt['outcome'];
             $status = match ($outcome) {
@@ -268,8 +305,62 @@ final class ManualPublicationBrowserService
             $publication = $this->lockVisible($admin, $publicationId);
             $this->assertRevision($publication, $revision);
             $this->assertClaimOwner($publication, $tokenId);
+            $this->assertRequiredExtensionVersion($publication, $clientVersion, (string) ($receipt['adapter_version'] ?? ''));
             $this->assertTargetOrigin($publication, (string) ($receipt['target_origin'] ?? ''));
             $this->assertObservedAccount($publication, (string) ($receipt['observed_account_hash'] ?? ''), true);
+
+            $persistence = (string) ($receipt['persistence'] ?? 'editor_filled');
+            $expectedFingerprint = (array) ($publication->publication_payload['render_fingerprint'] ?? []);
+            $expectedImages = count(array_filter(
+                (array) ($publication->publication_payload['media_manifest'] ?? []),
+                static fn (mixed $item): bool => is_array($item) && (bool) ($item['required'] ?? true) && ($item['role'] ?? 'body') === 'body',
+            ));
+            $isV3 = (int) ($publication->publication_payload['schema_version'] ?? 1) >= 3;
+            if ($isV3
+                && ((int) ($receipt['expected_image_count'] ?? -1) !== $expectedImages
+                    || (int) ($receipt['observed_image_count'] ?? -1) !== $expectedImages)) {
+                throw new ApiException('draft_image_mismatch', '平台草稿图片数量与工作单不一致', 422);
+            }
+            if ($isV3 && $persistence === 'remote_saved') {
+                $expectedTextHash = strtolower(trim((string) ($expectedFingerprint['text_sha256'] ?? '')));
+                $observedTextHash = strtolower(trim((string) ($receipt['rendered_text_hash'] ?? '')));
+                if ($expectedTextHash === '' || ! hash_equals($expectedTextHash, $observedTextHash)) {
+                    throw new ApiException('draft_text_mismatch', '平台草稿正文回读指纹不一致', 422);
+                }
+                if ((array) ($receipt['heading_outline'] ?? []) !== (array) ($expectedFingerprint['heading_outline'] ?? [])) {
+                    throw new ApiException('draft_heading_mismatch', '平台草稿标题层级回读不一致', 422);
+                }
+                if (trim((string) ($receipt['draft_id'] ?? '')) === '') {
+                    throw new ApiException('draft_id_required', '远端草稿保存必须回传 draft_id', 422);
+                }
+                $draftUrl = trim((string) ($receipt['draft_url'] ?? ''));
+                if ($draftUrl === '') {
+                    throw new ApiException('draft_url_required', '远端草稿保存必须回传 draft_url', 422);
+                }
+                $this->assertSafeHttpUrl($draftUrl, 'invalid_draft_url', '平台草稿 URL 无效');
+                $this->assertPlatformHost($publication, $draftUrl, 'invalid_draft_url');
+                $expectedMedia = [];
+                foreach ((array) ($publication->publication_payload['media_manifest'] ?? []) as $item) {
+                    if (is_array($item) && (bool) ($item['required'] ?? true) && ($item['role'] ?? 'body') === 'body') {
+                        $expectedMedia[] = [
+                            'media_key' => (string) ($item['media_key'] ?? ''),
+                            'source_sha256' => strtolower((string) ($item['sha256'] ?? '')),
+                        ];
+                    }
+                }
+                $observedMedia = [];
+                foreach ((array) ($receipt['media_upload_receipts'] ?? []) as $item) {
+                    if (is_array($item)) {
+                        $observedMedia[] = [
+                            'media_key' => (string) ($item['media_key'] ?? ''),
+                            'source_sha256' => strtolower((string) ($item['source_sha256'] ?? '')),
+                        ];
+                    }
+                }
+                if ($expectedMedia !== $observedMedia) {
+                    throw new ApiException('draft_media_receipt_mismatch', '平台草稿图片上传回执缺失、重复或顺序不一致', 422);
+                }
+            }
 
             $stored = [
                 'schema_version' => max(1, (int) ($publication->publication_payload['schema_version'] ?? 1)),
@@ -280,6 +371,14 @@ final class ManualPublicationBrowserService
                 'target_origin' => (string) ($receipt['target_origin'] ?? ''),
                 'observed_account_hash' => (string) ($receipt['observed_account_hash'] ?? ''),
                 'filled_fields' => array_values((array) ($receipt['filled_fields'] ?? [])),
+                'persistence' => $persistence,
+                'draft_id' => trim((string) ($receipt['draft_id'] ?? '')) ?: null,
+                'draft_url' => trim((string) ($receipt['draft_url'] ?? '')) ?: null,
+                'rendered_text_hash' => trim((string) ($receipt['rendered_text_hash'] ?? '')) ?: null,
+                'heading_outline' => array_values((array) ($receipt['heading_outline'] ?? [])),
+                'expected_image_count' => (int) ($receipt['expected_image_count'] ?? 0),
+                'observed_image_count' => (int) ($receipt['observed_image_count'] ?? 0),
+                'media_upload_receipts' => array_values((array) ($receipt['media_upload_receipts'] ?? [])),
                 'finished_at' => $receipt['finished_at'] ?? now()->toIso8601String(),
             ];
             $fromStatus = (string) $publication->status;
@@ -291,7 +390,63 @@ final class ManualPublicationBrowserService
                 'browser_last_seen_at' => $at,
                 'revision' => $revision + 1,
             ])->save();
-            $this->recordTransition($publication, $admin, $fromStatus, ManualPublication::STATUS_DRAFT_FILLED, resultNote: '草稿已填充，等待人工审核发布', createdAt: $at);
+            $note = $persistence === 'remote_saved'
+                ? '平台草稿已保存，等待人工审核发布'
+                : '编辑器已填充，尚未确认远端保存';
+            $this->recordTransition($publication, $admin, $fromStatus, ManualPublication::STATUS_DRAFT_FILLED, resultNote: $note, createdAt: $at);
+            $this->syncBatchStatus($publication);
+
+            return $publication->refresh()->load(['account:id,account_name,platform,profile_url,editor_url,account_uid,homepage_identifier,browser_adapter_enabled', 'persona:id,name']);
+        });
+    }
+
+    /** @param array<string,mixed> $receipt */
+    public function recordAdapterFailure(
+        Admin $admin,
+        int $tokenId,
+        int $publicationId,
+        int $revision,
+        array $receipt,
+        string $clientVersion,
+    ): ManualPublication {
+        return DB::transaction(function () use ($admin, $tokenId, $publicationId, $revision, $receipt, $clientVersion): ManualPublication {
+            $publication = $this->lockVisible($admin, $publicationId);
+            $this->assertRevision($publication, $revision);
+            $this->assertClaimOwner($publication, $tokenId);
+            $this->assertRequiredExtensionVersion($publication, $clientVersion, (string) ($receipt['adapter_version'] ?? ''));
+            $this->assertTargetOrigin($publication, (string) ($receipt['target_origin'] ?? ''));
+            $errorCode = (string) ($receipt['error_code'] ?? '');
+            if (! in_array($errorCode, self::AUTO_DISABLE_ERROR_CODES, true)) {
+                throw new ApiException('validation_failed', '该错误不属于可自动停用的结构性故障', 422);
+            }
+            if ($publication->account_id !== null) {
+                ManualPublicationAccount::query()->whereKey((int) $publication->account_id)->lockForUpdate()->update([
+                    'browser_adapter_enabled' => false,
+                ]);
+            }
+            $fromStatus = (string) $publication->status;
+            $at = now();
+            $publication->forceFill([
+                'status' => ManualPublication::STATUS_FAILED,
+                'status_changed_at' => $at,
+                'result_note' => '检测到平台结构或能力变化，账号适配器已自动停用。',
+                'execution_receipt' => [
+                    'schema_version' => max(1, (int) ($publication->publication_payload['schema_version'] ?? 1)),
+                    'outcome' => 'failed',
+                    'protocol_version' => 1,
+                    'extension_version' => $clientVersion,
+                    'adapter_version' => (string) ($receipt['adapter_version'] ?? ''),
+                    'target_origin' => (string) ($receipt['target_origin'] ?? ''),
+                    'error_code' => $errorCode,
+                    'adapter_auto_disabled' => true,
+                    'finished_at' => $receipt['finished_at'] ?? now()->toIso8601String(),
+                ],
+                'browser_claimed_by_token_id' => null,
+                'browser_claimed_at' => null,
+                'browser_last_seen_at' => null,
+                'revision' => $revision + 1,
+            ])->save();
+            $this->recordTransition($publication, $admin, $fromStatus, ManualPublication::STATUS_FAILED, resultNote: (string) $publication->result_note, createdAt: $at);
             $this->syncBatchStatus($publication);
 
             return $publication->refresh()->load(['account:id,account_name,platform,profile_url,editor_url,account_uid,homepage_identifier,browser_adapter_enabled', 'persona:id,name']);
@@ -354,6 +509,20 @@ final class ManualPublicationBrowserService
         if (! in_array((string) $publication->status, [ManualPublication::STATUS_IN_PROGRESS, ManualPublication::STATUS_DRAFT_FILLED], true)
             || (int) $publication->browser_claimed_by_token_id !== $tokenId) {
             throw new ApiException('claim_owned_by_another_client', '当前浏览器连接不持有该工作单', 409);
+        }
+    }
+
+    private function assertRequiredExtensionVersion(ManualPublication $publication, string $clientVersion, ?string $adapterVersion = null): void
+    {
+        $requiredVersion = trim((string) ($publication->publication_payload['required_extension_version'] ?? ''));
+        if ($requiredVersion === '') {
+            return;
+        }
+        if (version_compare($clientVersion, $requiredVersion, '<')
+            || ($adapterVersion !== null && version_compare(trim($adapterVersion), $requiredVersion, '<'))) {
+            throw new ApiException('extension_upgrade_required', '该工作单需要新版 GEOFlow 扩展', 426, [
+                'required_extension_version' => $requiredVersion,
+            ]);
         }
     }
 
@@ -477,6 +646,9 @@ final class ManualPublicationBrowserService
             ManualPublicationAccount::PLATFORM_WEIBO => ['weibo.com'],
             ManualPublicationAccount::PLATFORM_CSDN => ['csdn.net'],
             ManualPublicationAccount::PLATFORM_DAYU => ['mp.dayu.com'],
+            ManualPublicationAccount::PLATFORM_TOUTIAO => ['mp.toutiao.com'],
+            ManualPublicationAccount::PLATFORM_JIANSHU => ['jianshu.com'],
+            ManualPublicationAccount::PLATFORM_DOUYIN => ['creator.douyin.com'],
             default => [],
         };
         if ($allowed === []) {

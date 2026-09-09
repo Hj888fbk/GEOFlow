@@ -94,6 +94,7 @@ return array_replace_recursive($base, [
         'dashboard' => 'Панель',
         'tasks' => 'Задачи',
         'articles' => 'Статьи',
+        'publishing' => 'Публикация',
         'materials' => 'Контент-активы',
         'ai_config' => 'Настройки AI',
         'site_settings' => 'Сайт',

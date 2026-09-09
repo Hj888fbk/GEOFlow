@@ -31,12 +31,15 @@ final class PublicationPayloadBuilder
             ManualPublicationAccount::PLATFORM_WEIBO => 'weibo_post',
             ManualPublicationAccount::PLATFORM_CSDN => 'csdn_article',
             ManualPublicationAccount::PLATFORM_DAYU => 'dayu_article',
+            ManualPublicationAccount::PLATFORM_TOUTIAO => 'toutiao_article',
+            ManualPublicationAccount::PLATFORM_JIANSHU => 'jianshu_article',
+            ManualPublicationAccount::PLATFORM_DOUYIN => 'douyin_article',
             default => $platform === ManualPublicationAccount::PLATFORM_ZHIHU && $type === ManualPublication::TYPE_POST
                 ? 'zhihu_answer'
                 : 'manual_'.$type,
         };
         $payload = [
-            'schema_version' => $isBatchWorkOrder ? 2 : 1,
+            'schema_version' => $isBatchWorkOrder ? 3 : 1,
             'target_action' => $targetAction,
             'title' => trim((string) ($attributes['platform_title'] ?? Arr::get($source, 'title', ''))),
             'body_plain' => (string) ($attributes['content'] ?? ''),
@@ -55,8 +58,25 @@ final class PublicationPayloadBuilder
         $profileUrl = trim((string) Arr::get($identity, 'account.profile_url', ''));
         $payload['summary'] = trim((string) ($attributes['platform_summary'] ?? ''));
         $payload['body_html'] = $attributes['body_html'] ?? null;
-        $payload['media_manifest'] = array_values($this->arrayValue($attributes['media_manifest'] ?? null));
+        $workOrderId = (int) ($attributes['id'] ?? 0);
+        $payload['media_manifest'] = array_values(array_map(static function (mixed $item) use ($workOrderId): mixed {
+            if (! is_array($item)) {
+                return $item;
+            }
+            $path = (string) ($item['download_path'] ?? '');
+            if ($workOrderId > 0 && $path !== '') {
+                $item['download_path'] = str_replace('{work_order}', (string) $workOrderId, $path);
+            }
+
+            return $item;
+        }, $this->arrayValue($attributes['media_manifest'] ?? null)));
         $payload['source_hash'] = $attributes['source_hash'] ?? Arr::get($source, 'source_hash');
+        $payload['portable_document'] = $this->arrayValue($attributes['portable_document'] ?? null);
+        $payload['document_schema_version'] = $attributes['document_schema_version'] ?? 'portable-article-document/v1';
+        $payload['render_fingerprint'] = $this->arrayValue($attributes['render_fingerprint'] ?? null);
+        $payload['draft_policy'] = 'draft_only';
+        $payload['content_type'] = (string) ($attributes['content_type'] ?? 'article');
+        $payload['required_extension_version'] = '0.3.0';
         $payload['account_verification'] = [
             'expected_profile_hash' => $profileUrl === '' ? null : hash('sha256', $this->normalizeProfileUrl($profileUrl)),
             'account_uid' => Arr::get($identity, 'account.account_uid'),

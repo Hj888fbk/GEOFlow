@@ -41,6 +41,7 @@
   "pageLoadTimeout": { "message": "対象ページの読み込みがタイムアウトしました。" },
   "replaceDraftConfirm": { "message": "エディターに内容があります。現在の下書きを置き換えますか？" },
   "draftFilled": { "message": "下書きを入力しました。確認後、ご自身で公開をクリックしてください。" },
+  "draftSaved": { "message": "プラットフォームの下書きを保存して検証しました。確認後、ご自身で公開してください。" },
   "resultDetected": { "message": "公開結果 URL を検出しました。" },
   "resultUnknown": { "message": "公開結果を確認できません。手動で確認してください。" },
   "completionRequired": { "message": "公開完了には結果 URL が必要です。" },

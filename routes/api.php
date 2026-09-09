@@ -52,12 +52,17 @@ Route::prefix('v1')
                 ->group(function (): void {
                     Route::get('/', [BrowserManualPublicationController::class, 'index'])->middleware('throttle:120,1');
                     Route::get('{manualPublicationId}', [BrowserManualPublicationController::class, 'show'])->whereNumber('manualPublicationId')->middleware('throttle:120,1');
+                    Route::get('{manualPublicationId}/media/{mediaKey}', [BrowserManualPublicationController::class, 'media'])
+                        ->whereNumber('manualPublicationId')
+                        ->where('mediaKey', '[A-Za-z0-9_-]{8,80}')
+                        ->middleware('throttle:120,1');
                     Route::middleware('api.scope:browser-operations:execute')->group(function (): void {
                         Route::middleware('throttle:30,1')->group(function (): void {
                             Route::post('{manualPublicationId}/claim', [BrowserManualPublicationController::class, 'claim'])->whereNumber('manualPublicationId');
                             Route::post('{manualPublicationId}/heartbeat', [BrowserManualPublicationController::class, 'heartbeat'])->whereNumber('manualPublicationId');
                             Route::post('{manualPublicationId}/release', [BrowserManualPublicationController::class, 'release'])->whereNumber('manualPublicationId');
                             Route::post('{manualPublicationId}/draft-receipt', [BrowserManualPublicationController::class, 'draftReceipt'])->whereNumber('manualPublicationId');
+                            Route::post('{manualPublicationId}/adapter-failure', [BrowserManualPublicationController::class, 'adapterFailure'])->whereNumber('manualPublicationId');
                             Route::post('{manualPublicationId}/receipt', [BrowserManualPublicationController::class, 'receipt'])->whereNumber('manualPublicationId');
                         });
                     });

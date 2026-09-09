@@ -9,6 +9,7 @@ use App\Models\ManualPublicationAccount;
 use App\Models\ManualPublicationPersona;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Illuminate\View\View;
 
 class ManualPublicationSettingsController extends Controller
@@ -17,11 +18,37 @@ class ManualPublicationSettingsController extends Controller
     {
         return view('admin.manual-publications.settings', [
             'pageTitle' => __('admin.manual_publications.settings.title'),
-            'activeMenu' => 'articles',
+            'activeMenu' => 'publishing',
             'adminSiteName' => AdminWeb::siteName(),
             'personas' => ManualPublicationPersona::query()->withCount('accounts')->orderByDesc('is_active')->orderBy('name')->get(),
             'accounts' => ManualPublicationAccount::query()->with('persona:id,name')->orderByDesc('is_active')->orderBy('account_name')->get(),
             'platforms' => ManualPublicationAccount::PLATFORMS,
+            'editorUrlPresets' => ManualPublicationAccount::editorUrlPresets(),
+            'platformDraftModes' => [
+                ManualPublicationAccount::PLATFORM_BAIJIAHAO => '草稿接口保存 + 回读（待真实账号验收）',
+                ManualPublicationAccount::PLATFORM_SOHU_MEDIA => '草稿接口保存 + 回读（待真实账号验收）',
+                ManualPublicationAccount::PLATFORM_JIANSHU => '草稿接口保存 + 回读（待真实账号验收）',
+                ManualPublicationAccount::PLATFORM_CSDN => '草稿接口保存 + 回读（待真实账号验收）',
+                ManualPublicationAccount::PLATFORM_ZHIHU_COLUMN => '编辑器填充（未确认远端保存）',
+                ManualPublicationAccount::PLATFORM_TOUTIAO => '编辑器填充（未确认远端保存）',
+                ManualPublicationAccount::PLATFORM_NETEASE_MEDIA => '编辑器填充（未确认远端保存）',
+                ManualPublicationAccount::PLATFORM_QQ_PENGUIN => '编辑器填充（未确认远端保存）',
+                ManualPublicationAccount::PLATFORM_DAYU => '编辑器填充（未确认远端保存）',
+                ManualPublicationAccount::PLATFORM_DOUYIN => '长文编辑器填充（需账号长文权限）',
+            ],
+            'extensionVersion' => '0.3.0',
+            'extensionSha256' => $this->extensionSha256(),
+        ]);
+    }
+
+    public function downloadExtension(): BinaryFileResponse
+    {
+        $path = $this->extensionPath();
+        abort_unless(is_file($path), 404);
+
+        return response()->download($path, 'geoflow-chrome-operator-0.3.0.zip', [
+            'Content-Type' => 'application/zip',
+            'X-Content-SHA256' => hash_file('sha256', $path) ?: '',
         ]);
     }
 
@@ -90,5 +117,17 @@ class ManualPublicationSettingsController extends Controller
             'notes' => trim((string) ($data['notes'] ?? '')) ?: null,
             'is_active' => $request->boolean('is_active'),
         ];
+    }
+
+    private function extensionPath(): string
+    {
+        return base_path('dist/browser-extension/geoflow-chrome-operator-0.3.0.zip');
+    }
+
+    private function extensionSha256(): ?string
+    {
+        $path = $this->extensionPath();
+
+        return is_file($path) ? (hash_file('sha256', $path) ?: null) : null;
     }
 }
