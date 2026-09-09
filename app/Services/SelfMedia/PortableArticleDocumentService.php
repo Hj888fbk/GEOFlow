@@ -191,12 +191,13 @@ final class PortableArticleDocumentService
                     $i += 2;
                     while ($i < $count && $this->isTableRow($lines[$i])) {
                         $cells = $this->splitTableRow($lines[$i]);
+                        $lead = trim((string) array_shift($cells));
                         $parts = [];
                         foreach ($cells as $index => $cell) {
-                            $header = trim((string) ($headers[$index] ?? ''));
+                            $header = trim((string) ($headers[$index + 1] ?? ''));
                             $parts[] = ($header !== '' ? '**'.$header.'**：' : '').$cell;
                         }
-                        $out[] = '- '.implode('；', $parts);
+                        $out[] = ($lead !== '' ? '- **'.$lead.'**：' : '- ').implode('；', $parts);
                         $i++;
                     }
                     continue;
