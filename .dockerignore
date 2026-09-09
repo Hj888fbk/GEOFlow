@@ -23,6 +23,7 @@ tests
 
 # Vite 会在镜像构建阶段重新生成指纹资源，不复用宿主机产物。
 public/build
+public/storage
 
 # Windows 的 storage:link 是重解析点；生产镜像会在容器内重新创建该链接。
 public/storage

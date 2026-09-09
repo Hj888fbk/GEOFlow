@@ -51,6 +51,8 @@ use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SelfMediaController;
 use App\Http\Controllers\Admin\SiteSettingsController;
+use App\Http\Controllers\Admin\SiteThemePackageController;
+use App\Http\Controllers\Admin\SiteThemePreviewController;
 use App\Http\Controllers\Admin\SiteThemeReplicationController;
 use App\Http\Controllers\Admin\SystemUpdateController;
 use App\Http\Controllers\Admin\SystemUpdaterOperationController;
@@ -72,7 +74,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/favicon.ico', HostedAssetController::class)->name('site.asset.favicon');
 Route::get('/{assetPath}', HostedAssetController::class)
-    ->where('assetPath', '(?:(?:assets|js|storage|themes)/[a-zA-Z0-9._/-]+|build/assets/[a-zA-Z0-9._-]+)')
+    ->where('assetPath', '(?:(?:assets|js|storage)/[a-zA-Z0-9._/-]+|themes/[a-zA-Z0-9_-]+/[^\x00-\x1F\x7F]+|build/assets/[a-zA-Z0-9._-]+)')
     ->name('site.asset');
 
 Route::get('/app', function () {
@@ -165,6 +167,19 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('content', ContentAnalyticsController::class)->name('content');
             Route::get('traffic', TrafficAnalyticsController::class)->name('traffic');
             Route::get('ai-visibility', AiVisibilityAnalyticsController::class)->name('ai-visibility');
+            Route::post('ai-visibility/collect', [AiVisibilityAnalyticsController::class, 'collect'])
+                ->middleware(['admin.super', 'throttle:admin-sensitive'])
+                ->name('ai-visibility.collect');
+            Route::post('ai-visibility/competitors', [AiVisibilityAnalyticsController::class, 'storeCompetitor'])
+                ->middleware(['admin.super', 'throttle:admin-sensitive'])
+                ->name('ai-visibility.competitors.store');
+            Route::post('ai-visibility/competitors/detect', [AiVisibilityAnalyticsController::class, 'detectCompetitors'])
+                ->middleware(['admin.super', 'throttle:admin-sensitive'])
+                ->name('ai-visibility.competitors.detect');
+            Route::delete('ai-visibility/competitors/{competitor}/delete', [AiVisibilityAnalyticsController::class, 'destroyCompetitor'])
+                ->whereNumber('competitor')
+                ->middleware(['admin.super', 'throttle:admin-sensitive'])
+                ->name('ai-visibility.competitors.destroy');
             Route::get('leads', LeadAnalyticsController::class)->name('leads');
             Route::get('distribution', DistributionAnalyticsController::class)
                 ->middleware('admin.super')
@@ -179,6 +194,12 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('updater/download', [SystemUpdaterOperationController::class, 'download'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.download');
+            Route::post('updater/plan', [SystemUpdaterOperationController::class, 'preview'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('updater.plan');
+            Route::post('updater/switch-back', [SystemUpdaterOperationController::class, 'switchBack'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('updater.switch-back');
             Route::post('updater/update', [SystemUpdaterOperationController::class, 'update'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.update');
@@ -618,6 +639,17 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('homepage-modules/preset', [SiteSettingsController::class, 'applyHomepageModulePreset'])->name('homepage-modules.preset');
             Route::post('homepage-modules/import', [SiteSettingsController::class, 'importHomepageModuleDesign'])->name('homepage-modules.import');
             Route::middleware('admin.super')->group(function () {
+                Route::prefix('theme-packages')->name('theme-packages.')->group(function (): void {
+                    Route::post('exports', [SiteThemePackageController::class, 'export'])->middleware('throttle:admin-sensitive')->name('exports.store');
+                    Route::get('exports/{token}', [SiteThemePackageController::class, 'download'])->where('token', '[A-Za-z0-9]{40}')->name('exports.download');
+                    Route::get('imports/create', [SiteThemePackageController::class, 'create'])->name('imports.create');
+                    Route::post('imports', [SiteThemePackageController::class, 'upload'])->middleware('throttle:admin-sensitive')->name('imports.store');
+                    Route::get('imports/{token}', [SiteThemePackageController::class, 'inspection'])->where('token', '[A-Za-z0-9]{40}')->name('imports.show');
+                    Route::get('imports/{token}/files/{fileIndex}', [SiteThemePackageController::class, 'file'])->where('token', '[A-Za-z0-9]{40}')->where('fileIndex', '[0-9]{1,9}')->name('imports.file');
+                    Route::post('imports/{token}/install', [SiteThemePackageController::class, 'install'])->middleware('throttle:admin-sensitive')->where('token', '[A-Za-z0-9]{40}')->name('imports.install');
+                    Route::get('installed/{themeId}/preview/frame/{sitePath?}', [SiteThemePreviewController::class, 'frame'])->middleware('site.locale')->where(['themeId' => '[A-Za-z0-9_-]{1,80}', 'sitePath' => '.*'])->name('preview.frame');
+                    Route::get('installed/{themeId}/preview/{page?}', [SiteThemePreviewController::class, 'show'])->where(['themeId' => '[A-Za-z0-9_-]{1,80}', 'page' => 'home|category|article|about|archive-index|archive-month'])->name('preview');
+                });
                 Route::get('theme-replications/create', [SiteThemeReplicationController::class, 'create'])->name('theme-replications.create');
                 Route::post('theme-replications', [SiteThemeReplicationController::class, 'store'])->name('theme-replications.store');
                 Route::get('theme-replications/{replicationId}', [SiteThemeReplicationController::class, 'show'])

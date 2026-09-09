@@ -1,4 +1,4 @@
-# GEOFlow 3.0
+# GEOFlow 3.1
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
@@ -8,14 +8,14 @@ GEOFlowは、信頼できるナレッジ、AIコンテンツ制作、品質ゲ�
 
 [クイックスタート](#クイックスタート) · [画面プレビュー](#画面プレビュー) · [主要機能](#geoflow-30の主要機能) · [デプロイガイド](../deployment/DEPLOYMENT.md) · [変更履歴](../CHANGELOG_en.md) · [公式サイト](https://www.geoflow.me)
 
-[![Source version](https://img.shields.io/badge/source-3.0.0-2563eb)](../../version.json)
+[![Source version](https://img.shields.io/badge/source-3.1.0-2563eb)](../../version.json)
 [![Latest release](https://img.shields.io/github/v/release/yaojingang/GEOFlow?display_name=tag)](https://github.com/yaojingang/GEOFlow/releases/latest)
 [![PHP](https://img.shields.io/badge/PHP-8.3%2B-777bb4)](https://www.php.net/)
 [![CI](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 
-> **バージョンについて：** 現在のソースバージョンは `3.0.0` です。公開済みバージョンは [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) を基準に確認してください。本番環境では公開済みリリースを使用するか、レビュー済みコミットに固定してください。
+> **バージョンについて：** 現在は `3.1.x` 系列です。`main` ブランチでは開発が続いており、未リリースの変更が含まれる場合があります。正確なソースバージョンは [`version.json`](../../version.json)、正式リリースとアップグレード手順は [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) を参照してください。本番環境では安定版リリースを使用するか、レビュー済みコミットに固定してください。
 
 ---
 
@@ -123,7 +123,7 @@ GEOFlowは、実際の事業資料、明確なレビュー責任者、継続的�
 
 | コンポーネント | 現在のソースバージョンまたは状態 | 説明 |
 |----------------|----------------------------------|------|
-| GEOFlow Core | `3.0.0` | Laravelアプリ、管理画面、フロントエンド、API、キュー、配信システム |
+| GEOFlow Core | `3.1.0` | Laravelアプリ、管理画面、フロントエンド、API、キュー、配信システム |
 | GEOFlow CLI | `0.2.0` | `bin/geoflow` を同梱し、macOS、Linux、WSLをサポート |
 | Chrome運用アシスタント | `0.1.0` | ソースと配布用ファイルは `browser-extension/` と `dist/browser-extension/` に配置 |
 | GEOFlow Updater | 独立コンポーネント | 対象リリースと明示的に互換性がある署名版を使用。詳細は [geoflow-updater](https://github.com/yaojingang/geoflow-updater) を参照 |
@@ -216,10 +216,26 @@ vendor/bin/pint --test
 
 現在のGEOFlowは [GNU Affero General Public License v3.0](../../LICENSE) で提供されます。Apache-2.0で公開済みの旧バージョンには元のライセンスが引き続き適用されます。旧ライセンス本文は [`docs/licenses/Apache-2.0.txt`](../licenses/Apache-2.0.txt) に保存されています。
 
-| 利用方法 | ライセンス |
-|----------|------------|
-| AGPL-3.0を守って利用、変更、デプロイ、配布する | 無料で利用できます。ネットワークサービスと配布では、ライセンスが定める対応ソースコードの義務を履行してください。 |
-| 非公開の変更、ホワイトラベル、OEM、プロプライエタリ製品への組み込み、AGPL-3.0の例外が必要な利用 | 著作権者に個別の商用ライセンスを申請してください。 |
+**個人・企業ともにGEOFlowのオープンソース版をライセンス料なしで利用でき、商用利用も可能です。** AGPL-3.0を遵守する限り、以下の利用場面で別途GEOFlowの商用ライセンスを購入する必要はありません。社内利用、顧客へのサービス提供、サービス料金の請求だけを理由に商用ライセンスの購入が必要になることはありません。
+
+| 利用場面 | ライセンス上の条件 |
+|----------|--------------------|
+| 個人学習、研究、教育、機能評価、テスト | 無料で利用、デプロイ、変更できます |
+| 社内のナレッジ管理、コンテンツ制作、AI品質検査、チーム作業 | 従業員向けに無料でデプロイできます。営利企業も対象です |
+| 自社の企業サイト、ブランドサイト、GEOサブチャネル、業界情報サイトの運営 | 商用運営を含め、無料で利用できます |
+| 代理店、制作会社、コンサルタントによる顧客向けコンテンツ制作・運用代行 | 無料で利用でき、制作、コンサルティング、運用サービスの料金を請求できます |
+| 顧客向けの導入、研修、保守、カスタム開発の納品 | 無料で利用でき、サービス料金を請求できます。ソフトウェアのコピーを引き渡す場合は、AGPLの配布・ソースコード提供に関する適用条件を遵守してください |
+| GEOFlowを使ったホスティングやオンラインサービス（SaaS）の提供 | 無料で利用でき、サービスを有料で提供できます。変更版をネットワーク経由で提供する場合、対話するユーザーに完全な対応ソースコードを無料で取得する手段を提供してください |
+| カスタム開発、再配布、AGPLを遵守するブランド変更やOEM納品 | 無料で利用できます。必要な表示を保持し、同一ライセンスとソースコード提供に関する適用条件を遵守してください。商標権は別途確認が必要です |
+| ソースコード提供などのAGPLの義務に例外が必要な場合。たとえば、該当する義務が適用されてもコードの非公開を求めるホワイトラベル、OEM、プロプライエタリ製品への組み込み | 著作権者に個別の商用ライセンスを申請し、締結した契約に従って利用してください |
+
+利用にあたっての注意点：
+
+- **社内利用にも適用される条件があります。** 変更したGEOFlowを従業員がネットワーク経由で対話的に利用する場合、AGPL第13条に従い、完全な対応ソースコードを無料で取得する手段を目立つ形で提供する必要があります。変更版のネットワークサービスを外部ユーザーに提供する場合も同様です。提供対象者は利用・配布の方法によって決まり、公開GitHubリポジトリへの掲載が一律に求められるわけではありません。受領者がライセンスに基づいて持つ再配布の権利も保持されます。
+- **業務データとソフトウェアのソースコードは分けて判断します。** 独立したナレッジベースの資料、顧客データ、生成した記事は、GEOFlowを利用したという理由だけでAGPLに基づく公開が必要になることは通常ありません。出力にライセンス対象のプログラムコードやその他の著作物が含まれる場合は、内容に応じた判断が必要です。
+- **無料の対象はソフトウェアのライセンス料です。** サーバー、ドメイン、モデルAPIの呼び出し、外部サービス、別途購入する技術サポートの費用は利用者が負担します。
+
+以上は既存ライセンスの利用場面別の説明であり、新たな例外を追加するものではありません。具体的な権利と義務は [LICENSE](../../LICENSE) に従います。[AGPL第13条](https://www.gnu.org/licenses/agpl-3.0.html#section13) と [プログラムの出力に関するGNUの説明](https://www.gnu.org/licenses/gpl-faq.en.html#WhatCaseIsOutputGPL) も参照してください。複雑なプロプライエタリ製品への組み込みや複数の法人が関わる納品では、事前の法的確認を推奨します。
 
 商用ライセンスの初回連絡には [GitHub Issue](https://github.com/yaojingang/GEOFlow/issues/new) を利用できます。Issueは公開されるため、契約、価格、顧客情報、その他の機密情報を書かないでください。初回連絡後は非公開の連絡手段に移行できます。適用される義務はライセンス本文と署名済み契約で決まります。
 

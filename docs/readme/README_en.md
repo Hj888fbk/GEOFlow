@@ -1,4 +1,4 @@
-# GEOFlow 3.0
+# GEOFlow 3.1
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
@@ -6,16 +6,16 @@
 
 GEOFlow connects trusted knowledge, AI content production, quality gates, human review, multi-site delivery, and analytics in one operating workflow. Brand, growth, and content teams can use it to run an enterprise website, a GEO content channel, an industry source site, or an internal content operations platform while keeping source material, decisions, publishing results, and operational data in one system.
 
-[Quick start](#quick-start) · [Interface preview](#interface-preview) · [Core capabilities](#geoflow-30-core-capabilities) · [Deployment guide](../deployment/DEPLOYMENT.md) · [Changelog](../CHANGELOG_en.md) · [Website](https://www.geoflow.me)
+[Quick start](#quick-start) · [Interface preview](#interface-preview) · [Core capabilities](#geoflow-30-core-capabilities) · [Deployment guide](../deployment/DEPLOYMENT.md) · [Blue/green deployment](../blue-green-deployment-usage_en.md) · [Changelog](../CHANGELOG_en.md) · [Website](https://www.geoflow.me)
 
-[![Source version](https://img.shields.io/badge/source-3.0.0-2563eb)](../../version.json)
+[![Source version](https://img.shields.io/badge/source-3.1.0-2563eb)](../../version.json)
 [![Latest release](https://img.shields.io/github/v/release/yaojingang/GEOFlow?display_name=tag)](https://github.com/yaojingang/GEOFlow/releases/latest)
 [![PHP](https://img.shields.io/badge/PHP-8.3%2B-777bb4)](https://www.php.net/)
 [![CI](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 
-> **Version note:** The current source version is `3.0.0`. The [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) page is the source of truth for published versions. Production deployments should use a published release or pin a reviewed commit.
+> **Version note:** GEOFlow is currently in the `3.1.x` series. The `main` branch is under active development and may include unreleased changes. See [`version.json`](../../version.json) for the exact source version and [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) for official releases and upgrade notes. Production deployments should use a stable release or pin a reviewed commit.
 
 ---
 
@@ -123,7 +123,7 @@ The [deployment guide](../deployment/DEPLOYMENT.md) and the release notes for th
 
 | Component | Current source version or status | Notes |
 |-----------|----------------------------------|-------|
-| GEOFlow Core | `3.0.0` | Laravel application, admin, frontend, API, queues, and distribution system |
+| GEOFlow Core | `3.1.0` | Laravel application, admin, frontend, API, queues, and distribution system |
 | GEOFlow CLI | `0.2.0` | Bundled as `bin/geoflow`; supports macOS, Linux, and WSL |
 | Chrome operations assistant | `0.1.0` | Source and packaged output live in `browser-extension/` and `dist/browser-extension/` |
 | GEOFlow Updater | Independent component | Use a signed version explicitly compatible with the target release; see [geoflow-updater](https://github.com/yaojingang/geoflow-updater) |
@@ -175,7 +175,11 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 See [`docs/deployment/DEPLOYMENT.md`](../deployment/DEPLOYMENT.md) for production setup, health checks, reverse proxy configuration, and recovery.
 
+For signed managed installation, enrollment, automatic migrations, online or maintenance updates, and recovery, see the [blue/green deployment tutorial](../blue-green-deployment-usage_en.md), also available on the [Wiki](https://github.com/yaojingang/GEOFlow/wiki/Blue-Green-Deployment-and-Automatic-Migrations). Check its release prerequisites before using the new workflow.
+
 ### Upgrading from 2.x
+
+See the [3.0 upgrade tutorial (Chinese)](../deployment/GEOFLOW_V3_UPGRADE.md) for deployment-specific steps, backups, data backfills, Updater enrollment, acceptance checks, and recovery. The [documentation center](../README.md) and [Wiki guide](https://github.com/yaojingang/GEOFlow/wiki/v3.0.0-升级教程) link to the same instructions.
 
 Back up the database, `.env`, uploads, and `storage`. Drain old processes before running migrations, rebuilding frontend assets, and restarting services. Early 2.x installations also need the managed-image readiness check and security audit. Enable hosted sites only after wildcard DNS, wildcard TLS, trusted proxies, and Nginx are configured.
 
@@ -216,10 +220,26 @@ Read the [contribution guide](../../CONTRIBUTING.md) before submitting changes.
 
 The current version of GEOFlow is licensed under the [GNU Affero General Public License v3.0](../../LICENSE). Versions previously released under Apache-2.0 keep their original license; the historical text is available at [`docs/licenses/Apache-2.0.txt`](../licenses/Apache-2.0.txt).
 
-| Use | License path |
-|-----|--------------|
-| Use, modify, deploy, or distribute while complying with AGPL-3.0 | Free to use. Network-service and distribution scenarios must meet the corresponding source-code obligations in the license. |
-| Proprietary changes, white-label products, OEM distribution, proprietary integration, or another use that needs an AGPL-3.0 exception | Request a separate commercial license from the copyright holder. |
+**Individuals and businesses can use the open-source edition of GEOFlow free of license fees, including for commercial purposes.** The scenarios below require no separate GEOFlow commercial license when you comply with AGPL-3.0. Internal company use, serving clients, and charging for services do not by themselves require purchasing a commercial license.
+
+| Use case | Licensing terms |
+|----------|-----------------|
+| Personal learning, research, teaching, evaluation, and testing | Free to use, deploy, and modify |
+| Internal company knowledge management, content production, AI quality inspection, and team collaboration | Free to deploy for employees, including in for-profit businesses |
+| Operating your own corporate website, brand site, GEO subchannel, or industry reference site | Free to use, including for commercial operations |
+| Agencies, studios, or consultants producing content or managing content operations for clients | Free to use; you may charge for content production, consulting, and operational services |
+| Providing deployment, training, maintenance, or custom development to clients | Free to use and charge for services; delivering software copies requires compliance with applicable AGPL distribution and source-code obligations |
+| Providing hosting or online services (SaaS) based on GEOFlow | Free to use and charge for services; modified versions served over a network must offer interacting users a way to obtain the complete Corresponding Source at no charge |
+| Custom development, redistribution, and AGPL-compliant rebranding or OEM delivery | Free to use; retain required notices and comply with applicable same-license and source-code obligations. Trademark rights require separate consideration. |
+| Needing an exception to AGPL source-code or other obligations, such as white-label, OEM, or proprietary integrations that require code to remain closed when those obligations apply | Request a separate commercial license from the copyright holder and use the software under the signed agreement |
+
+Before using GEOFlow:
+
+- **Internal company use remains subject to applicable terms.** If employees interact with a modified GEOFlow over a network, AGPL section 13 requires prominently offering them a way to obtain the complete Corresponding Source at no charge. The same requirement applies to modified network services offered to external users. Who must be offered source depends on how the software is used and distributed; the license does not require publishing it in a public GitHub repository, and recipients retain their redistribution rights under the license.
+- **Business data and software source code are assessed separately.** Independent knowledge-base materials, client data, and generated articles generally do not need to be disclosed under AGPL merely because GEOFlow was used. Outputs containing covered program code or other covered works must be assessed based on their content.
+- **Free refers to software license fees.** Users bear the costs of servers, domains, model API calls, third-party services, and separately purchased technical support.
+
+These examples explain the existing license and add no exceptions. [LICENSE](../../LICENSE) defines the applicable rights and obligations; see [AGPL section 13](https://www.gnu.org/licenses/agpl-3.0.html#section13) and [GNU's explanation of program output](https://www.gnu.org/licenses/gpl-faq.en.html#WhatCaseIsOutputGPL). Seek legal review for complex proprietary integrations or delivery arrangements involving multiple entities.
 
 Start a commercial licensing inquiry through a [GitHub Issue](https://github.com/yaojingang/GEOFlow/issues/new). Issues are public, so do not include contracts, pricing, customer records, or other confidential information. The discussion can move to a private channel after the initial contact. The license text and any signed agreement define the applicable obligations.
 

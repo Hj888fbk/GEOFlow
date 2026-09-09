@@ -1,12 +1,17 @@
 <?php
 
 $base = require __DIR__.'/../en/admin.php';
+$themePackagesPath = __DIR__.'/theme_packages.php';
+if (! is_file($themePackagesPath) && function_exists('lang_path')) {
+    $themePackagesPath = lang_path('pt_BR/theme_packages.php');
+}
 $manualPublicationsPath = __DIR__.'/manual_publications.php';
 if (! is_file($manualPublicationsPath) && function_exists('lang_path')) {
     $manualPublicationsPath = lang_path('pt_BR/manual_publications.php');
 }
 
 return array_replace_recursive($base, [
+    'theme_packages' => require $themePackagesPath,
     'action_dialog' => [
         'cancel' => 'Cancelar', 'close' => 'Fechar', 'confirm' => 'Confirmar', 'continue' => 'Continuar',
         'input_label' => 'Digite um valor', 'required' => 'Digite um valor antes de continuar.',
@@ -207,6 +212,17 @@ return array_replace_recursive($base, [
         'subtitle' => 'Receba respostas rápidas, etapas claras e links confiáveis para os recursos permitidos.',
         'common_questions' => 'Perguntas frequentes',
         'local_help_available' => 'Quando a IA estiver indisponível, os recursos relacionados continuarão acessíveis.',
+        'connection_check' => 'Testar conexão',
+        'connection_checking' => 'Testando a conexão…',
+        'connection_success' => 'Conexão pronta. Você pode começar a conversar.',
+        'connection_failed' => 'O teste não foi concluído. Tente novamente ou revise as configurações.',
+        'connection_retry' => 'Tentar novamente',
+        'connection_rate_limited' => 'Muitos testes. Tente novamente em instantes.',
+        'connection_settings' => 'Configurar modelo',
+        'connection_runtime_disabled' => 'O chat de IA está desativado. Contate o administrador do sistema.',
+        'connection_no_model' => 'Adicione ou ative um modelo de conversa para começar.',
+        'connection_shared_model' => 'Peça ao proprietário do modelo compartilhado para testar a conexão.',
+        'connection_needs_check' => 'Teste a conexão com :model antes de começar a conversar.',
         'status_understanding' => 'Entendendo a pergunta',
         'status_retrieving' => 'Buscando ajuda no painel',
         'status_composing' => 'Preparando a resposta',
@@ -593,6 +609,18 @@ return array_replace_recursive($base, [
             'next_step' => 'Depois de revisar a versão, continue com as orientações do Updater abaixo para fazer backup, instalar e atualizar o GEOFlow.',
         ],
         'updater' => [
+            'plan_title' => 'Verificação prévia da atualização',
+            'plan_hint' => 'Confira a versão assinada, a estrutura de implantação e as migrações pendentes. A prévia pode baixar as imagens da versão candidata; aguarde a conclusão.',
+            'plan_preview' => 'Consultar plano de atualização',
+            'plan_failed' => 'Não foi possível consultar o plano de atualização. Verifique o status do host e tente novamente. Nenhuma atualização foi iniciada.',
+            'plan_changed' => 'O plano de atualização mudou ou ainda não foi consultado. Consulte o plano novamente.',
+            'plan_summary' => 'Versão de destino v:version · :strategy · :migrations migrações pendentes',
+            'layout_change' => 'Estrutura de implantação',
+            'layout_migration' => 'Migração para implantação azul/verde',
+            'layout_current' => 'Estrutura atual mantida',
+            'maintenance_confirmation' => 'Confirmo a janela de manutenção e autorizo a interrupção do serviço para esta atualização.',
+            'switch_back_hint' => 'Redireciona o tráfego da aplicação para a versão anterior preservada e mantém os dados atuais. Use o código de autorização de atualização. Para restaurar os dados, use os pontos de recuperação abaixo.',
+            'strategy' => ['maintenance' => 'Atualização com manutenção', 'online' => 'Atualização azul/verde sem interrupção'],
             'title' => 'GEOFlow Updater (ferramenta do host)',
             'description' => 'O GEOFlow Updater opera fora dos contêineres do site e gerencia ativação de imagens, backups completos e reversões. Esta página conecta a ferramenta, inicia operações controladas e mostra os resultados.',
             'status' => [
@@ -668,7 +696,7 @@ return array_replace_recursive($base, [
             ],
             'not_available' => 'O atualizador ainda não está instalado ou o serviço não está em execução.',
             'operations_title' => 'Operações de atualização e backup',
-            'operations_hint' => 'O atualizador executa verificações prévias, baixa imagens, ativa a manutenção, cria um ponto de recuperação completo, migra, ativa, reinicia e verifica. Falhas em etapas protegidas acionam a reversão automática.',
+            'operations_hint' => 'A atualização segue o plano assinado e confirmado: executa migrações, valida a versão candidata, redireciona o tráfego e monitora a integridade da versão. Planos com manutenção interrompem o serviço e criam um ponto de recuperação. Em caso de falha, o tráfego retorna à versão anterior quando houver compatibilidade; os demais casos exigem recuperação.',
             'phase_b_handover_hint' => 'Um worker de atualização legado da Fase B foi detectado. A transição por atualização assinada permanece disponível e removerá esse worker automaticamente. Backup e reversão ficam bloqueados até a verificação ser aprovada.',
             'operations_unavailable' => 'Esta versão da ferramenta oferece apenas diagnóstico de conexão. Atualize o GEOFlow Updater para habilitar atualizações transacionais, backups e reversões.',
             'recovery_title' => 'Pontos de recuperação',
@@ -677,15 +705,17 @@ return array_replace_recursive($base, [
             'history_only' => 'Somente histórico',
             'current_stage' => 'Etapa atual',
             'action' => [
+                'switch-back' => 'Retornar à aplicação anterior',
                 'update' => 'Verificar e atualizar com segurança',
                 'backup' => 'Criar backup completo',
                 'verify' => 'Executar verificação',
-                'rollback' => 'Reverter com um clique',
+                'rollback' => 'Restaurar dados e versão',
             ],
             'operation_kind' => [
+                'switch-back' => 'Retorno à aplicação anterior',
                 'update' => 'Atualização do site',
                 'backup' => 'Backup completo',
-                'rollback' => 'Reversão da release',
+                'rollback' => 'Restauração de dados e versão',
                 'verify' => 'Verificação do ambiente',
             ],
             'operation_status' => [
@@ -702,6 +732,16 @@ return array_replace_recursive($base, [
                 'failed' => 'Falhou',
             ],
             'stage_name' => [
+                'online-backup' => 'Criar ponto de recuperação sem interromper o serviço',
+                'upgrade' => 'Executar etapas de atualização assinadas',
+                'layout' => 'Migrar estrutura de implantação',
+                'candidate' => 'Validar versão candidata',
+                'switch' => 'Redirecionar tráfego da aplicação',
+                'workers' => 'Alternar processos em segundo plano',
+                'observe' => 'Monitorar integridade da versão',
+                'drain' => 'Aguardar o encerramento das conexões antigas',
+                'switch-back' => 'Retornar à aplicação anterior',
+                'retain-assets' => 'Preservar arquivos estáticos existentes',
                 'resolve' => 'Ler release assinada',
                 'preflight' => 'Executar verificações prévias',
                 'pull' => 'Baixar imagens da release',
@@ -5457,8 +5497,52 @@ return array_replace_recursive($base, [
         'ai_visibility' => [
             'keyword' => 'Palavra-chave',
             'provider' => 'Provedor',
+            'collect' => [
+                'panel_title' => 'Coleta de palavras-chave em lote',
+                'panel_desc' => 'Selecione até 50 palavras-chave entre as primeiras 1.000 entradas exibidas. Cada palavra-chave é processada de forma independente em segundo plano.',
+                'library' => 'Biblioteca de palavras-chave',
+                'select_all' => 'Selecionar todas',
+                'submit' => 'Iniciar coleta',
+                'queued' => 'Coleta de :count palavras-chave adicionada à fila.',
+                'empty' => 'Selecione pelo menos uma palavra-chave.',
+                'empty_library' => 'A biblioteca está vazia. Adicione palavras-chave primeiro.',
+            ],
+            'detect_button' => 'Identificar concorrentes com IA',
+            'detect_queued' => 'Identificação de concorrentes adicionada à fila. Novos concorrentes serão incluídos automaticamente.',
+            'top_urls' => [
+                'panel_title' => 'URLs mais citadas',
+                'panel_desc' => 'Páginas mais citadas nas respostas de IA dos últimos 30 dias. Clique para visitar a fonte.',
+                'visit' => 'Visitar',
+                'table_page' => 'Página',
+                'table_citations' => 'Citações',
+                'no_data' => 'Ainda não há citações. Colete palavras-chave primeiro.',
+            ],
+            'competitors' => [
+                'panel_title' => 'Menções a concorrentes',
+                'panel_desc' => 'Menções, taxa de presença e palavras-chave associadas a cada concorrente nas amostras dos últimos 30 dias.',
+                'add_title' => 'Adicionar concorrente',
+                'name' => 'Nome do concorrente',
+                'name_ph' => 'Ex.: Concorrente A',
+                'aliases' => 'Nomes alternativos (opcional, separados por vírgulas)',
+                'aliases_ph' => 'Ex.: Nome1,Nome2',
+                'add' => 'Adicionar',
+                'table_name' => 'Concorrente',
+                'table_samples' => 'Amostras',
+                'table_mentions' => 'Menções',
+                'table_rate' => 'Taxa de presença',
+                'table_keywords' => 'Palavras-chave associadas',
+                'no_data' => 'Ainda não há amostras. Colete palavras-chave primeiro.',
+                'no_competitors' => 'Nenhum concorrente adicionado.',
+                'delete' => 'Excluir',
+                'saved' => 'Concorrente salvo.',
+                'deleted' => 'Concorrente excluído.',
+                'manage_toggle' => 'Gerenciar lista de concorrentes',
+                'sample_note' => 'Escopo: :samples grupos de palavra-chave/data nos últimos 30 dias, incluindo respostas de todos os provedores. A correspondência ignora maiúsculas e minúsculas e conta nomes alternativos sobrepostos apenas uma vez.',
+                'detect_queued' => 'Identificação de concorrentes adicionada à fila. Novos concorrentes serão incluídos automaticamente.',
+            ],
             'recent_samples' => 'Amostras recentes',
             'visible' => 'Visível',
+            'table_samples' => 'Data da amostra',
             'not_visible' => 'Não visível',
             'providers' => [
                 'doubao_ark_responses' => 'Doubao Ark Responses',
