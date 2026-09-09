@@ -16,6 +16,13 @@ final readonly class SelfMediaMediaSnapshotService
 {
     private const MAX_IMAGE_BYTES = 10_485_760;
 
+    /** 自媒体正文图目标规格：宽≤1080、高≤1920、体积≤1MB，统一 JPEG。 */
+    private const TARGET_MAX_WIDTH = 1080;
+
+    private const TARGET_MAX_HEIGHT = 1920;
+
+    private const TARGET_MAX_BYTES = 1_048_576;
+
     private const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
     public function __construct(private SafeOutboundHttpClient $safeHttp) {}
@@ -66,6 +73,7 @@ final readonly class SelfMediaMediaSnapshotService
         $seenHashes = [];
         foreach (array_values($ordered) as $reference) {
             [$bytes, $sourceType] = $this->readBytes($reference);
+            $bytes = $this->normalizeImage($bytes);
             $metadata = $this->inspect($bytes);
             if (isset($seenHashes[$metadata['sha256']])) {
                 continue;
@@ -206,6 +214,67 @@ final readonly class SelfMediaMediaSnapshotService
             'width' => (int) ($info[0] ?? 0),
             'height' => (int) ($info[1] ?? 0),
         ];
+    }
+
+    /**
+     * 把正文图规范化为自媒体友好规格：宽≤1080、高≤1920、体积≤1MB、统一 JPEG。
+     * GIF 动图与 GD 不可用、解码失败时原样返回，保证链路不中断。
+     */
+    private function normalizeImage(string $bytes): string
+    {
+        if (! function_exists('imagecreatefromstring')) {
+            return $bytes;
+        }
+        $info = @getimagesizefromstring($bytes);
+        if (! is_array($info)) {
+            return $bytes;
+        }
+        $mime = strtolower((string) ($info['mime'] ?? ''));
+        if ($mime === 'image/gif') {
+            return $bytes;
+        }
+        $width = (int) ($info[0] ?? 0);
+        $height = (int) ($info[1] ?? 0);
+        if ($mime === 'image/jpeg'
+            && $width <= self::TARGET_MAX_WIDTH
+            && $height <= self::TARGET_MAX_HEIGHT
+            && strlen($bytes) <= self::TARGET_MAX_BYTES) {
+            return $bytes;
+        }
+
+        $source = @imagecreatefromstring($bytes);
+        if ($source === false || $width < 1 || $height < 1) {
+            return $bytes;
+        }
+        $scale = min(1.0, self::TARGET_MAX_WIDTH / $width, self::TARGET_MAX_HEIGHT / $height);
+        $canvas = $source;
+        if ($scale < 1.0) {
+            $newWidth = max(1, (int) round($width * $scale));
+            $newHeight = max(1, (int) round($height * $scale));
+            $canvas = imagecreatetruecolor($newWidth, $newHeight);
+            if ($canvas === false) {
+                imagedestroy($source);
+
+                return $bytes;
+            }
+            // PNG/WebP 透明底统一垫白，避免转 JPEG 后发黑。
+            imagefill($canvas, 0, 0, (int) imagecolorallocate($canvas, 255, 255, 255));
+            imagecopyresampled($canvas, $source, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+            imagedestroy($source);
+        }
+
+        $normalized = '';
+        foreach ([80, 70, 60, 50, 40] as $quality) {
+            ob_start();
+            imagejpeg($canvas, null, $quality);
+            $normalized = (string) ob_get_clean();
+            if (strlen($normalized) <= self::TARGET_MAX_BYTES) {
+                break;
+            }
+        }
+        imagedestroy($canvas);
+
+        return $normalized !== '' ? $normalized : $bytes;
     }
 
     private function publicDiskPath(string $path): string

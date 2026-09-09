@@ -160,12 +160,68 @@ final class PortableArticleDocumentService
             return $markdown;
         }
 
+        // 百家号/头条等编辑器对 HTML 表格支持差，平台稿一律把表格转成分条列述。
+        $markdown = $this->tablesToLists($markdown);
+
         return preg_replace_callback('/(^|\n)(```|~~~)[^\n]*\n([\s\S]*?)\n\2(?=\n|$)/', static function (array $matches): string {
             $code = trim((string) $matches[3]);
             $quoted = implode("\n", array_map(static fn (string $line): string => '> '.$line, explode("\n", $code)));
 
             return (string) $matches[1].$quoted;
         }, $markdown) ?? $markdown;
+    }
+
+    /**
+     * Markdown 管道表格转分条列述：每行数据变一条 "- **列名**：值；…" 列表项。
+     * 单列"表格"（拆不出 2 列以上）不转换，避免误伤含竖线的普通段落。
+     */
+    private function tablesToLists(string $markdown): string
+    {
+        $lines = explode("\n", $markdown);
+        $out = [];
+        $count = count($lines);
+        $i = 0;
+        while ($i < $count) {
+            $line = $lines[$i];
+            if ($this->isTableRow($line)
+                && $i + 1 < $count
+                && preg_match('/^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*$/u', $lines[$i + 1]) === 1) {
+                $headers = $this->splitTableRow($line);
+                if (count($headers) >= 2) {
+                    $i += 2;
+                    while ($i < $count && $this->isTableRow($lines[$i])) {
+                        $cells = $this->splitTableRow($lines[$i]);
+                        $parts = [];
+                        foreach ($cells as $index => $cell) {
+                            $header = trim((string) ($headers[$index] ?? ''));
+                            $parts[] = ($header !== '' ? '**'.$header.'**：' : '').$cell;
+                        }
+                        $out[] = '- '.implode('；', $parts);
+                        $i++;
+                    }
+                    continue;
+                }
+            }
+            $out[] = $line;
+            $i++;
+        }
+
+        return implode("\n", $out);
+    }
+
+    private function isTableRow(string $line): bool
+    {
+        $trimmed = trim($line);
+
+        return $trimmed !== '' && str_contains($trimmed, '|');
+    }
+
+    /** @return list<string> */
+    private function splitTableRow(string $line): array
+    {
+        $trimmed = trim(trim($line), '|');
+
+        return array_values(array_map('trim', explode('|', $trimmed)));
     }
 
     private function assertHeadingHierarchy(string $markdown): void
