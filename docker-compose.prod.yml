@@ -61,13 +61,13 @@ services:
       args: *prod_app_build_args
     working_dir: /var/www/html
     env_file:
-      - ./.env.prod
+      - ./.env
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "${AUTO_FIX_STORAGE_PERMISSIONS:-true}"
       GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED: "true"
     command: ["php", "artisan", "about"]
     volumes:
-      - ./.env.prod:/var/www/html/.env
+      - ./.env:/var/www/html/.env
       - ./storage:/var/www/html/storage
     depends_on:
       postgres:
@@ -88,7 +88,7 @@ services:
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
     volumes:
-      - ./.env.prod:/var/www/html/.env
+      - ./.env:/var/www/html/.env
       - ./storage:/var/www/html/storage
     depends_on:
       init:
@@ -144,7 +144,7 @@ services:
     mem_limit: ${QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
     stop_grace_period: 960s
     volumes:
-      - ./.env.prod:/var/www/html/.env
+      - ./.env:/var/www/html/.env
       - ./storage:/var/www/html/storage
     depends_on:
       init:
@@ -167,7 +167,7 @@ services:
     mem_limit: ${AI_QUALITY_QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
     stop_grace_period: ${GEOFLOW_AI_QUALITY_STOP_GRACE_PERIOD:-260s}
     volumes:
-      - ./.env.prod:/var/www/html/.env
+      - ./.env:/var/www/html/.env
       - ./storage:/var/www/html/storage
     depends_on:
       init:
@@ -192,7 +192,7 @@ services:
     mem_limit: ${AI_QUALITY_BACKFILL_QUEUE_CONTAINER_MEMORY_LIMIT:-256m}
     stop_grace_period: ${GEOFLOW_AI_QUALITY_STOP_GRACE_PERIOD:-260s}
     volumes:
-      - ./.env.prod:/var/www/html/.env
+      - ./.env:/var/www/html/.env
       - ./storage:/var/www/html/storage
     depends_on:
       init:
@@ -215,7 +215,7 @@ services:
     mem_limit: ${AI_OPTIMIZATION_QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
     stop_grace_period: ${GEOFLOW_AI_QUALITY_OPTIMIZATION_STOP_GRACE_PERIOD:-910s}
     volumes:
-      - ./.env.prod:/var/www/html/.env
+      - ./.env:/var/www/html/.env
       - ./storage:/var/www/html/storage
     depends_on:
       init:
@@ -238,7 +238,7 @@ services:
     mem_limit: ${KNOWLEDGE_QUEUE_CONTAINER_MEMORY_LIMIT:-256m}
     stop_grace_period: 240s
     volumes:
-      - ./.env.prod:/var/www/html/.env
+      - ./.env:/var/www/html/.env
       - ./storage:/var/www/html/storage
     depends_on:
       init:
@@ -259,7 +259,7 @@ services:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
     command: ["php", "artisan", "schedule:work"]
     volumes:
-      - ./.env.prod:/var/www/html/.env
+      - ./.env:/var/www/html/.env
       - ./storage:/var/www/html/storage
     depends_on:
       init:
@@ -281,7 +281,7 @@ services:
     expose:
       - "${REVERB_SERVER_PORT:-18080}"
     volumes:
-      - ./.env.prod:/var/www/html/.env
+      - ./.env:/var/www/html/.env
       - ./storage:/var/www/html/storage
     depends_on:
       init:
