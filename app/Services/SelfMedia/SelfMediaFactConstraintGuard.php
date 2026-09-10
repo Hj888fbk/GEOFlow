@@ -7,7 +7,9 @@ use DomainException;
 
 final class SelfMediaFactConstraintGuard
 {
-    private const NUMBER_PATTERN = '/(?<![\pL\pN])\d+(?:\.\d+)?\s*(?:MPa|kPa|Pa|mm|cm|m|%|℃|小时|天|年|月|日)?/iu';
+    // 前导排除只看 ASCII 字母/数字（保护 DN100、KXT200 等型号），
+    // 中文是 \pL，若排除中文字符会导致"成立于2014年"这类数字漏检。
+    private const NUMBER_PATTERN = '/(?<![A-Za-z0-9])\d+(?:\.\d+)?\s*(?:MPa|kPa|Pa|mm|cm|m|%|℃|小时|天|年|月|日)?/u';
 
     /**
      * 正文图片占位符（如【图片1】）是版式标记而非事实数字，
@@ -72,7 +74,10 @@ final class SelfMediaFactConstraintGuard
         $value = preg_replace('/(^|>)\s*\d+[.、)]\s+/mu', '$1', $value) ?? $value;
 
         // 「TOP 2」「TOP2：」等榜单小标题同样是版式标记，不是事实数字。
-        return preg_replace('/(?<![\pL\pN])TOP\s*\d+\s*[:：|｜]?\s*/iu', '', $value) ?? $value;
+        $value = preg_replace('/(?<![\pL\pN])TOP\s*\d+\s*[:：|｜]?\s*/iu', '', $value) ?? $value;
+
+        // 「第3名/第2位/第5步」等阿拉伯数字序号同样是版式标记。
+        return preg_replace('/第\s*\d+\s*[名位条步款]/u', '', $value) ?? $value;
     }
 
     private function withoutImagePlaceholders(string $value): string
