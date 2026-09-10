@@ -420,7 +420,8 @@ async function fillDraft() {
                     await setCurrentTask(currentTask);
                 } catch { /* 保留原始平台错误作为用户可见结果 */ }
             }
-            throw new Error(message(execution.result?.code, execution.result?.code));
+            throw new Error(message(execution.result?.code, execution.result?.code)
+                + (execution.result?.observedIdentity ? `（平台返回：${execution.result.observedIdentity}）` : ''));
         }
         currentTask.observedProfileUrl = execution.result.observedProfileUrl;
         currentTask.observedAccountProof = execution.result.accountProof || execution.result.observedProfileUrl;
@@ -680,7 +681,8 @@ async function processOneApiTask(task) {
                     });
                 } catch { /* 保留原始错误 */ }
             }
-            throw new Error(message(result?.code, result?.code || 'adapter_failed'));
+            throw new Error(message(result?.code, result?.code || 'adapter_failed')
+                + (result?.observedIdentity ? `（平台返回：${result.observedIdentity}）` : ''));
         }
         draftSaved = true;
         const proof = result.accountProof || result.observedProfileUrl;
