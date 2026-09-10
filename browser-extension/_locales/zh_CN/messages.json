@@ -235,5 +235,8 @@
   },
   "batchSummary": {
     "message": "同步完成：成功 {ok}/{total}"
+  },
+  "accountVerifiedOk": {
+    "message": "账号核验通过"
   }
 }

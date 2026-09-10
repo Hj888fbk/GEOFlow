@@ -1,7 +1,7 @@
 import { observeSelfMediaArticleResult, runSelfMediaArticleAdapter } from './self-media-article.js';
 import { runSelfMediaApiDraft } from './self-media-api.js';
 import { observeZhihuAnswerResult, runZhihuAnswerAdapter } from './zhihu-answer.js';
-import { observeSelfMediaDomResult, runSelfMediaDomDraft } from './self-media-dom-draft.js';
+import { observeSelfMediaDomResult, runSelfMediaDomDraft, verifySelfMediaAccount } from './self-media-dom-draft.js';
 
 const adapters = new Map([
     ['zhihu_answer', { execute: runZhihuAnswerAdapter, observe: observeZhihuAnswerResult, kind: 'legacy_zhihu', mode: 'dom' }],
@@ -9,14 +9,14 @@ const adapters = new Map([
     // mode=api 的可被「一键同步」批量自动执行；mode=dom 的仍需人工逐条操作。
     ['baijiahao_article', { execute: runSelfMediaApiDraft, observe: observeSelfMediaArticleResult, kind: 'self_media_article', mode: 'api' }],
     ['sohu_media_article', { execute: runSelfMediaApiDraft, observe: observeSelfMediaArticleResult, kind: 'self_media_article', mode: 'api' }],
-    ['zhihu_column_article', { execute: runSelfMediaDomDraft, observe: observeSelfMediaDomResult, kind: 'self_media_article', mode: 'dom' }],
+    ['zhihu_column_article', { execute: runSelfMediaDomDraft, observe: observeSelfMediaDomResult, verify: verifySelfMediaAccount, kind: 'self_media_article', mode: 'dom' }],
     ['csdn_article', { execute: runSelfMediaApiDraft, observe: observeSelfMediaDomResult, kind: 'self_media_article', mode: 'api' }],
-    ['toutiao_article', { execute: runSelfMediaDomDraft, observe: observeSelfMediaDomResult, kind: 'self_media_article', mode: 'dom' }],
-    ['netease_media_article', { execute: runSelfMediaDomDraft, observe: observeSelfMediaDomResult, kind: 'self_media_article', mode: 'dom' }],
-    ['qq_penguin_article', { execute: runSelfMediaDomDraft, observe: observeSelfMediaDomResult, kind: 'self_media_article', mode: 'dom' }],
-    ['dayu_article', { execute: runSelfMediaDomDraft, observe: observeSelfMediaDomResult, kind: 'self_media_article', mode: 'dom' }],
+    ['toutiao_article', { execute: runSelfMediaDomDraft, observe: observeSelfMediaDomResult, verify: verifySelfMediaAccount, kind: 'self_media_article', mode: 'dom' }],
+    ['netease_media_article', { execute: runSelfMediaDomDraft, observe: observeSelfMediaDomResult, verify: verifySelfMediaAccount, kind: 'self_media_article', mode: 'dom' }],
+    ['qq_penguin_article', { execute: runSelfMediaDomDraft, observe: observeSelfMediaDomResult, verify: verifySelfMediaAccount, kind: 'self_media_article', mode: 'dom' }],
+    ['dayu_article', { execute: runSelfMediaDomDraft, observe: observeSelfMediaDomResult, verify: verifySelfMediaAccount, kind: 'self_media_article', mode: 'dom' }],
     ['jianshu_article', { execute: runSelfMediaApiDraft, observe: observeSelfMediaDomResult, kind: 'self_media_article', mode: 'api' }],
-    ['douyin_article', { execute: runSelfMediaDomDraft, observe: observeSelfMediaDomResult, kind: 'self_media_article', mode: 'dom' }],
+    ['douyin_article', { execute: runSelfMediaDomDraft, observe: observeSelfMediaDomResult, verify: verifySelfMediaAccount, kind: 'self_media_article', mode: 'dom' }],
 ]);
 
 export function adapterForAction(action) {

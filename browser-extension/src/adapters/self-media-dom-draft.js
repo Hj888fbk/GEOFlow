@@ -1,4 +1,51 @@
 /**
+ * 只做账号核验、不碰编辑器的轻量注入函数。
+ * 供「手动粘贴草稿→发布→回填 URL」的路径补验账号凭证用。
+ * 同样会被 chrome.scripting.executeScript 序列化，必须完全自包含。
+ */
+export function verifySelfMediaAccount(action, account) {
+    const configs = {
+        zhihu_column_article: { hosts: ['zhihu.com'], profile: ['a[href*="/people/"]'] },
+        csdn_article: { hosts: ['csdn.net'], profile: ['a[href*="blog.csdn.net/"]', 'a[href*="/user/"]'] },
+        toutiao_article: { hosts: ['toutiao.com'], profile: ['a[href*="/profile_v4/"]', '[class*="user-name"]'] },
+        netease_media_article: { hosts: ['mp.163.com'], profile: ['a[href*="account"]', '[class*="userName"]'] },
+        qq_penguin_article: { hosts: ['om.qq.com', 'mp.qq.com'], profile: ['a[href*="account"]', '[class*="user-name"]'] },
+        dayu_article: { hosts: ['mp.dayu.com'], profile: ['a[href*="account"]', '[class*="user-name"]'] },
+        jianshu_article: { hosts: ['jianshu.com'], profile: ['a[href*="/u/"]'] },
+        douyin_article: { hosts: ['douyin.com'], profile: ['a[href*="creator-micro"]', '[class*="user-name"]'] },
+    };
+    const config = configs[action];
+    if (! config) return { ok: false, code: 'adapter_not_implemented' };
+    const host = location.hostname.toLowerCase();
+    if (! config.hosts.some((item) => host === item || host.endsWith(`.${item}`))) return { ok: false, code: 'wrong_platform' };
+    if (document.querySelector('iframe[src*="captcha"], [class*="Captcha"], [class*="captcha"], [id*="captcha"], [class*="verify"]')) return { ok: false, code: 'human_verification_required' };
+    let observedProfileUrl = '';
+    let observedIdentity = '';
+    for (const selector of config.profile) {
+        const node = document.querySelector(selector);
+        if (node) {
+            observedProfileUrl = String(node.href ?? '').split(/[?#]/)[0].replace(/\/$/, '').toLowerCase();
+            observedIdentity = String(node.dataset?.userId ?? node.textContent ?? '').trim();
+            break;
+        }
+    }
+    if (! observedProfileUrl && ! observedIdentity) return { ok: false, code: 'login_required' };
+    const expectedProfile = String(account?.profile_url ?? '').split(/[?#]/)[0].replace(/\/$/, '').toLowerCase();
+    const expectedUid = String(account?.account_uid ?? '').trim().toLowerCase();
+    const expectedHomepage = String(account?.homepage_identifier ?? '').trim().toLowerCase();
+    const proof = expectedProfile && observedProfileUrl === expectedProfile
+        ? observedProfileUrl
+        : expectedUid && observedIdentity.toLowerCase().includes(expectedUid)
+            ? `uid:${expectedUid}`
+            : expectedHomepage && `${observedProfileUrl} ${observedIdentity}`.toLowerCase().includes(expectedHomepage)
+                ? `homepage:${expectedHomepage}`
+                : '';
+    if (! proof) return { ok: false, code: 'account_mismatch', observedProfileUrl, observedIdentity };
+
+    return { ok: true, accountProof: proof, observedProfileUrl, observedIdentity };
+}
+
+/**
  * Experimental editor-only adapters for platforms without a verified stable draft API.
  * The function is deliberately self-contained because Chrome serializes it into the page.
  * It never searches for or clicks a save/publish control and only returns editor_filled.

@@ -569,6 +569,31 @@ async function copyTaskContent() {
     showNotice(message('copied'));
 }
 
+/** 手动填草稿的路径没跑过填充适配器、缺账号凭证：补一次纯账号核验。 */
+async function verifyAccountForCurrentTask() {
+    const action = selectedTask.publication_payload?.target_action;
+    const registered = adapterForAction(action);
+    if (! registered?.verify) throw new Error(message('accountNotVerified'));
+    let tabId = currentTask?.tabId;
+    if (! tabId) tabId = (await openTarget())?.id;
+    if (! tabId) throw new Error(message('targetMissing'));
+    await waitForTab(tabId);
+    const [execution] = await chrome.scripting.executeScript({
+        target: { tabId }, func: registered.verify, args: [action, selectedTask.account],
+    });
+    const result = execution?.result;
+    if (! result?.ok) {
+        throw new Error(message(result?.code, result?.code || 'accountNotVerified')
+            + (result?.observedIdentity ? `（平台返回：${result.observedIdentity}）` : ''));
+    }
+    currentTask = currentTask ?? { publication: selectedTask, tabId, startedAt: new Date().toISOString() };
+    currentTask.tabId = tabId;
+    currentTask.accountVerified = true;
+    currentTask.observedAccountProof = result.accountProof;
+    await setCurrentTask(currentTask);
+    showNotice(message('accountVerifiedOk', '账号核验通过'));
+}
+
 async function submitReceipt(outcome) {
     try {
         const completionUrl = elements.completion_url.value.trim() || null;
@@ -582,7 +607,7 @@ async function submitReceipt(outcome) {
             || selectedTask.publication_payload?.target_action === 'zhihu_answer')
             && ['completed', 'outcome_unknown'].includes(outcome);
         if (requiresVerifiedAccount && ! currentTask?.accountVerified) {
-            throw new Error(message('accountNotVerified'));
+            await verifyAccountForCurrentTask();
         }
         const targetOrigin = new URL(selectedTask.target_url).origin;
         const body = {
