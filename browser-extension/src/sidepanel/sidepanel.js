@@ -461,7 +461,37 @@ async function fillDraft() {
 
 async function observeResult() {
     try {
-        if (! currentTask?.tabId) throw new Error(message('targetMissing'));
+        // 批量同步/手动发布的工单没有编辑器标签页：退化为「URL 自助回读」——
+        // 后台打开用户填的已发布链接，确认 200 可公开访问后即可记 URL 完成工单。
+        if (! currentTask?.tabId) {
+            const url = elements.completion_url.value.trim();
+            if (! /^https?:\/\//i.test(url)) throw new Error(message('completionRequired'));
+            if (! await requestOriginPermission(url)) throw new Error(message('permissionDenied'));
+            const tab = await chrome.tabs.create({ url, active: false });
+            try {
+                await waitForTab(tab.id);
+                const [probe] = await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    func: async () => {
+                        try {
+                            const res = await fetch(location.href, { credentials: 'omit' });
+                            return { status: res.status };
+                        } catch {
+                            return { status: 0 };
+                        }
+                    },
+                });
+                const status = Number(probe?.result?.status ?? 0);
+                currentTask = currentTask ?? { publication: selectedTask, tabId: null, startedAt: new Date().toISOString() };
+                currentTask.publicUrlReadback = { url, status, succeeded: status === 200 };
+                await setCurrentTask(currentTask);
+                await selectTask(selectedTask);
+                showNotice(message(status === 200 ? 'resultDetected' : 'resultUnknown'));
+            } finally {
+                try { await chrome.tabs.remove(tab.id); } catch { /* 标签页可能已被用户关掉 */ }
+            }
+            return;
+        }
         const action = selectedTask.publication_payload?.target_action;
         const registered = adapterForAction(action);
         if (! registered) throw new Error(message('adapter_not_implemented'));
@@ -495,23 +525,46 @@ async function sha256AccountProof(value) {
     return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[ch]));
+}
+
+// 复制正文给手动平台用：富文本（HTML）进剪贴板，编辑器粘贴出来就是排版好的，
+// 不再是 Markdown 源码；平台不吃富文本时自动回退纯文本。
 async function copyTaskContent() {
     const payload = selectedTask.publication_payload ?? {};
-    const content = Number(payload.schema_version ?? 1) >= 2
-        ? [payload.title, payload.summary, payload.body_markdown || payload.body_plain, (payload.tags || []).join('、')].filter(Boolean).join('\n\n')
+    const plain = Number(payload.schema_version ?? 1) >= 2
+        ? [payload.title, payload.summary, payload.body_plain, (payload.tags || []).join('、')].filter(Boolean).join('\n\n')
         : payload.body_plain ?? '';
+    const html = Number(payload.schema_version ?? 1) >= 2
+        ? [
+            payload.title ? `<h1>${escapeHtml(payload.title)}</h1>` : '',
+            payload.summary ? `<p><strong>${escapeHtml(payload.summary)}</strong></p>` : '',
+            String(payload.body_html ?? ''),
+            (payload.tags || []).length ? `<p>${(payload.tags).map((tag) => `#${escapeHtml(tag)}`).join(' ')}</p>` : '',
+        ].filter(Boolean).join('')
+        : String(payload.body_html ?? payload.body_plain ?? '');
     try {
-        await navigator.clipboard.writeText(content);
+        await navigator.clipboard.write([new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([plain], { type: 'text/plain' }),
+        })]);
     } catch {
-        const textarea = document.createElement('textarea');
-        textarea.value = content;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.append(textarea);
-        textarea.select();
-        const copied = document.execCommand('copy');
-        textarea.remove();
-        if (! copied) throw new Error(message('copyFailed'));
+        try {
+            await navigator.clipboard.writeText(plain);
+        } catch {
+            const textarea = document.createElement('textarea');
+            textarea.value = plain;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.append(textarea);
+            textarea.select();
+            const copied = document.execCommand('copy');
+            textarea.remove();
+            if (! copied) throw new Error(message('copyFailed'));
+        }
     }
     showNotice(message('copied'));
 }
