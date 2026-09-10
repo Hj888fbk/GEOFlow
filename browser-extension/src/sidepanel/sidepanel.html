@@ -36,6 +36,11 @@
             </div>
             <div id="queue-view" class="stack">
                 <div class="section-heading"><div><h1 data-i18n="queueHeading">待执行工作单</h1><p id="queue-meta" class="muted"></p></div></div>
+                <div class="batch-bar panel stack" id="batch-bar">
+                    <button class="button primary" id="batch-sync" type="button" data-i18n="batchSync">一键同步到草稿箱</button>
+                    <p class="muted" data-i18n="batchSyncHint">自动处理支持接口直发的平台（百家号/搜狐号/简书/CSDN），其余平台仍需逐条手动执行。</p>
+                    <div id="batch-progress" class="batch-progress hidden"></div>
+                </div>
                 <div id="task-list" class="task-list"></div>
                 <div id="empty-state" class="empty hidden"><strong data-i18n="queueEmpty">当前没有可执行工作单</strong><span data-i18n="queueEmptyHint">已领取的工作单也会保留在这里。</span></div>
             </div>

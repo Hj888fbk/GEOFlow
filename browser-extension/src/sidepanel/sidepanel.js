@@ -6,7 +6,7 @@ import {
     getConnection, getCurrentTask, getPendingAuthorization, setConnection, setCurrentTask,
     setPendingAuthorization,
 } from '../lib/storage.js';
-import { adapterForAction, supportedAdapterActions } from '../adapters/registry.js';
+import { adapterForAction, isBatchSyncable, supportedAdapterActions } from '../adapters/registry.js';
 
 const VERSION = chrome.runtime.getManifest().version;
 const byId = (id) => document.getElementById(id);
@@ -17,6 +17,7 @@ const elements = Object.fromEntries([
     'task-platform', 'task-status', 'task-title', 'task-account', 'task-content', 'task-media', 'task-media-list', 'claim-task',
     'open-target', 'copy-content', 'fill-draft', 'release-task', 'result-panel', 'completion-url',
     'result-note', 'observe-result', 'complete-task', 'unknown-task', 'cancel-task', 'fail-task', 'notice',
+    'batch-bar', 'batch-sync', 'batch-progress',
 ].map((id) => [id.replaceAll('-', '_'), byId(id)]));
 
 let connection = null;
@@ -592,6 +593,185 @@ function startHeartbeat(publicationId) {
 }
 function stopHeartbeat() { window.clearInterval(heartbeatTimer); heartbeatTimer = null; }
 
+// ===== 一键同步：API 直发平台批量自动执行 =====
+// 体验对齐 CSDN 同步助手：勾选一次 → 后台逐平台自动 认领→开页→传图→存草稿→回执，
+// 用户只需最后去各平台草稿箱点发布。DOM 填充类平台仍走逐条手动流程。
+
+let batchRunning = false;
+
+const BATCH_AUTO_DISABLE_CODES = new Set([
+    'editor_dom_changed', 'draft_readback_empty', 'draft_text_mismatch', 'draft_heading_mismatch',
+    'draft_image_mismatch', 'draft_image_order_mismatch', 'article_permission_required',
+]);
+
+function batchStateLabel(state) {
+    return {
+        pending: message('batchRowPending', '等待'),
+        running: message('batchRowRunning', '同步中…'),
+        done: message('batchRowDone', '草稿已保存'),
+        failed: message('batchRowFailed', '失败'),
+    }[state] ?? state;
+}
+
+function renderBatchProgress(rows) {
+    elements.batch_progress.replaceChildren();
+    elements.batch_progress.classList.toggle('hidden', rows.length === 0);
+    for (const row of rows) {
+        const item = document.createElement('div');
+        item.className = `batch-row batch-row--${row.state}`;
+        const platform = document.createElement('strong');
+        platform.textContent = row.platform;
+        const state = document.createElement('span');
+        state.className = 'batch-row__state';
+        state.textContent = row.detail || batchStateLabel(row.state);
+        item.append(platform, state);
+        if (row.draftUrl) {
+            const link = document.createElement('a');
+            link.href = row.draftUrl;
+            link.target = '_blank';
+            link.rel = 'noreferrer';
+            link.textContent = message('batchOpenDraft', '打开草稿');
+            item.append(link);
+        }
+        elements.batch_progress.append(item);
+    }
+}
+
+function setBatchRow(rows, id, patch) {
+    const row = rows.find((entry) => entry.id === id);
+    if (row) Object.assign(row, patch);
+    renderBatchProgress(rows);
+}
+
+/** 单个 API 工作单的自动执行：认领 → 后台页注入适配器 → 草稿回执。 */
+async function processOneApiTask(task) {
+    const claim = await client.request(`/api/v1/manual-publications/${task.id}/claim`, {
+        method: 'POST', body: { revision: task.revision }, idempotencyKey: crypto.randomUUID(),
+    });
+    const claimed = claim.publication;
+    let draftSaved = false;
+    let tabId = null;
+    try {
+        const tab = await chrome.tabs.create({ url: claimed.target_url, active: false });
+        tabId = tab.id;
+        await waitForTab(tabId);
+        const action = claimed.publication_payload?.target_action;
+        const registered = adapterForAction(action);
+        if (! registered) throw new Error(message('adapter_not_implemented'));
+        // 页面上下文拉不到 GEOFlow 本地图片（CORS），扩展侧预取 base64 随参数注入。
+        const payloadForInjection = await withMediaData(claimed.publication_payload);
+        const [execution] = await chrome.scripting.executeScript({
+            target: { tabId }, func: registered.execute, args: [action, payloadForInjection, claimed.account, false],
+        });
+        const result = execution?.result;
+        if (! result?.ok) {
+            if (BATCH_AUTO_DISABLE_CODES.has(result?.code)) {
+                try {
+                    await client.request(`/api/v1/manual-publications/${task.id}/adapter-failure`, {
+                        method: 'POST',
+                        body: {
+                            revision: claimed.revision,
+                            adapter_version: VERSION,
+                            error_code: result.code,
+                            target_origin: new URL(claimed.target_url).origin,
+                            finished_at: new Date().toISOString(),
+                        },
+                        idempotencyKey: crypto.randomUUID(),
+                    });
+                } catch { /* 保留原始错误 */ }
+            }
+            throw new Error(message(result?.code, result?.code || 'adapter_failed'));
+        }
+        draftSaved = true;
+        const proof = result.accountProof || result.observedProfileUrl;
+        if (! proof) throw new Error('account_proof_missing');
+        await client.request(`/api/v1/manual-publications/${task.id}/draft-receipt`, {
+            method: 'POST',
+            body: {
+                revision: claimed.revision,
+                adapter_version: VERSION,
+                target_origin: new URL(claimed.target_url).origin,
+                observed_account_hash: await sha256AccountProof(proof),
+                filled_fields: result.filledFields,
+                persistence: result.persistence ?? 'editor_filled',
+                draft_id: result.draftId ?? null,
+                draft_url: result.draftUrl ?? null,
+                rendered_text_hash: result.renderedTextHash ?? null,
+                heading_outline: result.headingOutline ?? [],
+                expected_image_count: result.expectedImageCount ?? 0,
+                observed_image_count: result.observedImageCount ?? 0,
+                media_upload_receipts: result.mediaUploadReceipts ?? [],
+                finished_at: new Date().toISOString(),
+            },
+            idempotencyKey: crypto.randomUUID(),
+        });
+        return { ok: true, draftUrl: result.draftUrl ?? null };
+    } finally {
+        if (tabId !== null) {
+            try { await chrome.tabs.remove(tabId); } catch { /* 标签页可能已被用户关掉 */ }
+        }
+        if (! draftSaved) {
+            // 未产出草稿的失败认领释放回 ready，避免工单锁死在 in_progress；
+            // 已存草稿但回执失败的不释放，防止重跑产生重复草稿。
+            try {
+                await client.request(`/api/v1/manual-publications/${task.id}/release`, {
+                    method: 'POST', body: { revision: claimed.revision }, idempotencyKey: crypto.randomUUID(),
+                });
+            } catch { /* 释放失败留待人工处理 */ }
+        }
+    }
+}
+
+async function batchSyncApiTasks() {
+    if (batchRunning || ! client) return;
+    batchRunning = true;
+    elements.batch_sync.disabled = true;
+    try {
+        const data = await client.request('/api/v1/manual-publications?per_page=50');
+        const candidates = (data.items ?? []).filter(isBatchSyncable);
+        if (candidates.length === 0) {
+            showNotice(message('batchNoCandidates', '当前没有可自动同步的工作单'));
+            return;
+        }
+        // 一次性申请全部目标域名权限（必须发生在用户手势里，本函数由按钮点击触发）。
+        const origins = [...new Set(candidates.map((task) => originPermissionPattern(task.target_url)))];
+        const granted = await chrome.permissions.contains({ origins })
+            || await chrome.permissions.request({ origins });
+        if (! granted) throw new Error(message('permissionDenied'));
+        const rows = candidates.map((task) => ({
+            id: task.id,
+            platform: task.platform,
+            state: 'pending',
+            detail: '',
+            draftUrl: null,
+        }));
+        renderBatchProgress(rows);
+        for (const task of candidates) {
+            setBatchRow(rows, task.id, { state: 'running', detail: '' });
+            try {
+                const result = await processOneApiTask(task);
+                setBatchRow(rows, task.id, {
+                    state: 'done',
+                    detail: message('batchRowDone', '草稿已保存'),
+                    draftUrl: result.draftUrl,
+                });
+            } catch (error) {
+                setBatchRow(rows, task.id, { state: 'failed', detail: error.message });
+            }
+        }
+        const okCount = rows.filter((row) => row.state === 'done').length;
+        showNotice(message('batchSummary', '同步完成：成功 {ok}/{total}')
+            .replace('{ok}', okCount).replace('{total}', rows.length));
+    } catch (error) {
+        await handleOperationalError(error);
+    } finally {
+        batchRunning = false;
+        elements.batch_sync.disabled = false;
+        await loadTasks();
+    }
+}
+
+elements.batch_sync.addEventListener('click', batchSyncApiTasks);
 elements.connect_form.addEventListener('submit', connect);
 elements.cancel_pairing.addEventListener('click', async () => { window.clearTimeout(pollTimer); await clearPendingAuthorization(); elements.pending_card.classList.add('hidden'); });
 elements.refresh_tasks.addEventListener('click', reconcileTasks);

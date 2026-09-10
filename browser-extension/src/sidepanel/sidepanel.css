@@ -78,6 +78,18 @@ textarea { resize: vertical; }
 .empty strong { color: #344054; }
 .notice { position: fixed; right: 12px; bottom: 12px; left: 12px; z-index: 10; padding: 11px 13px; border-radius: var(--radius-md); background: #101828; color: #fff; box-shadow: 0 8px 24px rgba(16,24,40,.22); line-height: 1.45; }
 .notice.error { background: #7a271a; }
+.batch-bar { gap: 8px; }
+.batch-progress { display: grid; gap: 6px; }
+.batch-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--radius-sm); background: #f9fafb; font-size: 13px; }
+.batch-row strong { min-width: 72px; }
+.batch-row__state { flex: 1; color: var(--muted); overflow-wrap: anywhere; }
+.batch-row--running { background: #eff4ff; }
+.batch-row--running .batch-row__state { color: #3538cd; }
+.batch-row--done { background: #ecfdf3; }
+.batch-row--done .batch-row__state { color: #067647; }
+.batch-row--failed { background: #fef3f2; }
+.batch-row--failed .batch-row__state { color: #b42318; }
+.batch-row a { color: var(--accent); font-weight: 700; text-decoration: none; white-space: nowrap; }
 
 @media (max-width: 360px) {
     main { padding-inline: 12px; }

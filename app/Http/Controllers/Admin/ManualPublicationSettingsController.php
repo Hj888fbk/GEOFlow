@@ -36,7 +36,7 @@ class ManualPublicationSettingsController extends Controller
                 ManualPublicationAccount::PLATFORM_DAYU => '编辑器填充（未确认远端保存）',
                 ManualPublicationAccount::PLATFORM_DOUYIN => '长文编辑器填充（需账号长文权限）',
             ],
-            'extensionVersion' => '0.3.0',
+            'extensionVersion' => '0.3.1',
             'extensionSha256' => $this->extensionSha256(),
         ]);
     }
@@ -46,7 +46,7 @@ class ManualPublicationSettingsController extends Controller
         $path = $this->extensionPath();
         abort_unless(is_file($path), 404);
 
-        return response()->download($path, 'geoflow-chrome-operator-0.3.0.zip', [
+        return response()->download($path, 'geoflow-chrome-operator-0.3.1.zip', [
             'Content-Type' => 'application/zip',
             'X-Content-SHA256' => hash_file('sha256', $path) ?: '',
         ]);
@@ -121,7 +121,7 @@ class ManualPublicationSettingsController extends Controller
 
     private function extensionPath(): string
     {
-        return base_path('dist/browser-extension/geoflow-chrome-operator-0.3.0.zip');
+        return base_path('dist/browser-extension/geoflow-chrome-operator-0.3.1.zip');
     }
 
     private function extensionSha256(): ?string
