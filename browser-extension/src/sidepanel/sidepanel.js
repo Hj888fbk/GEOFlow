@@ -569,25 +569,74 @@ async function copyTaskContent() {
     showNotice(message('copied'));
 }
 
+/** 在已发布文章页上核验作者身份（注入函数，必须自包含）。
+ *  文章页公开可查作者主页链接/作者名，比编辑器页选择器更稳定。 */
+async function verifyAccountFromPublishedPage(url, account) {
+    if (! await requestOriginPermission(url)) throw new Error(message('permissionDenied'));
+    const tab = await chrome.tabs.create({ url, active: false });
+    try {
+        await waitForTab(tab.id);
+        const [execution] = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            args: [account],
+            func: (acc) => {
+                const norm = (value) => {
+                    try {
+                        const u = new URL(String(value ?? ''), location.href);
+                        return `${u.protocol}//${u.host}${u.pathname}`.toLowerCase().replace(/\/$/, '');
+                    } catch { return String(value ?? '').trim().toLowerCase(); }
+                };
+                const expectedProfile = norm(acc?.profile_url ?? '');
+                const uid = String(acc?.account_uid ?? '').trim().toLowerCase();
+                const homepage = String(acc?.homepage_identifier ?? '').trim();
+                if (expectedProfile) {
+                    const links = [...document.querySelectorAll('a[href]')].map((a) => norm(a.href));
+                    if (links.includes(expectedProfile)) return { ok: true, accountProof: expectedProfile };
+                }
+                const text = String(document.body?.innerText ?? '');
+                if (uid && text.toLowerCase().includes(uid)) return { ok: true, accountProof: `uid:${uid}` };
+                if (homepage && homepage.length >= 2 && text.includes(homepage)) {
+                    return { ok: true, accountProof: `homepage:${homepage.toLowerCase()}` };
+                }
+                return { ok: false, code: 'account_mismatch', observedIdentity: '', observedProfileUrl: '' };
+            },
+        });
+        return execution?.result ?? { ok: false, code: 'account_mismatch' };
+    } finally {
+        try { await chrome.tabs.remove(tab.id); } catch { /* 标签页可能已被用户关掉 */ }
+    }
+}
+
 /** 手动填草稿的路径没跑过填充适配器、缺账号凭证：补一次纯账号核验。 */
 async function verifyAccountForCurrentTask() {
     const action = selectedTask.publication_payload?.target_action;
     const registered = adapterForAction(action);
-    if (! registered?.verify) throw new Error(message('accountNotVerified'));
-    let tabId = currentTask?.tabId;
-    if (! tabId) tabId = (await openTarget())?.id;
-    if (! tabId) throw new Error(message('targetMissing'));
-    await waitForTab(tabId);
-    const [execution] = await chrome.scripting.executeScript({
-        target: { tabId }, func: registered.verify, args: [action, selectedTask.account],
-    });
-    const result = execution?.result;
-    if (! result?.ok) {
-        throw new Error(message(result?.code, result?.code || 'accountNotVerified')
-            + (result?.observedIdentity ? `（平台返回：${result.observedIdentity}）` : ''));
+    let result = null;
+    if (registered?.verify) {
+        let tabId = currentTask?.tabId;
+        if (! tabId) tabId = (await openTarget())?.id;
+        if (tabId) {
+            await waitForTab(tabId);
+            const [execution] = await chrome.scripting.executeScript({
+                target: { tabId }, func: registered.verify, args: [action, selectedTask.account],
+            });
+            result = execution?.result ?? null;
+        }
     }
-    currentTask = currentTask ?? { publication: selectedTask, tabId, startedAt: new Date().toISOString() };
-    currentTask.tabId = tabId;
+    // 编辑器页核验失败（SPA 选择器失灵等）时，回退到已发布文章页核验作者身份。
+    if (! result?.ok) {
+        const publishedUrl = elements.completion_url.value.trim();
+        if (! /^https?:\/\//i.test(publishedUrl)) {
+            throw new Error(message(result?.code, result?.code || 'accountNotVerified')
+                + (result?.observedIdentity ? `（平台返回：${result.observedIdentity}）` : ''));
+        }
+        result = await verifyAccountFromPublishedPage(publishedUrl, selectedTask.account);
+        if (! result?.ok) {
+            throw new Error(message(result?.code, result?.code || 'accountNotVerified')
+                + (result?.observedIdentity ? `（平台返回：${result.observedIdentity}）` : ''));
+        }
+    }
+    currentTask = currentTask ?? { publication: selectedTask, tabId: null, startedAt: new Date().toISOString() };
     currentTask.accountVerified = true;
     currentTask.observedAccountProof = result.accountProof;
     await setCurrentTask(currentTask);

@@ -638,17 +638,17 @@ final class ManualPublicationBrowserService
     private function assertPlatformHost(ManualPublication $publication, string $url, string $code): void
     {
         $allowed = match ((string) $publication->platform) {
-            ManualPublicationAccount::PLATFORM_QQ_PENGUIN => ['om.qq.com', 'mp.qq.com'],
+            ManualPublicationAccount::PLATFORM_QQ_PENGUIN => ['qq.com'],
             ManualPublicationAccount::PLATFORM_ZHIHU_COLUMN => ['zhihu.com'],
             ManualPublicationAccount::PLATFORM_BAIJIAHAO => ['baijiahao.baidu.com'],
-            ManualPublicationAccount::PLATFORM_NETEASE_MEDIA => ['mp.163.com'],
+            ManualPublicationAccount::PLATFORM_NETEASE_MEDIA => ['163.com'],
             ManualPublicationAccount::PLATFORM_SOHU_MEDIA => ['sohu.com'],
             ManualPublicationAccount::PLATFORM_WEIBO => ['weibo.com'],
             ManualPublicationAccount::PLATFORM_CSDN => ['csdn.net'],
-            ManualPublicationAccount::PLATFORM_DAYU => ['mp.dayu.com'],
-            ManualPublicationAccount::PLATFORM_TOUTIAO => ['mp.toutiao.com'],
+            ManualPublicationAccount::PLATFORM_DAYU => ['mp.dayu.com', 'dayu.com'],
+            ManualPublicationAccount::PLATFORM_TOUTIAO => ['toutiao.com'],
             ManualPublicationAccount::PLATFORM_JIANSHU => ['jianshu.com'],
-            ManualPublicationAccount::PLATFORM_DOUYIN => ['creator.douyin.com'],
+            ManualPublicationAccount::PLATFORM_DOUYIN => ['douyin.com'],
             default => [],
         };
         if ($allowed === []) {
