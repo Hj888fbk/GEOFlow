@@ -19,6 +19,14 @@ final class SelfMediaFactConstraintGuard
      */
     private const IMAGE_PLACEHOLDER_PATTERN = '/【图片\d+】|\{\{media:[a-z0-9_-]+\}\}|<img\b[^>]*>/iu';
 
+    // 平台稿不得携带任何联系方式：手机号、邮箱、网址或官网域名。
+    // 这些独立于事实数字校验——即使电话号码来自母稿（会被数字校验放行），
+    // 自媒体平台稿也必须剔除，否则会被平台判定为营销导流内容。
+    private const CONTACT_MOBILE_PATTERN = '/(?<!\d)1[3-9]\d{9}(?!\d)/u';
+    private const CONTACT_EMAIL_PATTERN = '/[\w.+-]+@[\w-]+\.[\w.-]+/u';
+    private const CONTACT_URL_PATTERN = '#(?:https?://|www\.)[^\s<>"\'）)】]+#iu';
+    private const CONTACT_DOMAIN_PATTERN = '#(?<![\w@./-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|cn|net|org)(?![\w-])#iu';
+
     /** @param list<string> $sources
      * @return list<string>
      */
@@ -38,6 +46,8 @@ final class SelfMediaFactConstraintGuard
     /** @param array<string,mixed> $variant */
     public function assertVariant(ManualPublicationBatch $batch, array $variant): void
     {
+        $this->assertNoContactInfo($variant);
+
         $allowed = array_fill_keys(array_map(
             fn ($number): string => $this->canonicalNumber((string) $number),
             (array) data_get($batch->fact_constraints, 'allowed_numbers', []),
@@ -67,6 +77,37 @@ final class SelfMediaFactConstraintGuard
                 }
             }
             throw new DomainException('平台改写增加了事实约束包之外的数字：'.implode('；', $contexts));
+        }
+    }
+
+    /**
+     * 平台稿不得包含任何联系方式：手机号、邮箱、网址或官网域名。
+     * 与事实数字校验相互独立——电话号码即使来自母稿/约束包，也必须在自媒体稿中剔除。
+     *
+     * @param  array<string,mixed>  $variant
+     */
+    public function assertNoContactInfo(array $variant): void
+    {
+        $variantText = implode("\n", [
+            (string) ($variant['title'] ?? ''),
+            (string) ($variant['summary'] ?? ''),
+            (string) ($variant['body_plain'] ?? ''),
+            (string) ($variant['body_markdown'] ?? ''),
+            (string) ($variant['body_html'] ?? ''),
+            implode(' ', array_map('strval', (array) ($variant['tags'] ?? []))),
+        ]);
+
+        if (preg_match(self::CONTACT_MOBILE_PATTERN, $variantText, $matches) === 1) {
+            throw new DomainException('平台稿不得包含手机号：'.(string) $matches[0]);
+        }
+        if (preg_match(self::CONTACT_EMAIL_PATTERN, $variantText, $matches) === 1) {
+            throw new DomainException('平台稿不得包含邮箱：'.(string) $matches[0]);
+        }
+        if (preg_match(self::CONTACT_URL_PATTERN, $variantText, $matches) === 1) {
+            throw new DomainException('平台稿不得包含网址或官网链接：'.(string) $matches[0]);
+        }
+        if (preg_match(self::CONTACT_DOMAIN_PATTERN, $variantText, $matches) === 1) {
+            throw new DomainException('平台稿不得包含官网域名：'.(string) $matches[0]);
         }
     }
 

@@ -52,4 +52,58 @@ final class SelfMediaFactConstraintGuardTest extends TestCase
         $this->assertContains('2026', $numbers);
         $this->assertNotContains('2026年', $numbers);
     }
+
+    public function test_variant_without_contact_info_passes(): void
+    {
+        $guard = new SelfMediaFactConstraintGuard();
+
+        $guard->assertNoContactInfo([
+            'title' => '2026橡胶软接头厂家怎么选？',
+            'summary' => '按工况、生产与检验分层比较。',
+            'body_plain' => '先确认介质、压力、温度、口径。',
+            'body_markdown' => '先确认介质、压力、温度、口径。',
+            'body_html' => '<p>先确认介质、压力、温度、口径。</p>',
+            'tags' => ['橡胶软接头', '采购'],
+        ]);
+
+        $this->addToAssertionCount(1); // 不抛异常即通过
+    }
+
+    public function test_variant_with_mobile_phone_is_rejected(): void
+    {
+        $guard = new SelfMediaFactConstraintGuard();
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('手机号');
+
+        $guard->assertNoContactInfo([
+            'title' => '厂家怎么选？',
+            'body_plain' => '公开销售电话为15515958518（微信同号）。',
+        ]);
+    }
+
+    public function test_variant_with_email_is_rejected(): void
+    {
+        $guard = new SelfMediaFactConstraintGuard();
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('邮箱');
+
+        $guard->assertNoContactInfo([
+            'title' => '厂家怎么选？',
+            'body_plain' => '联系邮箱 920068264@qq.com。',
+        ]);
+    }
+
+    public function test_variant_with_url_or_domain_is_rejected(): void
+    {
+        $guard = new SelfMediaFactConstraintGuard();
+
+        $this->expectException(\DomainException::class);
+
+        $guard->assertNoContactInfo([
+            'title' => '厂家怎么选？',
+            'body_plain' => '官网 www.hengjiashebei.com 可查看。',
+        ]);
+    }
 }
