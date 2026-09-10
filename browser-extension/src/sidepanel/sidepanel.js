@@ -459,45 +459,64 @@ async function fillDraft() {
     }
 }
 
+async function readbackFromManualUrl() {
+    const url = elements.completion_url.value.trim();
+    if (! /^https?:\/\//i.test(url)) throw new Error(message('completionRequired'));
+    if (! await requestOriginPermission(url)) throw new Error(message('permissionDenied'));
+    const tab = await chrome.tabs.create({ url, active: false });
+    try {
+        await waitForTab(tab.id);
+        const [probe] = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: async () => {
+                try {
+                    const res = await fetch(location.href, { credentials: 'omit' });
+                    return { status: res.status };
+                } catch {
+                    return { status: 0 };
+                }
+            },
+        });
+        const status = Number(probe?.result?.status ?? 0);
+        currentTask = currentTask ?? { publication: selectedTask, tabId: null, startedAt: new Date().toISOString() };
+        currentTask.publicUrlReadback = { url, status, succeeded: status === 200 };
+        await setCurrentTask(currentTask);
+        await selectTask(selectedTask);
+        showNotice(message(status === 200 ? 'resultDetected' : 'resultUnknown'));
+    } finally {
+        try { await chrome.tabs.remove(tab.id); } catch { /* 标签页可能已被用户关掉 */ }
+    }
+}
+
+async function tabStillExists(tabId) {
+    if (! tabId) return false;
+    try { await chrome.tabs.get(tabId); return true; } catch { return false; }
+}
+
 async function observeResult() {
     try {
         // 批量同步/手动发布的工单没有编辑器标签页：退化为「URL 自助回读」——
         // 后台打开用户填的已发布链接，确认 200 可公开访问后即可记 URL 完成工单。
-        if (! currentTask?.tabId) {
-            const url = elements.completion_url.value.trim();
-            if (! /^https?:\/\//i.test(url)) throw new Error(message('completionRequired'));
-            if (! await requestOriginPermission(url)) throw new Error(message('permissionDenied'));
-            const tab = await chrome.tabs.create({ url, active: false });
-            try {
-                await waitForTab(tab.id);
-                const [probe] = await chrome.scripting.executeScript({
-                    target: { tabId: tab.id },
-                    func: async () => {
-                        try {
-                            const res = await fetch(location.href, { credentials: 'omit' });
-                            return { status: res.status };
-                        } catch {
-                            return { status: 0 };
-                        }
-                    },
-                });
-                const status = Number(probe?.result?.status ?? 0);
-                currentTask = currentTask ?? { publication: selectedTask, tabId: null, startedAt: new Date().toISOString() };
-                currentTask.publicUrlReadback = { url, status, succeeded: status === 200 };
-                await setCurrentTask(currentTask);
-                await selectTask(selectedTask);
-                showNotice(message(status === 200 ? 'resultDetected' : 'resultUnknown'));
-            } finally {
-                try { await chrome.tabs.remove(tab.id); } catch { /* 标签页可能已被用户关掉 */ }
-            }
+        // 编辑器标签页在用户点发布后可能被平台关闭/跳走，同样退化回读，避免「No tab with id」。
+        if (! await tabStillExists(currentTask?.tabId)) {
+            await readbackFromManualUrl();
             return;
         }
         const action = selectedTask.publication_payload?.target_action;
         const registered = adapterForAction(action);
         if (! registered) throw new Error(message('adapter_not_implemented'));
-        const [execution] = registered.kind === 'legacy_zhihu'
-            ? await chrome.scripting.executeScript({ target: { tabId: currentTask.tabId }, func: registered.observe })
-            : await chrome.scripting.executeScript({ target: { tabId: currentTask.tabId }, func: registered.observe, args: [action] });
+        let execution;
+        try {
+            [execution] = registered.kind === 'legacy_zhihu'
+                ? await chrome.scripting.executeScript({ target: { tabId: currentTask.tabId }, func: registered.observe })
+                : await chrome.scripting.executeScript({ target: { tabId: currentTask.tabId }, func: registered.observe, args: [action] });
+        } catch (error) {
+            if (/No tab with id/i.test(String(error?.message ?? ''))) {
+                await readbackFromManualUrl();
+                return;
+            }
+            throw error;
+        }
         if (execution.result?.completionUrl) elements.completion_url.value = execution.result.completionUrl;
         currentTask.publicUrlReadback = {
             url: execution.result?.completionUrl ?? null,
