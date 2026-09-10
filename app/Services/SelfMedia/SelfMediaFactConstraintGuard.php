@@ -14,8 +14,10 @@ final class SelfMediaFactConstraintGuard
     /**
      * 正文图片占位符（如【图片1】）是版式标记而非事实数字，
      * 扫描前整体剔除 token，不单独放行其中的数字，其他数字校验保持不变。
+     * 同时剔除 body_html 里的 <img data-geoflow-media-key="...">：媒体 key（如 m_22ed34aa…）
+     * 里的十六进制片段会被数字扫描误抓，图片本身不是事实数字。
      */
-    private const IMAGE_PLACEHOLDER_PATTERN = '/【图片\d+】|\{\{media:[a-z0-9_-]+\}\}/iu';
+    private const IMAGE_PLACEHOLDER_PATTERN = '/【图片\d+】|\{\{media:[a-z0-9_-]+\}\}|<img\b[^>]*>/iu';
 
     /** @param list<string> $sources
      * @return list<string>
@@ -87,6 +89,11 @@ final class SelfMediaFactConstraintGuard
 
     private function canonicalNumber(string $number): string
     {
-        return strtolower((string) preg_replace('/\s+/u', '', trim($number)));
+        // 单位是写法不是数值：2026年≡2026、1.6MPa≡1.6，归一成同一数值，
+        // 避免模型把"2026年"写成"2026"就被误判为新增事实数字。
+        $number = trim((string) $number);
+        $number = preg_replace('/(?:MPa|kPa|Pa|mm|cm|m|%|℃|小时|天|年|月|日)\s*$/u', '', $number) ?? $number;
+
+        return strtolower((string) preg_replace('/\s+/u', '', $number));
     }
 }
