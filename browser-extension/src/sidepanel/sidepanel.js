@@ -533,16 +533,28 @@ function escapeHtml(value) {
 
 // 复制正文给手动平台用：富文本（HTML）进剪贴板，编辑器粘贴出来就是排版好的，
 // 不再是 Markdown 源码；平台不吃富文本时自动回退纯文本。
+// 注意两点：① 标题/摘要不进正文（平台有独立标题栏，带进去会重复）；
+// ② body_html 里的图片是 data-geoflow-media-key 占位（无 src），
+//    粘贴前替换回【图片N】位置标记，和素材面板的编号一一对应，避免粘贴出裂图。
 async function copyTaskContent() {
     const payload = selectedTask.publication_payload ?? {};
+    const media = Array.isArray(payload.media_manifest) ? payload.media_manifest : [];
+    const mediaPosition = (key) => {
+        const item = media.find((entry) => String(entry?.media_key ?? '') === String(key));
+        const position = Number(item?.position ?? 0);
+        const name = String(item?.name ?? '').trim();
+        return `【图片${position || '?'}${name ? `：${name}` : ''}】`;
+    };
+    const bodyHtml = String(payload.body_html ?? '').replace(
+        /<img\b[^>]*data-geoflow-media-key=["']([a-z0-9_-]+)["'][^>]*>/gi,
+        (whole, key) => `<p>${escapeHtml(mediaPosition(key))}</p>`,
+    );
     const plain = Number(payload.schema_version ?? 1) >= 2
         ? [payload.title, payload.summary, payload.body_plain, (payload.tags || []).join('、')].filter(Boolean).join('\n\n')
         : payload.body_plain ?? '';
     const html = Number(payload.schema_version ?? 1) >= 2
         ? [
-            payload.title ? `<h1>${escapeHtml(payload.title)}</h1>` : '',
-            payload.summary ? `<p><strong>${escapeHtml(payload.summary)}</strong></p>` : '',
-            String(payload.body_html ?? ''),
+            String(payload.body_html ? bodyHtml : ''),
             (payload.tags || []).length ? `<p>${(payload.tags).map((tag) => `#${escapeHtml(tag)}`).join(' ')}</p>` : '',
         ].filter(Boolean).join('')
         : String(payload.body_html ?? payload.body_plain ?? '');
