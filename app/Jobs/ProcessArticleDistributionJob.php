@@ -11,6 +11,7 @@ use App\Services\AiWorkspace\AiWorkspaceDispatchGuard;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionRetryPolicy;
 use App\Services\HostedSites\HostedSitePublishFailureService;
+use App\Services\SelfMedia\WebsitePublicationReadbackService;
 use App\Support\GeoFlow\DistributionErrorSanitizer;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -20,6 +21,11 @@ class ProcessArticleDistributionJob implements ShouldQueue
 {
     use Queueable;
 
+    // B9 说明：$tries=1 是有意设计，不是缺陷 ——
+    // 1. handle() 内部已捕获全部 Throwable 并走 DistributionRetryPolicy 的领域级重试
+    //    （按 attempt_count + next_retry_at 延迟重新入队），框架级重试会造成双重发布；
+    // 2. 若把 tries 调大，捕获异常后已重置为 queued 的行会被框架重试再次执行 → 重复发文。
+    // 卡死行的自愈由 geoflow:recover-stuck-distributions 调度命令兜底（见 routes/console.php）。
     public int $tries = 1;
 
     public int $timeout = 60;
@@ -46,6 +52,7 @@ class ProcessArticleDistributionJob implements ShouldQueue
         DistributionRetryPolicy $retryPolicy,
         ?AiWorkspaceDispatchGuard $dispatchGuard = null,
         ?HostedSitePublishFailureService $hostedFailures = null,
+        ?WebsitePublicationReadbackService $websiteReadback = null,
     ): void {
         $distribution = ArticleDistribution::query()->whereKey($this->distributionId)->first();
         if (! $distribution) {
@@ -75,6 +82,26 @@ class ProcessArticleDistributionJob implements ShouldQueue
         try {
             if (! $orchestrator->process($distribution)) {
                 return;
+            }
+
+            // WordPress 草稿转正后立即尝试官网回读，避免必须等待调度器下一轮
+            // 才能在发布中心看到“已通过官网回读”的文章。回读失败只保留
+            // synced 状态并交给定时轮询兜底，不能把已成功的官网发布标记为失败。
+            $synced = ArticleDistribution::query()
+                ->with('channel')
+                ->whereKey($this->distributionId)
+                ->where('status', 'synced')
+                ->first();
+            if ($synced instanceof ArticleDistribution
+                && $synced->channel?->isWordPressRest()) {
+                try {
+                    ($websiteReadback ?? app(WebsitePublicationReadbackService::class))
+                        ->attemptReceipt($synced);
+                } catch (Throwable $readbackException) {
+                    // 官网发布已经成功，回读属于可重试的旁路操作；记录后由
+                    // geoflow:poll-website-publications 继续处理。
+                    report($readbackException);
+                }
             }
         } catch (Throwable $e) {
             $distribution = ArticleDistribution::query()->whereKey($this->distributionId)->first();

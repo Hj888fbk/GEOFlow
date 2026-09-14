@@ -35,6 +35,9 @@ class ManualPublicationAccount extends Model
     public const SELF_MEDIA_PLATFORMS = [
         self::PLATFORM_QQ_PENGUIN,
         self::PLATFORM_ZHIHU_COLUMN,
+        self::PLATFORM_ZHIHU,
+        self::PLATFORM_XIAOHONGSHU,
+        self::PLATFORM_WECHAT,
         self::PLATFORM_BAIJIAHAO,
         self::PLATFORM_NETEASE_MEDIA,
         self::PLATFORM_SOHU_MEDIA,
@@ -133,6 +136,11 @@ class ManualPublicationAccount extends Model
     public function publications(): HasMany
     {
         return $this->hasMany(ManualPublication::class, 'account_id');
+    }
+
+    public function desktopSessions(): HasMany
+    {
+        return $this->hasMany(ManualPublicationAccountSession::class);
     }
 
     public function creator(): BelongsTo

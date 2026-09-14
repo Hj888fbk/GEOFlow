@@ -10,8 +10,8 @@ use App\Services\BrowserOperations\ManualPublicationBrowserService;
 use App\Support\AdminActivityLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -21,7 +21,25 @@ final class BrowserManualPublicationController extends BaseApiController
     {
         [$admin, $tokenId] = $this->actor($request);
         $perPage = min(50, max(1, (int) $request->query('per_page', 20)));
-        $page = $publications->queue($admin, $tokenId, $perPage, (string) $request->attributes->get('browser_client_version'));
+        $rawAccountIds = $request->query('account_ids', []);
+        if (is_string($rawAccountIds)) {
+            $rawAccountIds = explode(',', $rawAccountIds);
+        }
+        $accountIds = array_values(array_filter(
+            array_unique(array_map('intval', is_array($rawAccountIds) ? $rawAccountIds : [])),
+            static fn (int $id): bool => $id > 0,
+        ));
+        $page = $publications->queue(
+            $admin,
+            $tokenId,
+            $perPage,
+            (string) $request->attributes->get('browser_client_version'),
+            [
+                'account_ids' => $accountIds,
+                'batch_id' => max(0, (int) $request->query('batch_id')),
+                'article_id' => max(0, (int) $request->query('article_id')),
+            ],
+        );
 
         return $this->success($request, [
             'items' => collect($page->items())->map(fn (ManualPublication $item): array => $this->resource($item))->values()->all(),
@@ -31,7 +49,7 @@ final class BrowserManualPublicationController extends BaseApiController
                 'total' => $page->total(),
                 'last_page' => $page->lastPage(),
             ],
-            'protocol_version' => 1,
+            'protocol_version' => (int) $request->attributes->get('browser_protocol_version', 1),
         ]);
     }
 
@@ -52,14 +70,68 @@ final class BrowserManualPublicationController extends BaseApiController
         if (! $disk->exists((string) $snapshot->storage_path)) {
             throw new ApiException('media_unavailable', '工作单媒体文件不可用', 410);
         }
+        $stream = $disk->readStream((string) $snapshot->storage_path);
+        if (! is_resource($stream)) {
+            throw new ApiException(
+                'media_stream_unavailable',
+                sprintf('无法读取媒体 %s：storage disk 返回非资源类型', $snapshot->media_key),
+                410,
+            );
+        }
 
-        return response()->streamDownload(static function () use ($disk, $snapshot): void {
-            $stream = $disk->readStream((string) $snapshot->storage_path);
-            if (! is_resource($stream)) {
-                return;
-            }
-            fpassthru($stream);
+        // 在发送响应头之前把受保护媒体复制到临时流并校验完整性。
+        // 如果底层文件在 exists()/readStream() 之后消失或被截断，客户端必须收到
+        // 明确的 410，而不能拿到 200 + 空/半截图片。php://temp 超过内存阈值后会
+        // 自动落盘到系统临时目录，不会写入 GEOFlow 业务存储。
+        $buffer = fopen('php://temp/maxmemory:2097152', 'w+b');
+        if (! is_resource($buffer)) {
             fclose($stream);
+            throw new ApiException('media_buffer_unavailable', '无法准备媒体校验缓冲区', 500);
+        }
+        $bytes = 0;
+        $hash = hash_init('sha256');
+        try {
+            while (! feof($stream)) {
+                $chunk = fread($stream, 1024 * 1024);
+                if ($chunk === false) {
+                    throw new ApiException('media_stream_read_failed', '媒体文件读取中断', 410);
+                }
+                if ($chunk === '') {
+                    continue;
+                }
+                $written = fwrite($buffer, $chunk);
+                if ($written !== strlen($chunk)) {
+                    throw new ApiException('media_buffer_write_failed', '媒体文件缓冲失败', 500);
+                }
+                hash_update($hash, $chunk);
+                $bytes += strlen($chunk);
+            }
+        } finally {
+            fclose($stream);
+        }
+        $actualHash = hash_final($hash);
+        if ($bytes < 1 || $bytes !== (int) $snapshot->file_size) {
+            fclose($buffer);
+            throw new ApiException(
+                'media_stream_incomplete',
+                sprintf('媒体文件大小校验失败（expected=%d, actual=%d）', (int) $snapshot->file_size, $bytes),
+                410,
+            );
+        }
+        if (! hash_equals(strtolower((string) $snapshot->sha256), strtolower($actualHash))) {
+            fclose($buffer);
+            throw new ApiException('media_hash_mismatch', '媒体文件完整性校验失败', 410);
+        }
+        rewind($buffer);
+
+        return response()->streamDownload(static function () use ($buffer): void {
+            try {
+                if (fpassthru($buffer) === false) {
+                    throw new \RuntimeException('media_buffer_stream_failed');
+                }
+            } finally {
+                fclose($buffer);
+            }
         }, $snapshot->media_key, [
             'Content-Type' => (string) $snapshot->mime_type,
             'Content-Length' => (string) $snapshot->file_size,
@@ -123,6 +195,7 @@ final class BrowserManualPublicationController extends BaseApiController
                 (int) $payload['revision'],
                 $payload,
                 (string) $request->attributes->get('browser_client_version'),
+                (int) $request->attributes->get('browser_protocol_version', 1),
             );
             $this->audit($request, $admin, 'browser_publication.'.(string) $publication->status, $publication);
 
@@ -169,6 +242,7 @@ final class BrowserManualPublicationController extends BaseApiController
                 (int) $payload['revision'],
                 $payload,
                 (string) $request->attributes->get('browser_client_version'),
+                (int) $request->attributes->get('browser_protocol_version', 1),
             );
             $this->audit($request, $admin, 'browser_publication.draft_filled', $publication);
 
@@ -200,6 +274,7 @@ final class BrowserManualPublicationController extends BaseApiController
                 (int) $payload['revision'],
                 $payload,
                 (string) $request->attributes->get('browser_client_version'),
+                (int) $request->attributes->get('browser_protocol_version', 1),
             );
             $this->audit($request, $admin, 'browser_publication.adapter_disabled', $publication);
 
@@ -274,6 +349,21 @@ final class BrowserManualPublicationController extends BaseApiController
             'scheduled_at' => $publication->scheduled_at?->toIso8601String(),
             'publication_payload' => $publication->publication_payload,
             'completion_url' => $publication->completion_url,
+            'draft' => is_array($publication->draft_filled_receipt) ? [
+                'draft_id' => $publication->draft_filled_receipt['draft_id'] ?? null,
+                'draft_url' => $publication->draft_filled_receipt['draft_url'] ?? null,
+                'persistence' => $publication->draft_filled_receipt['persistence'] ?? null,
+            ] : null,
+            'batch' => $publication->batch ? [
+                'id' => (int) $publication->batch->id,
+                'content_intent' => (string) $publication->batch->content_intent,
+                'status' => (string) $publication->batch->status,
+            ] : null,
+            'article' => $publication->article ? [
+                'id' => (int) $publication->article->id,
+                'title' => (string) $publication->article->title,
+                'slug' => (string) $publication->article->slug,
+            ] : null,
             'account_verified' => $publication->status === ManualPublication::STATUS_DRAFT_FILLED
                 && is_array($publication->draft_filled_receipt)
                 && trim((string) ($publication->draft_filled_receipt['observed_account_hash'] ?? '')) !== '',

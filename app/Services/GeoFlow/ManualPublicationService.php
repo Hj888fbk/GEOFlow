@@ -116,6 +116,23 @@ class ManualPublicationService
             if (! $current->canTransitionTo($targetStatus)) {
                 throw new DomainException((string) __('admin.manual_publications.error.invalid_transition'));
             }
+            // B10 修复：reopen（failed/skipped/cancelled → ready）次数上限，
+            // 防止失败工作单被无限次重新入队形成重试循环（config geoflow.manual_publications.max_reopens，默认 5）
+            if ($current->isReopenTransition($targetStatus)) {
+                $maxReopens = max(1, (int) config('geoflow.manual_publications.max_reopens', 5));
+                $reopenCount = ManualPublicationTransition::query()
+                    ->where('manual_publication_id', $current->getKey())
+                    ->whereIn('from_status', ManualPublication::REOPENABLE_STATUSES)
+                    ->where('to_status', ManualPublication::STATUS_READY)
+                    ->count();
+                if ($reopenCount >= $maxReopens) {
+                    throw new DomainException(sprintf(
+                        '工作单已重开 %d 次（上限 %d），请检查失败根因或新建工作单',
+                        $reopenCount,
+                        $maxReopens
+                    ));
+                }
+            }
             if ($current->article_id !== null && in_array($targetStatus, [
                 ManualPublication::STATUS_READY,
                 ManualPublication::STATUS_IN_PROGRESS,

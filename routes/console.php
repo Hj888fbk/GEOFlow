@@ -149,6 +149,19 @@ Schedule::command('geoflow:recover-self-media-batches')
     ->onOneServer()
     ->withoutOverlapping(2);
 
+// B8 修复 — stale browser-claim 回收
+// 阈值 = ManualPublicationBrowserService::STALE_AFTER_MINUTES (10) × 2 = 20 分钟
+Schedule::command('geoflow:recover-browser-claims', ['--stale-after' => 20])
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping(10);
+
+// B9 自愈 — 卡死的文章分发行：queued 重新入队 / sending 失联标记 failed（防重复发布，不自动重发）
+Schedule::command('geoflow:recover-stuck-distributions')
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping(10);
+
 Schedule::command('geoflow:recover-title-generations')
     ->everyFiveMinutes()
     ->onOneServer()
@@ -211,6 +224,11 @@ Schedule::command('geoflow:prune-knowledge-fact-generations')
 
 Schedule::command('geoflow:prune-task-trash')
     ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping(60);
+
+Schedule::command('geoflow:prune-manual-publication-trash')
+    ->dailyAt('03:15')
     ->onOneServer()
     ->withoutOverlapping(60);
 

@@ -220,7 +220,9 @@ return [
     'ai_quality_sampled_max_ranges' => max(3, min(24, (int) env('GEOFLOW_AI_QUALITY_SAMPLED_MAX_RANGES', 12))),
     'ai_quality_full_online_max_characters' => max(12000, min(200000, (int) env('GEOFLOW_AI_QUALITY_FULL_ONLINE_MAX_CHARACTERS', 60000))),
     'ai_quality_sampled_auto_release_enabled' => filter_var(env('GEOFLOW_AI_QUALITY_SAMPLED_AUTO_RELEASE_ENABLED', true), FILTER_VALIDATE_BOOL),
-    'ai_quality_max_output_tokens' => max(512, min(4096, (int) env('GEOFLOW_AI_QUALITY_MAX_OUTPUT_TOKENS', 2048))),
+    // 质检需要返回结构化问题明细；2048 在长文章上容易触发 JSON 截断。
+    // 供应商或模型可通过 max_tokens 进一步收紧，但默认预算保持在 4096 以内。
+    'ai_quality_max_output_tokens' => max(512, min(4096, (int) env('GEOFLOW_AI_QUALITY_MAX_OUTPUT_TOKENS', 4096))),
     'ai_quality_max_model_candidates' => max(1, min(2, (int) env('GEOFLOW_AI_QUALITY_MAX_MODEL_CANDIDATES', 2))),
     'ai_quality_max_evidence' => max(4, min(24, (int) env('GEOFLOW_AI_QUALITY_MAX_EVIDENCE', 12))),
     'ai_quality_max_evidence_characters' => max(2000, min(12000, (int) env('GEOFLOW_AI_QUALITY_MAX_EVIDENCE_CHARACTERS', 6000))),
@@ -369,5 +371,25 @@ return [
     'api_token_default_ttl_days' => (int) env('GEOFLOW_API_TOKEN_DEFAULT_TTL_DAYS', 30),
     // 会话空闲超时（秒）
     'session_timeout_seconds' => (int) env('GEOFLOW_SESSION_TIMEOUT', 2592000),
+
+    // 浏览器执行工作单并发：同一浏览器 token 可同时持有的 in_progress/draft_filled 工作单上限
+    // 默认 1 = 旧行为（一次一条）；改大前需确认浏览器扩展/worker 支持并行执行
+    'browser' => [
+        'max_concurrent_claims_per_token' => max(1, (int) env('GEOFLOW_BROWSER_MAX_CONCURRENT_CLAIMS', 1)),
+    ],
+
+    // 自媒体工作单：reopen（failed/skipped/cancelled → ready）次数上限，防止无限重试循环
+    'manual_publications' => [
+        'max_reopens' => max(1, (int) env('GEOFLOW_MAX_MANUAL_PUBLICATION_REOPENS', 5)),
+    ],
+
+    // 文章分发卡死自愈：queued 卡住 / sending 失联 的阈值（分钟）
+    'distribution_recovery' => [
+        // queued 且 next_retry_at 已到期、updated_at 超过该阈值 → 重新入队
+        'queued_debounce_minutes' => max(5, (int) env('GEOFLOW_DISTRIBUTION_QUEUED_DEBOUNCE_MINUTES', 10)),
+        // sending 且 last_attempt_at 超过该阈值 → 标记 failed（不自动重发，避免重复发布）
+        'sending_stale_minutes' => max(15, (int) env('GEOFLOW_DISTRIBUTION_SENDING_STALE_MINUTES', 30)),
+        'batch_limit' => max(1, (int) env('GEOFLOW_DISTRIBUTION_RECOVERY_LIMIT', 100)),
+    ],
 
 ];

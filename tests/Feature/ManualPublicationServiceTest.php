@@ -213,6 +213,31 @@ class ManualPublicationServiceTest extends TestCase
         $this->assertSame($admin->getKey(), $history[4]->changed_by_admin_id);
     }
 
+    public function test_terminal_work_order_cannot_be_reopened_beyond_the_configured_limit(): void
+    {
+        config()->set('geoflow.manual_publications.max_reopens', 1);
+        $admin = $this->admin('super_admin');
+        [$persona, $account] = $this->identity($admin);
+        $article = $this->article('approved');
+        $service = app(ManualPublicationService::class);
+        $publication = $service->create(
+            $this->payload($persona, $account, $admin, ['article_id' => $article->getKey()]),
+            $admin,
+        );
+
+        $publication = $service->transition($publication, ManualPublication::STATUS_READY, 1, $admin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_IN_PROGRESS, 2, $admin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_FAILED, 3, $admin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_READY, 4, $admin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_IN_PROGRESS, 5, $admin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_FAILED, 6, $admin);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('上限 1');
+
+        $service->transition($publication, ManualPublication::STATUS_READY, 7, $admin);
+    }
+
     public function test_source_foreign_key_is_cleared_when_article_is_force_deleted(): void
     {
         $admin = $this->admin('super_admin');

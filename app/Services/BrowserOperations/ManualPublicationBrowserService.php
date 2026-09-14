@@ -16,6 +16,7 @@ use App\Services\GeoFlow\ArticlePublicationQualityGate;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Laravel\Sanctum\PersonalAccessToken;
 
 final class ManualPublicationBrowserService
 {
@@ -24,6 +25,7 @@ final class ManualPublicationBrowserService
     public const AUTO_DISABLE_ERROR_CODES = [
         'editor_dom_changed',
         'draft_readback_empty',
+        'draft_title_mismatch',
         'draft_text_mismatch',
         'draft_heading_mismatch',
         'draft_image_mismatch',
@@ -33,14 +35,28 @@ final class ManualPublicationBrowserService
 
     public function __construct(private readonly ArticlePublicationQualityGate $publicationQualityGate) {}
 
-    public function queue(Admin $admin, int $tokenId, int $perPage, string $clientVersion = '0.1.0'): LengthAwarePaginator
-    {
+    /** @param array{account_ids?:list<int>,batch_id?:int,article_id?:int} $filters */
+    public function queue(
+        Admin $admin,
+        int $tokenId,
+        int $perPage,
+        string $clientVersion = '0.1.0',
+        array $filters = [],
+    ): LengthAwarePaginator {
         return ManualPublication::query()
             ->visibleTo($admin)
-            ->with(['account:id,account_name,platform,profile_url,editor_url,account_uid,homepage_identifier,browser_adapter_enabled', 'persona:id,name'])
+            ->with([
+                'account:id,account_name,platform,profile_url,editor_url,account_uid,homepage_identifier,browser_adapter_enabled',
+                'persona:id,name',
+                'article:id,title,slug',
+                'batch:id,article_id,content_intent,status,target_account_ids',
+            ])
             ->whereNotNull('publication_payload')
             ->whereNotNull('target_url')
             ->whereNull('source_stale_at')
+            ->when((int) ($filters['batch_id'] ?? 0) > 0, fn ($query) => $query->where('manual_publication_batch_id', (int) $filters['batch_id']))
+            ->when((int) ($filters['article_id'] ?? 0) > 0, fn ($query) => $query->where('article_id', (int) $filters['article_id']))
+            ->when((array) ($filters['account_ids'] ?? []) !== [], fn ($query) => $query->whereIn('account_id', array_map('intval', (array) $filters['account_ids'])))
             ->when(version_compare($clientVersion, '0.3.0', '<'), static function ($query): void {
                 // 避免 SQLite/MySQL/PostgreSQL 对 JSON 数字比较语义不一致。
                 // v3 工作单始终持久化 document_schema_version；历史 v1/v2 保持 null。
@@ -63,7 +79,12 @@ final class ManualPublicationBrowserService
     {
         $publication = ManualPublication::query()
             ->visibleTo($admin)
-            ->with(['account:id,account_name,platform,profile_url,editor_url,account_uid,homepage_identifier,browser_adapter_enabled', 'persona:id,name'])
+            ->with([
+                'account:id,account_name,platform,profile_url,editor_url,account_uid,homepage_identifier,browser_adapter_enabled',
+                'persona:id,name',
+                'article:id,title,slug',
+                'batch:id,article_id,content_intent,status,target_account_ids',
+            ])
             ->find($publicationId);
         if (! $publication instanceof ManualPublication) {
             throw new ApiException('publication_not_found', '工作单不存在', 404);
@@ -87,14 +108,32 @@ final class ManualPublicationBrowserService
             if ($publication->source_stale_at !== null) {
                 throw new ApiException('source_changed', '官网母稿已经变化，旧平台稿不可执行', 409);
             }
-            $activeForClient = ManualPublication::query()
-                ->where('browser_claimed_by_token_id', $tokenId)
-                ->whereIn('status', [ManualPublication::STATUS_IN_PROGRESS, ManualPublication::STATUS_DRAFT_FILLED])
-                ->whereKeyNot($publication->id)
-                ->lockForUpdate()
-                ->exists();
-            if ($activeForClient) {
-                throw new ApiException('browser_concurrency_limit', '同一 Chrome 环境一次只能处理一条工作单', 409);
+            // 同一 token 的领取必须先锁 token 行，才能把后续计数与写入串行化。
+            // PostgreSQL 不允许聚合 count 搭配 FOR UPDATE，因此不能在计数查询上加锁。
+            $token = PersonalAccessToken::query()->whereKey($tokenId)->lockForUpdate()->first();
+            if (! $token instanceof PersonalAccessToken) {
+                throw new ApiException('unauthorized', '浏览器连接凭据已失效', 401);
+            }
+            if ($publication->account_id !== null) {
+                ManualPublicationAccount::query()->whereKey((int) $publication->account_id)->lockForUpdate()->first();
+                $accountHasActiveClaim = ManualPublication::query()
+                    ->where('account_id', (int) $publication->account_id)
+                    ->whereIn('status', [ManualPublication::STATUS_IN_PROGRESS, ManualPublication::STATUS_DRAFT_FILLED])
+                    ->whereKeyNot($publication->id)
+                    ->exists();
+                if ($accountHasActiveClaim) {
+                    throw new ApiException('account_concurrency_limit', '同一个平台账号已有一条活动工单', 409);
+                }
+            } else {
+                $maxConcurrentClaims = max(1, (int) config('geoflow.browser.max_concurrent_claims_per_token', 1));
+                $activeForClient = ManualPublication::query()
+                    ->where('browser_claimed_by_token_id', $tokenId)
+                    ->whereIn('status', [ManualPublication::STATUS_IN_PROGRESS, ManualPublication::STATUS_DRAFT_FILLED])
+                    ->whereKeyNot($publication->id)
+                    ->count('id');
+                if ($activeForClient >= $maxConcurrentClaims) {
+                    throw new ApiException('browser_concurrency_limit', sprintf('历史无账号工单最多同时持有 %d 条', $maxConcurrentClaims), 409);
+                }
             }
             $this->assertSourceArticleQuality($publication);
             if (! is_array($publication->publication_payload)) {
@@ -200,8 +239,9 @@ final class ManualPublicationBrowserService
         int $revision,
         array $receipt,
         string $clientVersion,
+        int $protocolVersion = 1,
     ): ManualPublication {
-        return DB::transaction(function () use ($admin, $tokenId, $publicationId, $revision, $receipt, $clientVersion): ManualPublication {
+        return DB::transaction(function () use ($admin, $tokenId, $publicationId, $revision, $receipt, $clientVersion, $protocolVersion): ManualPublication {
             $publication = $this->lockVisible($admin, $publicationId);
             $this->assertRevision($publication, $revision);
             $this->assertClaimOwner($publication, $tokenId);
@@ -249,7 +289,7 @@ final class ManualPublicationBrowserService
                 'schema_version' => max(1, (int) ($publication->publication_payload['schema_version'] ?? 1)),
                 'outcome' => $outcome,
                 'completion_url' => $completionUrl,
-                'protocol_version' => 1,
+                'protocol_version' => in_array($protocolVersion, [1, 2], true) ? $protocolVersion : 1,
                 'extension_version' => $clientVersion,
                 'adapter_version' => (string) ($receipt['adapter_version'] ?? ''),
                 'target_origin' => (string) ($receipt['target_origin'] ?? ''),
@@ -300,8 +340,9 @@ final class ManualPublicationBrowserService
         int $revision,
         array $receipt,
         string $clientVersion,
+        int $protocolVersion = 1,
     ): ManualPublication {
-        return DB::transaction(function () use ($admin, $tokenId, $publicationId, $revision, $receipt, $clientVersion): ManualPublication {
+        return DB::transaction(function () use ($admin, $tokenId, $publicationId, $revision, $receipt, $clientVersion, $protocolVersion): ManualPublication {
             $publication = $this->lockVisible($admin, $publicationId);
             $this->assertRevision($publication, $revision);
             $this->assertClaimOwner($publication, $tokenId);
@@ -365,7 +406,7 @@ final class ManualPublicationBrowserService
             $stored = [
                 'schema_version' => max(1, (int) ($publication->publication_payload['schema_version'] ?? 1)),
                 'outcome' => 'draft_filled',
-                'protocol_version' => 1,
+                'protocol_version' => in_array($protocolVersion, [1, 2], true) ? $protocolVersion : 1,
                 'extension_version' => $clientVersion,
                 'adapter_version' => (string) ($receipt['adapter_version'] ?? ''),
                 'target_origin' => (string) ($receipt['target_origin'] ?? ''),
@@ -408,8 +449,9 @@ final class ManualPublicationBrowserService
         int $revision,
         array $receipt,
         string $clientVersion,
+        int $protocolVersion = 1,
     ): ManualPublication {
-        return DB::transaction(function () use ($admin, $tokenId, $publicationId, $revision, $receipt, $clientVersion): ManualPublication {
+        return DB::transaction(function () use ($admin, $tokenId, $publicationId, $revision, $receipt, $clientVersion, $protocolVersion): ManualPublication {
             $publication = $this->lockVisible($admin, $publicationId);
             $this->assertRevision($publication, $revision);
             $this->assertClaimOwner($publication, $tokenId);
@@ -433,7 +475,7 @@ final class ManualPublicationBrowserService
                 'execution_receipt' => [
                     'schema_version' => max(1, (int) ($publication->publication_payload['schema_version'] ?? 1)),
                     'outcome' => 'failed',
-                    'protocol_version' => 1,
+                    'protocol_version' => in_array($protocolVersion, [1, 2], true) ? $protocolVersion : 1,
                     'extension_version' => $clientVersion,
                     'adapter_version' => (string) ($receipt['adapter_version'] ?? ''),
                     'target_origin' => (string) ($receipt['target_origin'] ?? ''),
@@ -490,7 +532,9 @@ final class ManualPublicationBrowserService
             return;
         }
 
-        $article = Article::query()->find((int) $publication->article_id);
+        // B11 修复：lockForUpdate 行锁 —— 质检读取与后续 claim 写入处于同一事务，
+        // 防止质检期间文章被并发修改导致的 TOCTOU（检查通过后文章又被改）。
+        $article = Article::query()->whereKey((int) $publication->article_id)->lockForUpdate()->first();
         if (! $article instanceof Article) {
             throw new ApiException('article_unavailable', '源文章不可用，无法领取工作单', 409);
         }
