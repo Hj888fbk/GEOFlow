@@ -6,10 +6,15 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class ManualPublication extends Model
 {
+    use SoftDeletes;
+
+    public const TRASH_RETENTION_DAYS = 30;
+
     public const TYPE_POST = 'post';
 
     public const TYPE_COMMENT = 'comment';
@@ -112,6 +117,7 @@ class ManualPublication extends Model
         'browser_claimed_at',
         'browser_last_seen_at',
         'completed_at',
+        'archived_at',
         'revision',
     ];
 
@@ -132,6 +138,7 @@ class ManualPublication extends Model
             'scheduled_at' => 'datetime',
             'status_changed_at' => 'datetime',
             'completed_at' => 'datetime',
+            'archived_at' => 'datetime',
             'execution_receipt' => 'array',
             'draft_filled_receipt' => 'array',
             'tags' => 'array',

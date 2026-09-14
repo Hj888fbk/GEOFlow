@@ -23,6 +23,7 @@ return [
     'article_edit' => 'Editar artículo',
     'browser_connect' => 'Conectar navegador',
     'manual_publications' => 'Publicación manual',
+    'self_media_publications' => 'Publicación social bajo demanda',
     'manual_publication_create' => 'Crear publicación',
     'manual_publication_settings' => 'Ajustes de publicación',
     'manual_publication_detail' => 'Detalle de publicación',

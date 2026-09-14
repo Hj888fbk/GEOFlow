@@ -6471,6 +6471,7 @@ return [
         'help' => [
             'markdown_supported' => '支持 Markdown 格式',
             'focus_keyword' => '生成任务从标题库带入的主搜索词，用于内容归因和 SEO 核对；普通关键词可继续补充品牌词、产品词和场景词。',
+            'keywords' => '多个关键词会在发布到 WordPress 时同步为 Rank Math 焦点关键词和文章标签，请用逗号或顿号分隔。',
             'review_status' => '待审核或已拒绝会自动落为草稿；发布状态会同步补齐审核与发布时间。',
             'recommendation' => '只有已发布文章会进入前台展示。精选文章首页最多展示 5 篇；热门文章超过 1 篇时首页热点区自动轮播。',
             'is_hot' => '勾选后进入首页热点轮播和侧栏热门列表。',
@@ -6524,6 +6525,7 @@ return [
         'help' => [
             'markdown_supported' => '支持 Markdown 格式',
             'focus_keyword' => '生成任务从标题库带入的主搜索词，只读显示；普通关键词可继续补充品牌词、产品词和场景词。',
+            'keywords' => '列表中的关键词会完整同步到 WordPress 的 Rank Math 和文章标签；请用逗号或顿号分隔。',
             'review_status' => '保存时会自动校正发布、审核和发布时间，避免写出互相冲突的状态。',
             'recommendation' => '只有已发布文章会进入前台展示。精选文章首页最多展示 5 篇；热门文章超过 1 篇时首页热点区自动轮播。',
             'is_hot' => '勾选后进入首页热点轮播和侧栏热门列表。',
@@ -6665,7 +6667,8 @@ return [
         'error' => [
             'image_required' => '请选择要上传的图片',
             'image_invalid' => '只支持 JPG、PNG、GIF、WebP 图片',
-            'image_too_large' => '图片不能超过 10MB',
+            'image_too_large' => '图片不能超过 20MB',
+            'session_expired' => '登录状态已过期，请刷新页面后重试。',
             'upload_disabled' => '请先保存文章，再在编辑页上传图片。',
             'upload_failed' => '图片上传失败：:message',
             'upload_failed_generic' => '图片上传失败，请稍后重试。',

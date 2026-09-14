@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\ArticleController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BrowserDeviceAuthorizationController;
 use App\Http\Controllers\Api\V1\BrowserManualPublicationController;
+use App\Http\Controllers\Api\V1\BrowserPublicationAccountController;
 use App\Http\Controllers\Api\V1\BrowserSessionController;
 use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\JobController;
@@ -43,6 +44,13 @@ Route::prefix('v1')
                 ->prefix('browser-operations')
                 ->group(function (): void {
                     Route::get('session', [BrowserSessionController::class, 'show'])->middleware('throttle:120,1');
+                    Route::get('desktop-update', [BrowserSessionController::class, 'desktopUpdate'])->middleware('throttle:30,1');
+                    Route::get('desktop-update/package', [BrowserSessionController::class, 'desktopUpdatePackage'])->middleware('throttle:10,1');
+                    Route::get('accounts', [BrowserPublicationAccountController::class, 'index'])->middleware('throttle:120,1');
+                    Route::middleware(['api.scope:browser-operations:execute', 'throttle:30,1'])->group(function (): void {
+                        Route::post('accounts/{accountId}/bind', [BrowserPublicationAccountController::class, 'bind'])->whereNumber('accountId');
+                        Route::post('accounts/{accountId}/status', [BrowserPublicationAccountController::class, 'status'])->whereNumber('accountId');
+                    });
                     Route::delete('session', [BrowserSessionController::class, 'destroy'])
                         ->middleware(['api.scope:browser-operations:execute', 'throttle:30,1']);
                 });
@@ -68,60 +76,66 @@ Route::prefix('v1')
                     });
                 });
             // catalog:read — 下拉元数据（模型、提示词、库、作者、分类等）
-            Route::get('catalog', [CatalogController::class, 'show'])->middleware('api.scope:catalog:read');
+            Route::get('catalog', [CatalogController::class, 'show'])
+                ->middleware(['api.scope:catalog:read', 'throttle:120,1']);
 
             // tasks:* — 任务 CRUD、启停、入队、子 Job 列表
-            Route::get('tasks', [TaskController::class, 'index'])->middleware('api.scope:tasks:read');
-            Route::post('tasks', [TaskController::class, 'store'])->middleware('api.scope:tasks:write');
+            Route::get('tasks', [TaskController::class, 'index'])
+                ->middleware(['api.scope:tasks:read', 'throttle:120,1']);
+            Route::post('tasks', [TaskController::class, 'store'])
+                ->middleware(['api.scope:tasks:write', 'throttle:60,1']);
             Route::get('tasks/{task}', [TaskController::class, 'show'])
                 ->whereNumber('task')
-                ->middleware('api.scope:tasks:read');
+                ->middleware(['api.scope:tasks:read', 'throttle:120,1']);
             Route::patch('tasks/{task}', [TaskController::class, 'update'])
                 ->whereNumber('task')
-                ->middleware('api.scope:tasks:write');
+                ->middleware(['api.scope:tasks:write', 'throttle:60,1']);
             Route::delete('tasks/{task}', [TaskController::class, 'destroy'])
                 ->whereNumber('task')
-                ->middleware('api.scope:tasks:write');
+                ->middleware(['api.scope:tasks:write', 'throttle:60,1']);
             Route::post('tasks/{task}/start', [TaskController::class, 'start'])
                 ->whereNumber('task')
-                ->middleware('api.scope:tasks:write');
+                ->middleware(['api.scope:tasks:write', 'throttle:60,1']);
             Route::post('tasks/{task}/stop', [TaskController::class, 'stop'])
                 ->whereNumber('task')
-                ->middleware('api.scope:tasks:write');
+                ->middleware(['api.scope:tasks:write', 'throttle:60,1']);
             Route::post('tasks/{task}/enqueue', [TaskController::class, 'enqueue'])
                 ->whereNumber('task')
-                ->middleware('api.scope:tasks:write');
+                ->middleware(['api.scope:tasks:write', 'throttle:60,1']);
             Route::get('tasks/{task}/jobs', [TaskController::class, 'jobs'])
                 ->whereNumber('task')
-                ->middleware('api.scope:tasks:read');
+                ->middleware(['api.scope:tasks:read', 'throttle:120,1']);
 
             // jobs:read — 单条 task_runs 执行记录
             Route::get('jobs/{job}', [JobController::class, 'show'])
                 ->whereNumber('job')
-                ->middleware('api.scope:jobs:read');
+                ->middleware(['api.scope:jobs:read', 'throttle:120,1']);
 
             // materials:* — 后台素材库 CRUD 与库内条目管理
-            Route::get('materials', [MaterialController::class, 'summary'])->middleware('api.scope:materials:read');
-            Route::get('materials/{type}', [MaterialController::class, 'index'])->middleware('api.scope:materials:read');
-            Route::post('materials/{type}', [MaterialController::class, 'store'])->middleware('api.scope:materials:write');
+            Route::get('materials', [MaterialController::class, 'summary'])
+                ->middleware(['api.scope:materials:read', 'throttle:120,1']);
+            Route::get('materials/{type}', [MaterialController::class, 'index'])
+                ->middleware(['api.scope:materials:read', 'throttle:120,1']);
+            Route::post('materials/{type}', [MaterialController::class, 'store'])
+                ->middleware(['api.scope:materials:write', 'throttle:60,1']);
             Route::get('materials/{type}/{id}', [MaterialController::class, 'show'])
                 ->whereNumber('id')
-                ->middleware('api.scope:materials:read');
+                ->middleware(['api.scope:materials:read', 'throttle:120,1']);
             Route::patch('materials/{type}/{id}', [MaterialController::class, 'update'])
                 ->whereNumber('id')
-                ->middleware('api.scope:materials:write');
+                ->middleware(['api.scope:materials:write', 'throttle:60,1']);
             Route::delete('materials/{type}/{id}', [MaterialController::class, 'destroy'])
                 ->whereNumber('id')
-                ->middleware('api.scope:materials:write');
+                ->middleware(['api.scope:materials:write', 'throttle:60,1']);
             Route::get('materials/{type}/{id}/items', [MaterialController::class, 'items'])
                 ->whereNumber('id')
-                ->middleware('api.scope:materials:read');
+                ->middleware(['api.scope:materials:read', 'throttle:120,1']);
             Route::post('materials/{type}/{id}/items', [MaterialController::class, 'storeItem'])
                 ->whereNumber('id')
-                ->middleware('api.scope:materials:write');
+                ->middleware(['api.scope:materials:write', 'throttle:60,1']);
             Route::delete('materials/{type}/{id}/items', [MaterialController::class, 'destroyItems'])
                 ->whereNumber('id')
-                ->middleware('api.scope:materials:write');
+                ->middleware(['api.scope:materials:write', 'throttle:60,1']);
 
             // articles:* — 文章 CRUD、审核、发布、软删
             Route::get('articles', [ArticleController::class, 'index'])->middleware('api.scope:articles:read');

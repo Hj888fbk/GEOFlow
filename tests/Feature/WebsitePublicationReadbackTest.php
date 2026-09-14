@@ -52,6 +52,52 @@ final class WebsitePublicationReadbackTest extends TestCase
         $this->assertSame($hasher->hash($article), $readback);
     }
 
+    public function test_wordpress_generated_image_caption_does_not_break_readback_hash(): void
+    {
+        $article = $this->makeArticle("正文前\n\n![image](/storage/uploads/images/example.jpg)\n\n正文后");
+        $hasher = app(SelfMediaSourceHasher::class);
+        $renderedHtml = ArticleHtmlPresenter::markdownToHtml(
+            ArticleHtmlPresenter::stripLeadingTitleHeading((string) $article->content, (string) $article->title)
+        );
+        $wordpressHtml = preg_replace(
+            '/(<img\b[^>]*>)/iu',
+            '<figure>$1<figcaption>由媒体库自动生成的说明</figcaption></figure><p>运输层自动生成的图片说明</p>',
+            $renderedHtml,
+            1,
+        ) ?? $renderedHtml;
+
+        $readback = $hasher->hashNormalized($hasher->normalizeReadback(
+            (string) $article->title,
+            (string) ($article->excerpt ?? ''),
+            $wordpressHtml,
+        ));
+
+        $this->assertSame($hasher->hash($article), $readback);
+    }
+
+    public function test_gutenberg_block_comments_and_empty_caption_paragraphs_do_not_break_readback_hash(): void
+    {
+        $article = $this->makeArticle("正文前\n\n![image](/storage/uploads/images/example.jpg)\n\n正文后");
+        $hasher = app(SelfMediaSourceHasher::class);
+        $renderedHtml = ArticleHtmlPresenter::markdownToHtml(
+            ArticleHtmlPresenter::stripLeadingTitleHeading((string) $article->content, (string) $article->title)
+        );
+        $wordpressHtml = preg_replace(
+            '/(<img\\b[^>]*>)/iu',
+            '<!-- wp:image --><figure>$1</figure><!-- /wp:image --><!-- wp:paragraph --><p>图片标题</p><!-- /wp:paragraph --><!-- wp:paragraph --><p></p><!-- /wp:paragraph -->',
+            $renderedHtml,
+            1,
+        ) ?? $renderedHtml;
+
+        $readback = $hasher->hashNormalized($hasher->normalizeReadback(
+            (string) $article->title,
+            (string) ($article->excerpt ?? ''),
+            $wordpressHtml,
+        ));
+
+        $this->assertSame($hasher->hash($article), $readback);
+    }
+
     public function test_receipt_is_submitted_when_remote_post_is_published_and_content_matches(): void
     {
         $admin = $this->makeAdmin();
@@ -94,6 +140,102 @@ final class WebsitePublicationReadbackTest extends TestCase
         $this->assertSame(1, \App\Models\WebsitePublicationReceipt::query()->where('article_id', $article->id)->count());
     }
 
+    public function test_existing_receipt_backfills_stale_distribution_url(): void
+    {
+        $this->makeAdmin();
+        $article = $this->makeArticle('## 已回读文章');
+        [$distribution] = $this->makeWordPressDistribution($article);
+        $hasher = app(SelfMediaSourceHasher::class);
+        $hash = $hasher->hash($article);
+
+        \App\Models\WebsitePublicationReceipt::query()->create([
+            'article_id' => $article->id,
+            'responsible_project_id' => 'HJ-WEB',
+            'formal_url' => 'https://official.example.com/news/canonical/',
+            'http_status' => 200,
+            'source_hash' => $hash,
+            'readback_hash' => $hash,
+            'readback_succeeded' => true,
+            'verified_at' => now(),
+        ]);
+        $distribution->update(['remote_url' => 'https://official.example.com/news/legacy/']);
+
+        $receipt = app(WebsitePublicationReadbackService::class)->attemptReceipt($distribution->fresh());
+
+        $this->assertNotNull($receipt);
+        $this->assertSame(
+            'https://official.example.com/news/canonical/',
+            (string) $distribution->fresh()->remote_url,
+        );
+        $this->assertSame(
+            'https://official.example.com/news/canonical/',
+            data_get($distribution->fresh()->remote_meta, 'canonical_url'),
+        );
+    }
+
+    public function test_readback_accepts_wordpress_endpoint_that_already_contains_wp_json(): void
+    {
+        $this->makeAdmin();
+        $article = $this->makeArticle("## 带 REST 基址的文章\n\n正文内容。");
+        [$distribution, $channel] = $this->makeWordPressDistribution($article);
+        $channel->update(['endpoint_url' => 'https://official.example.com/wp-json']);
+        $distribution->update(['remote_url' => null]);
+
+        $renderedHtml = ArticleHtmlPresenter::markdownToHtml(
+            ArticleHtmlPresenter::stripLeadingTitleHeading((string) $article->content, (string) $article->title)
+        );
+        Http::fake(function ($request) use ($article, $renderedHtml) {
+            $this->assertStringNotContainsString('/wp-json/wp-json/', $request->url());
+            if (str_contains($request->url(), '/wp-json/wp/v2/posts/')) {
+                return Http::response([
+                    'status' => 'publish',
+                    'link' => 'https://official.example.com/news/rest-base/',
+                    'title' => ['raw' => (string) $article->title],
+                    'excerpt' => ['raw' => (string) ($article->excerpt ?? '')],
+                    'content' => ['raw' => $renderedHtml],
+                ]);
+            }
+
+            return Http::response('<html><body>ok</body></html>', 200);
+        });
+
+        $receipt = app(WebsitePublicationReadbackService::class)->attemptReceipt($distribution->fresh());
+
+        $this->assertNotNull($receipt);
+        $this->assertSame('https://official.example.com/news/rest-base/', $receipt->formal_url);
+    }
+
+    public function test_poll_command_rechecks_synced_wordpress_updates(): void
+    {
+        $this->makeAdmin();
+        $article = $this->makeArticle("## 更新后的官网文章\n\n正文内容。");
+        [$distribution] = $this->makeWordPressDistribution($article);
+        $distribution->update(['action' => 'update', 'remote_url' => null]);
+        $renderedHtml = ArticleHtmlPresenter::markdownToHtml(
+            ArticleHtmlPresenter::stripLeadingTitleHeading((string) $article->content, (string) $article->title)
+        );
+        Http::fake(function ($request) use ($article, $renderedHtml) {
+            if (str_contains($request->url(), '/wp-json/wp/v2/posts/')) {
+                return Http::response([
+                    'status' => 'publish',
+                    'link' => 'https://official.example.com/news/updated/',
+                    'title' => ['raw' => (string) $article->title],
+                    'excerpt' => ['raw' => (string) ($article->excerpt ?? '')],
+                    'content' => ['raw' => $renderedHtml],
+                ]);
+            }
+
+            return Http::response('<html><body>ok</body></html>', 200);
+        });
+
+        $this->artisan('geoflow:poll-website-publications')->assertExitCode(0);
+
+        $this->assertDatabaseHas('website_publication_receipts', [
+            'article_id' => (int) $article->id,
+            'formal_url' => 'https://official.example.com/news/updated/',
+        ]);
+    }
+
     public function test_receipt_is_skipped_while_remote_post_is_still_draft(): void
     {
         $this->makeAdmin();
@@ -128,6 +270,39 @@ final class WebsitePublicationReadbackTest extends TestCase
 
         $this->assertNull(app(WebsitePublicationReadbackService::class)->attemptReceipt($distribution));
         $this->assertDatabaseCount('website_publication_receipts', 0);
+    }
+
+    public function test_readback_follows_same_origin_canonical_redirect_and_persists_final_url(): void
+    {
+        $this->makeAdmin();
+        $article = $this->makeArticle('## 旧链接文章');
+        [$distribution] = $this->makeWordPressDistribution($article);
+        $distribution->update(['remote_url' => 'https://official.example.com/news/legacy/']);
+        $renderedHtml = ArticleHtmlPresenter::markdownToHtml(
+            ArticleHtmlPresenter::stripLeadingTitleHeading((string) $article->content, (string) $article->title)
+        );
+
+        Http::fake(function ($request) use ($article, $renderedHtml) {
+            if (str_contains($request->url(), '/wp-json/wp/v2/posts/')) {
+                return Http::response([
+                    'status' => 'publish',
+                    'link' => 'https://official.example.com/news/legacy/',
+                    'title' => ['raw' => (string) $article->title],
+                    'excerpt' => ['raw' => (string) ($article->excerpt ?? '')],
+                    'content' => ['raw' => $renderedHtml],
+                ]);
+            }
+            if (str_contains($request->url(), '/news/legacy/')) {
+                return Http::response('', 301, ['Location' => 'https://official.example.com/news/canonical/']);
+            }
+
+            return Http::response('<html><body>ok</body></html>', 200);
+        });
+
+        $receipt = app(WebsitePublicationReadbackService::class)->attemptReceipt($distribution);
+
+        $this->assertNotNull($receipt);
+        $this->assertSame('https://official.example.com/news/canonical/', $receipt->formal_url);
     }
 
     private function makeAdmin(): Admin

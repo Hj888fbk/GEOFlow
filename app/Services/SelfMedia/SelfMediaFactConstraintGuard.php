@@ -23,8 +23,11 @@ final class SelfMediaFactConstraintGuard
     // 这些独立于事实数字校验——即使电话号码来自母稿（会被数字校验放行），
     // 自媒体平台稿也必须剔除，否则会被平台判定为营销导流内容。
     private const CONTACT_MOBILE_PATTERN = '/(?<!\d)1[3-9]\d{9}(?!\d)/u';
+
     private const CONTACT_EMAIL_PATTERN = '/[\w.+-]+@[\w-]+\.[\w.-]+/u';
+
     private const CONTACT_URL_PATTERN = '#(?:https?://|www\.)[^\s<>"\'）)】]+#iu';
+
     private const CONTACT_DOMAIN_PATTERN = '#(?<![\w@./-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|cn|net|org)(?![\w-])#iu';
 
     /** @param list<string> $sources
@@ -40,7 +43,8 @@ final class SelfMediaFactConstraintGuard
             }
         }
 
-        return array_keys($numbers);
+        // PHP 会把纯数字字符串数组键自动转换为 int；API 与持久化契约要求始终返回字符串。
+        return array_map('strval', array_keys($numbers));
     }
 
     /** @param array<string,mixed> $variant */

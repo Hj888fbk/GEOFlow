@@ -6411,6 +6411,7 @@ return [
         'help' => [
             'markdown_supported' => 'Markdown supported',
             'focus_keyword' => 'The primary search term carried from the title library for attribution and SEO review. Add brand, product, and scenario terms under Keywords.',
+            'keywords' => 'All listed keywords are synced to WordPress Rank Math and post tags. Separate terms with commas.',
             'review_status' => 'Pending or rejected states fall back to draft automatically. Publish status also keeps review state and publish time consistent.',
             'recommendation' => 'Only published articles are shown on the frontend. Featured articles are limited to the latest 5; multiple hot articles rotate in the homepage hot area.',
             'is_hot' => 'Show this article in the homepage hot carousel and hot sidebar list.',
@@ -6464,6 +6465,7 @@ return [
         'help' => [
             'markdown_supported' => 'Markdown supported',
             'focus_keyword' => 'The primary search term carried from the title library. It is read-only; add brand, product, and scenario terms under Keywords.',
+            'keywords' => 'All listed keywords are synced to WordPress Rank Math and post tags. Separate terms with commas.',
             'review_status' => 'Saving automatically reconciles publish status, review result, and publish time to avoid conflicting states.',
             'recommendation' => 'Only published articles are shown on the frontend. Featured articles are limited to the latest 5; multiple hot articles rotate in the homepage hot area.',
             'is_hot' => 'Show this article in the homepage hot carousel and hot sidebar list.',
@@ -6605,7 +6607,8 @@ return [
         'error' => [
             'image_required' => 'Please choose an image to upload',
             'image_invalid' => 'Only JPG, PNG, GIF, and WebP images are supported',
-            'image_too_large' => 'Image size must not exceed 10MB',
+            'image_too_large' => 'Image size must not exceed 20MB',
+            'session_expired' => 'Your session has expired. Refresh the page and try again.',
             'upload_disabled' => 'Save the article first, then upload images from the edit page.',
             'upload_failed' => 'Image upload failed: :message',
             'upload_failed_generic' => 'Image upload failed. Please try again later.',

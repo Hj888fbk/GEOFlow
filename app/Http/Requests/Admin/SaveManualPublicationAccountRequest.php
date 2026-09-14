@@ -21,35 +21,59 @@ class SaveManualPublicationAccountRequest extends FormRequest
     /** @return array<string, mixed> */
     public function rules(): array
     {
+        $isBulkStore = $this->isBulkStore();
+
         return [
+            'bulk_mode' => ['nullable', 'boolean'],
             'persona_id' => [
                 'required',
                 'integer',
                 Rule::exists((new ManualPublicationPersona)->getTable(), 'id'),
             ],
-            'platform' => ['required', Rule::in(ManualPublicationAccount::PLATFORMS)],
+            'platform' => [Rule::requiredIf(! $isBulkStore), Rule::in(ManualPublicationAccount::PLATFORMS)],
+            'platforms' => [Rule::requiredIf($isBulkStore), 'array', 'min:1', 'max:'.count(ManualPublicationAccount::DRAFT_SYNC_PLATFORMS)],
+            'platforms.*' => ['required', Rule::in(ManualPublicationAccount::DRAFT_SYNC_PLATFORMS)],
             'custom_platform' => [
                 'nullable',
-                Rule::requiredIf(fn (): bool => $this->input('platform') === ManualPublicationAccount::PLATFORM_CUSTOM),
+                Rule::requiredIf(fn (): bool => ! $isBulkStore && $this->input('platform') === ManualPublicationAccount::PLATFORM_CUSTOM),
                 'string',
                 'max:120',
             ],
             'account_name' => ['required', 'string', 'max:160'],
             'profile_url' => [
                 'nullable',
-                Rule::requiredIf(fn (): bool => $this->boolean('browser_adapter_enabled')
+                Rule::requiredIf(fn (): bool => ! $isBulkStore
+                    && $this->boolean('browser_adapter_enabled')
                     && trim((string) $this->input('account_uid')) === ''
                     && trim((string) $this->input('homepage_identifier')) === ''),
                 'url:http,https',
                 'max:1000',
             ],
-            'editor_url' => ['nullable', 'required_if:browser_adapter_enabled,1', 'url:http,https', 'max:1000'],
+            'editor_url' => [
+                'nullable',
+                Rule::requiredIf(fn (): bool => ! $isBulkStore && $this->boolean('browser_adapter_enabled')),
+                'url:http,https',
+                'max:1000',
+            ],
             'account_uid' => ['nullable', 'string', 'max:255'],
             'homepage_identifier' => ['nullable', 'string', 'max:255'],
             'browser_adapter_enabled' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:5000'],
             'is_active' => ['nullable', 'boolean'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if (! $this->isBulkStore() || ! $this->boolean('browser_adapter_enabled')) {
+            return;
+        }
+
+        if (trim((string) $this->input('homepage_identifier')) === '') {
+            $this->merge([
+                'homepage_identifier' => trim((string) $this->input('account_name')),
+            ]);
+        }
     }
 
     public function withValidator(Validator $validator): void
@@ -66,6 +90,9 @@ class SaveManualPublicationAccountRequest extends FormRequest
                 }
             }
             if (! $this->boolean('browser_adapter_enabled')) {
+                return;
+            }
+            if ($this->isBulkStore()) {
                 return;
             }
             $platform = (string) $this->input('platform');
@@ -119,5 +146,11 @@ class SaveManualPublicationAccountRequest extends FormRequest
         }
 
         return false;
+    }
+
+    private function isBulkStore(): bool
+    {
+        return $this->boolean('bulk_mode')
+            && $this->routeIs('admin.manual-publications.settings.accounts.store');
     }
 }

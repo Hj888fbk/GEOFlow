@@ -4,6 +4,7 @@ namespace App\Services\BrowserOperations;
 
 use App\Exceptions\ApiException;
 use App\Models\Admin;
+use App\Models\BrowserOperatorClient;
 use App\Services\Api\ApiTokenService;
 use App\Support\AdminActivityLogger;
 use Illuminate\Support\Facades\Cache;
@@ -18,8 +19,13 @@ final class DeviceAuthorizationService
     public function __construct(private readonly ApiTokenService $tokenService) {}
 
     /** @return array<string,mixed> */
-    public function create(string $clientName): array
-    {
+    /** @param list<string> $capabilities */
+    public function create(
+        string $clientName,
+        string $clientType = BrowserOperatorClient::TYPE_EXTENSION,
+        array $capabilities = [],
+        int $protocolVersion = 1,
+    ): array {
         $deviceCode = Str::random(64);
         $userCode = $this->uniqueUserCode();
         $deviceHash = hash('sha256', $deviceCode);
@@ -28,6 +34,11 @@ final class DeviceAuthorizationService
             'device_hash' => $deviceHash,
             'user_code' => $userCode,
             'client_name' => mb_substr(trim($clientName) ?: 'GEOFlow Chrome', 0, 80),
+            'client_type' => in_array($clientType, BrowserOperatorClient::TYPES, true)
+                ? $clientType
+                : BrowserOperatorClient::TYPE_EXTENSION,
+            'capabilities' => array_values(array_unique(array_map('strval', $capabilities))),
+            'protocol_version' => in_array($protocolVersion, [1, 2], true) ? $protocolVersion : 1,
             'status' => 'pending',
             'admin_id' => null,
             'interval' => self::POLL_INTERVAL,
@@ -119,9 +130,19 @@ final class DeviceAuthorizationService
 
             $adminId = (int) ($record['admin_id'] ?? 0);
             $created = $this->tokenService->createToken(
-                'GEOFlow Chrome '.mb_substr($clientVersion, 0, 32).' · '.($record['client_name'] ?? 'Browser'),
+                'GEOFlow '.(($record['client_type'] ?? null) === BrowserOperatorClient::TYPE_DESKTOP ? 'Desktop' : 'Chrome').' '.mb_substr($clientVersion, 0, 32).' · '.($record['client_name'] ?? 'Browser'),
                 $this->tokenService->getBrowserClientScopes(),
                 $adminId,
+            );
+            BrowserOperatorClient::query()->updateOrCreate(
+                ['personal_access_token_id' => (int) ($created['record']['id'] ?? 0)],
+                [
+                    'client_type' => (string) ($record['client_type'] ?? BrowserOperatorClient::TYPE_EXTENSION),
+                    'client_name' => (string) ($record['client_name'] ?? 'Browser'),
+                    'client_version' => mb_substr($clientVersion, 0, 64),
+                    'capabilities' => array_values((array) ($record['capabilities'] ?? [])),
+                    'last_seen_at' => now(),
+                ],
             );
             $admin = Admin::query()->find($adminId);
             if ($admin instanceof Admin) {
@@ -130,7 +151,9 @@ final class DeviceAuthorizationService
                     'target_id' => (int) ($created['record']['id'] ?? 0),
                     'details' => [
                         'client_name' => (string) ($record['client_name'] ?? 'Browser'),
-                        'extension_version' => mb_substr($clientVersion, 0, 32),
+                        'client_type' => (string) ($record['client_type'] ?? BrowserOperatorClient::TYPE_EXTENSION),
+                        'client_version' => mb_substr($clientVersion, 0, 64),
+                        'capabilities' => array_values((array) ($record['capabilities'] ?? [])),
                         'scopes' => $this->tokenService->getBrowserClientScopes(),
                     ],
                 ]);
@@ -141,7 +164,7 @@ final class DeviceAuthorizationService
                 'token' => (string) $created['token'],
                 'scopes' => $this->tokenService->getBrowserClientScopes(),
                 'expires_at' => $created['record']['expires_at'] ?? null,
-                'protocol_version' => 1,
+                'protocol_version' => (int) ($record['protocol_version'] ?? 1),
             ];
         });
     }

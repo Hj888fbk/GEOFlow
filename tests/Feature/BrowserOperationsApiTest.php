@@ -5,9 +5,11 @@ namespace Tests\Feature;
 use App\Models\Admin;
 use App\Models\Article;
 use App\Models\Author;
+use App\Models\BrowserOperatorClient;
 use App\Models\Category;
 use App\Models\ManualPublication;
 use App\Models\ManualPublicationAccount;
+use App\Models\ManualPublicationAccountSession;
 use App\Models\ManualPublicationBatch;
 use App\Models\ManualPublicationPersona;
 use App\Models\SelfMediaMediaSnapshot;
@@ -609,7 +611,7 @@ class BrowserOperationsApiTest extends TestCase
                 'required_extension_version' => '0.3.0',
                 'draft_policy' => 'draft_only',
                 'title' => '标题',
-            'body_plain' => '正文',
+                'body_plain' => '正文',
                 'media_manifest' => [
                     ['media_key' => 'm_aaaaaaaaaaaaaaaaaaaaaaaa', 'sha256' => str_repeat('a', 64), 'role' => 'body', 'required' => true, 'position' => 1],
                     ['media_key' => 'm_bbbbbbbbbbbbbbbbbbbbbbbb', 'sha256' => str_repeat('b', 64), 'role' => 'body', 'required' => true, 'position' => 2],
@@ -819,6 +821,13 @@ class BrowserOperationsApiTest extends TestCase
             ->assertHeader('ETag', '"'.$sha256.'"')
             ->assertStreamedContent($bytes);
 
+        // A file that changes after the snapshot must fail closed instead of
+        // returning a successful response with an empty or truncated body.
+        Storage::disk('local')->put($storagePath, 'corrupted-media');
+        $this->withHeaders($ownerHeaders)->get($mediaUrl)
+            ->assertStatus(410)
+            ->assertJsonPath('error.code', 'media_stream_incomplete');
+
         $this->withHeaders($ownerHeaders + ['X-Idempotency-Key' => 'release-protected-media-owner'])
             ->postJson('/api/v1/manual-publications/'.$publication->id.'/release', ['revision' => 2])
             ->assertOk();
@@ -844,6 +853,131 @@ class BrowserOperationsApiTest extends TestCase
         $this->withHeaders($ownerHeaders)->get($mediaUrl)
             ->assertStatus(409)
             ->assertJsonPath('error.code', 'claim_owned_by_another_client');
+    }
+
+    public function test_desktop_protocol_v2_registers_client_and_binds_account_session(): void
+    {
+        $admin = $this->admin();
+        $headers = [
+            'X-GEOFlow-Browser-Protocol' => '2',
+            'X-GEOFlow-Client-Version' => '0.1.0',
+        ];
+        $authorization = $this->withHeaders($headers)->postJson('/api/v1/browser-operations/device-authorizations', [
+            'client_name' => 'Desktop Test',
+            'client_type' => BrowserOperatorClient::TYPE_DESKTOP,
+            'capabilities' => ['accounts:v1', 'draft-sync:v2'],
+        ])->assertOk();
+        $this->actingAs($admin, 'admin')->post(route('admin.manual-publications.browser-connect.decision'), [
+            'user_code' => $authorization->json('data.user_code'),
+            'decision' => 'approve',
+        ])->assertRedirect();
+        $this->travel(5)->seconds();
+        $token = $this->withHeaders($headers)->postJson('/api/v1/browser-operations/device-token', [
+            'device_code' => $authorization->json('data.device_code'),
+        ])->assertOk()->assertJsonPath('data.protocol_version', 2)->json('data.token');
+        $client = BrowserOperatorClient::query()->firstOrFail();
+        $this->assertSame(BrowserOperatorClient::TYPE_DESKTOP, $client->client_type);
+        $this->assertSame(['accounts:v1', 'draft-sync:v2'], $client->capabilities);
+
+        $persona = ManualPublicationPersona::query()->create(['name' => '桌面身份']);
+        $account = ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+            'account_name' => '桌面 CSDN',
+            'editor_url' => ManualPublicationAccount::editorUrlPresets()[ManualPublicationAccount::PLATFORM_CSDN],
+            'browser_adapter_enabled' => true,
+        ]);
+        $authenticated = $headers + ['Authorization' => 'Bearer '.$token];
+        $this->withHeaders($authenticated)->getJson('/api/v1/browser-operations/accounts')
+            ->assertOk()
+            ->assertJsonPath('data.client.type', BrowserOperatorClient::TYPE_DESKTOP)
+            ->assertJsonPath('data.accounts.0.id', $account->id);
+        $profileUrl = 'https://blog.csdn.net/example';
+        $hash = hash('sha256', $profileUrl);
+        $this->withHeaders($authenticated + ['X-Idempotency-Key' => 'bind-desktop-csdn'])
+            ->postJson('/api/v1/browser-operations/accounts/'.$account->id.'/bind', [
+                'confirmed' => true,
+                'observed_account_hash' => $hash,
+                'observed_account' => [
+                    'type' => 'profile_url',
+                    'value' => $profileUrl,
+                ],
+            ])->assertOk()->assertJsonPath('data.session.status', ManualPublicationAccountSession::STATUS_AUTHORIZED);
+        $this->assertSame($profileUrl, $account->refresh()->profile_url);
+    }
+
+    public function test_desktop_account_binding_rejects_a_profile_from_another_platform(): void
+    {
+        $admin = $this->admin();
+        $token = $admin->createToken('Desktop account binding', ['browser-operations:read', 'browser-operations:execute']);
+        BrowserOperatorClient::query()->create([
+            'personal_access_token_id' => $token->accessToken->id,
+            'client_type' => BrowserOperatorClient::TYPE_DESKTOP,
+            'client_name' => 'Desktop Test',
+            'client_version' => '0.1.0',
+            'capabilities' => ['accounts:v1'],
+        ]);
+        $persona = ManualPublicationPersona::query()->create(['name' => '跨平台绑定身份']);
+        $account = ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+            'account_name' => '待绑定 CSDN',
+            'editor_url' => ManualPublicationAccount::editorUrlPresets()[ManualPublicationAccount::PLATFORM_CSDN],
+            'browser_adapter_enabled' => true,
+        ]);
+        $maliciousProfileUrl = 'https://www.zhihu.com/people/not-a-csdn-account';
+
+        $this->withHeaders($this->authenticatedHeaders($token->plainTextToken) + ['X-Idempotency-Key' => 'reject-cross-platform-profile'])
+            ->postJson('/api/v1/browser-operations/accounts/'.$account->id.'/bind', [
+                'confirmed' => true,
+                'observed_account_hash' => hash('sha256', $maliciousProfileUrl),
+                'observed_account' => [
+                    'type' => 'profile_url',
+                    'value' => $maliciousProfileUrl,
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'invalid_account_identity');
+        $this->assertNull($account->refresh()->profile_url);
+        $this->assertDatabaseMissing('manual_publication_account_sessions', [
+            'manual_publication_account_id' => $account->id,
+        ]);
+    }
+
+    public function test_one_client_can_claim_different_accounts_but_only_one_active_work_order_per_account(): void
+    {
+        $admin = $this->admin();
+        $token = $admin->createToken('Desktop claims', ['browser-operations:read', 'browser-operations:execute']);
+        $headers = $this->authenticatedHeaders($token->plainTextToken, '0.3.0');
+        $persona = ManualPublicationPersona::query()->create(['name' => '并发身份']);
+        $firstAccount = ManualPublicationAccount::query()->create(['persona_id' => $persona->id, 'platform' => ManualPublicationAccount::PLATFORM_CSDN, 'account_name' => '账号 A']);
+        $secondAccount = ManualPublicationAccount::query()->create(['persona_id' => $persona->id, 'platform' => ManualPublicationAccount::PLATFORM_CSDN, 'account_name' => '账号 B']);
+        $makePublication = function (ManualPublicationAccount $account, string $suffix) use ($admin, $persona): ManualPublication {
+            return ManualPublication::query()->create([
+                'type' => ManualPublication::TYPE_POST,
+                'persona_id' => $persona->id,
+                'account_id' => $account->id,
+                'assigned_admin_id' => $admin->id,
+                'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+                'target_url' => 'https://editor.csdn.net/md/',
+                'content' => '正文 '.$suffix,
+                'content_fingerprint' => hash('sha256', 'claim-'.$suffix),
+                'identity_snapshot' => [],
+                'status' => ManualPublication::STATUS_READY,
+                'status_changed_at' => now(),
+                'revision' => 1,
+                'publication_payload' => ['schema_version' => 1, 'body_plain' => '正文 '.$suffix],
+            ]);
+        };
+        $first = $makePublication($firstAccount, 'first');
+        $second = $makePublication($secondAccount, 'second');
+        $sameAccount = $makePublication($firstAccount, 'same-account');
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'claim-first-account'])->postJson('/api/v1/manual-publications/'.$first->id.'/claim', ['revision' => 1])->assertOk();
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'claim-second-account'])->postJson('/api/v1/manual-publications/'.$second->id.'/claim', ['revision' => 1])->assertOk();
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'claim-same-account'])->postJson('/api/v1/manual-publications/'.$sameAccount->id.'/claim', ['revision' => 1])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'account_concurrency_limit');
     }
 
     /** @return array<string,string> */

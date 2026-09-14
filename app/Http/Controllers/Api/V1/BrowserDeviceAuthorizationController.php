@@ -3,21 +3,40 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Exceptions\ApiException;
+use App\Models\BrowserOperatorClient;
 use App\Services\BrowserOperations\DeviceAuthorizationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 final class BrowserDeviceAuthorizationController extends BaseApiController
 {
     public function store(Request $request, DeviceAuthorizationService $authorizations): JsonResponse
     {
         $this->ensureTrustedInstance($request);
-        $clientName = trim((string) $request->input('client_name', 'GEOFlow Chrome'));
-        if ($clientName === '' || mb_strlen($clientName) > 80) {
-            throw new ApiException('validation_failed', '客户端名称格式无效', 422);
+        $validator = Validator::make($request->all(), [
+            'client_name' => ['nullable', 'string', 'max:80'],
+            'client_type' => ['nullable', Rule::in(BrowserOperatorClient::TYPES)],
+            'capabilities' => ['nullable', 'array', 'max:50'],
+            'capabilities.*' => ['required', 'string', 'max:80', 'distinct'],
+        ]);
+        if ($validator->fails()) {
+            throw new ApiException('validation_failed', '客户端信息格式无效', 422, [
+                'field_errors' => $validator->errors()->toArray(),
+            ]);
         }
+        $data = $validator->validated();
+        $clientType = (string) ($data['client_type'] ?? BrowserOperatorClient::TYPE_EXTENSION);
+        $clientName = trim((string) ($data['client_name'] ?? ''))
+            ?: ($clientType === BrowserOperatorClient::TYPE_DESKTOP ? 'GEOFlow Desktop Publisher' : 'GEOFlow Chrome');
 
-        $authorization = $authorizations->create($clientName);
+        $authorization = $authorizations->create(
+            $clientName,
+            $clientType,
+            array_values((array) ($data['capabilities'] ?? [])),
+            (int) $request->attributes->get('browser_protocol_version', 1),
+        );
         $verificationUri = route('admin.manual-publications.browser-connect.show');
         $authorization['verification_uri'] = $verificationUri;
         $authorization['verification_uri_complete'] = $verificationUri.'?'.http_build_query([

@@ -12,10 +12,10 @@
     $contentLimit = \App\Models\ManualPublication::maxContentCharactersForType($selectedType);
     $articleSearchAction = $isEdit
         ? route('admin.manual-publications.edit', ['manualPublicationId' => $publication->id])
-        : route('admin.manual-publications.create');
+        : route('admin.manual-publications.advanced-create');
     $articleSearchReset = $isEdit
         ? route('admin.manual-publications.edit', ['manualPublicationId' => $publication->id])
-        : route('admin.manual-publications.create', array_filter(['article_id' => $selectedArticleId]));
+        : route('admin.manual-publications.advanced-create', array_filter(['article_id' => $selectedArticleId]));
 @endphp
 
 @section('content')

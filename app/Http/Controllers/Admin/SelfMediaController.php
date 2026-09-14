@@ -12,11 +12,16 @@ use App\Models\ManualPublicationBatch;
 use App\Models\SelfMediaPolicy;
 use App\Models\Task;
 use App\Models\WebsitePublicationReceipt;
+use App\Services\BrowserOperations\PublicationPayloadBuilder;
 use App\Services\GeoFlow\ManualPublicationService;
+use App\Services\SelfMedia\ManualPublicationLifecycleService;
+use App\Services\SelfMedia\PortableArticleDocumentService;
 use App\Services\SelfMedia\SelfMediaBatchService;
+use App\Services\SelfMedia\SelfMediaFactConstraintGuard;
 use App\Services\SelfMedia\SelfMediaPlatformRouter;
 use App\Services\SelfMedia\SelfMediaSourceHasher;
 use App\Services\SelfMedia\WebsitePublicationReceiptService;
+use App\Support\AdminActivityLogger;
 use App\Support\AdminWeb;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -28,6 +33,11 @@ use Illuminate\View\View;
 
 final class SelfMediaController extends Controller
 {
+    public function redirectIndex(): RedirectResponse
+    {
+        return redirect()->route('admin.manual-publications.index', ['view' => 'launch']);
+    }
+
     public function index(SelfMediaSourceHasher $hasher): View
     {
         $receipts = WebsitePublicationReceipt::query()
@@ -73,6 +83,45 @@ final class SelfMediaController extends Controller
         }
 
         return back()->with('message', '已加入自媒体计划，尚未调用模型。');
+    }
+
+    public function launch(Request $request, SelfMediaBatchService $batches): RedirectResponse
+    {
+        $data = $request->validate([
+            'website_publication_receipt_id' => ['required', 'integer', Rule::exists('website_publication_receipts', 'id')],
+            'persona_id' => ['required', 'integer', Rule::exists('manual_publication_personas', 'id')->where('is_active', true)],
+            'content_intent' => ['required', Rule::in(SelfMediaPlatformRouter::INTENTS)],
+            'account_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'account_ids.*' => ['required', 'integer', 'distinct', Rule::exists('manual_publication_accounts', 'id')->where('is_active', true)],
+        ]);
+        $receipt = WebsitePublicationReceipt::query()->with('article')->findOrFail((int) $data['website_publication_receipt_id']);
+        abort_unless($receipt->article instanceof Article, 404);
+
+        try {
+            $batch = $batches->createManual(
+                $receipt->article,
+                $receipt,
+                (string) $data['content_intent'],
+                [],
+                $request->user('admin'),
+                (int) $data['persona_id'],
+                array_map('intval', $data['account_ids']),
+            );
+            GenerateSelfMediaBatchJob::dispatch((int) $batch->id);
+        } catch (DomainException $exception) {
+            throw ValidationException::withMessages(['self_media' => $exception->getMessage()]);
+        }
+
+        $request->attributes->set('admin_activity_target_type', 'manual_publication_batch');
+        $request->attributes->set('admin_activity_target_id', (int) $batch->id);
+        AdminActivityLogger::logFromRequest($request, $request->user('admin'), 'manual_publication_batch.launched', [
+            'persona_id' => (int) $batch->persona_id,
+            'account_ids' => array_values((array) $batch->target_account_ids),
+        ]);
+
+        return redirect()
+            ->route('admin.manual-publications.index', ['view' => 'pending', 'batch' => $batch->id])
+            ->with('message', '发布任务已创建并进入生成队列。');
     }
 
     public function storeReceipt(Request $request, WebsitePublicationReceiptService $receipts): RedirectResponse
@@ -125,10 +174,17 @@ final class SelfMediaController extends Controller
                 if ($publications->isEmpty()) {
                     throw new DomainException('当前批次没有可审核的平台工作单。');
                 }
+                $selectedAccountIds = array_values(array_unique(array_map('intval', (array) $batch->target_account_ids)));
+                $allowsLegacyAccountFallback = $selectedAccountIds === [];
 
                 foreach ($publications as $publication) {
                     $account = $publication->account;
-                    if (! $this->isUsableBrowserAccount($account, $publication)) {
+                    if (! $allowsLegacyAccountFallback
+                        && (! $account instanceof ManualPublicationAccount
+                            || ! in_array((int) $account->id, $selectedAccountIds, true))) {
+                        throw new DomainException('平台 '.$publication->platform.' 的所选账号与批次不一致，请重新发起发布。');
+                    }
+                    if ($allowsLegacyAccountFallback && ! $this->isUsableBrowserAccount($account, $publication)) {
                         $account = ManualPublicationAccount::query()
                             ->where('persona_id', $publication->persona_id)
                             ->where('platform', $publication->platform)
@@ -180,7 +236,146 @@ final class SelfMediaController extends Controller
             throw ValidationException::withMessages(['approval' => $exception->getMessage()]);
         }
 
+        $request->attributes->set('admin_activity_target_type', 'manual_publication_batch');
+        $request->attributes->set('admin_activity_target_id', $batchId);
+        AdminActivityLogger::logFromRequest($request, $request->user('admin'), 'manual_publication_batch.approved');
+
         return back()->with('message', '审核通过，工作单已进入平台处理队列。');
+    }
+
+    public function updateDraft(
+        int $batchId,
+        int $manualPublicationId,
+        Request $request,
+        ManualPublicationService $service,
+        PortableArticleDocumentService $portableDocuments,
+        SelfMediaFactConstraintGuard $factGuard,
+        PublicationPayloadBuilder $payloadBuilder,
+    ): RedirectResponse {
+        $data = $request->validate([
+            'revision' => ['required', 'integer', 'min:1'],
+            'platform_title' => ['required', 'string', 'max:500'],
+            'platform_summary' => ['nullable', 'string', 'max:2000'],
+            'body_markdown' => ['required', 'string', 'max:100000'],
+        ]);
+
+        try {
+            DB::transaction(function () use ($batchId, $manualPublicationId, $data, $service, $portableDocuments, $factGuard, $payloadBuilder): void {
+                $batch = ManualPublicationBatch::query()->whereKey($batchId)->lockForUpdate()->firstOrFail();
+                if ($batch->status !== ManualPublicationBatch::STATUS_PENDING_REVIEW || $batch->invalidated_at !== null) {
+                    throw new DomainException('只有待审核批次可以修改平台稿。');
+                }
+                $publication = $batch->publications()->whereKey($manualPublicationId)->lockForUpdate()->firstOrFail();
+                if ($publication->status !== ManualPublication::STATUS_DRAFT) {
+                    throw new DomainException('该平台稿已经交给发布助手，不能继续修改。');
+                }
+                $document = $portableDocuments->build(
+                    (string) $data['platform_title'],
+                    (string) $data['body_markdown'],
+                    array_values((array) $publication->media_manifest),
+                    (string) $publication->platform,
+                );
+                $variant = [
+                    'title' => (string) $data['platform_title'],
+                    'summary' => (string) ($data['platform_summary'] ?? ''),
+                    'body_plain' => (string) $document['plain_text'],
+                    'body_markdown' => (string) $document['markdown'],
+                    'body_html' => (string) $document['html'],
+                    'tags' => array_values((array) $publication->tags),
+                ];
+                $factGuard->assertVariant($batch, $variant);
+                $updated = $service->update($publication, [
+                    'type' => $publication->type,
+                    'article_id' => $publication->article_id,
+                    'persona_id' => $publication->persona_id,
+                    'account_id' => $publication->account_id,
+                    'assigned_admin_id' => $publication->assigned_admin_id,
+                    'platform' => $publication->platform,
+                    'custom_platform' => $publication->custom_platform,
+                    'target_url' => $publication->target_url,
+                    'target_context' => $publication->target_context,
+                    'content' => $variant['body_plain'],
+                    'scheduled_at' => $publication->scheduled_at,
+                    'manual_publication_batch_id' => $publication->manual_publication_batch_id,
+                    'platform_title' => $variant['title'],
+                    'platform_summary' => $variant['summary'],
+                    'body_markdown' => $variant['body_markdown'],
+                    'body_html' => $variant['body_html'],
+                    'document_schema_version' => (string) $document['schema_version'],
+                    'portable_document' => $document,
+                    'render_fingerprint' => (array) $document['render_fingerprint'],
+                    'content_type' => $publication->content_type,
+                    'tags' => $publication->tags,
+                    'media_manifest' => $publication->media_manifest,
+                    'source_hash' => $publication->source_hash,
+                    'source_snapshot' => $publication->source_snapshot,
+                ], (int) $data['revision']);
+                $updated->forceFill([
+                    'publication_payload' => $payloadBuilder->build(array_merge($updated->getAttributes(), [
+                        'source_snapshot' => $updated->source_snapshot,
+                        'identity_snapshot' => $updated->identity_snapshot,
+                        'tags' => $updated->tags,
+                        'media_manifest' => $updated->media_manifest,
+                        'portable_document' => $updated->portable_document,
+                        'render_fingerprint' => $updated->render_fingerprint,
+                    ])),
+                ])->save();
+            }, 3);
+        } catch (DomainException|ManualPublicationConflictException $exception) {
+            throw ValidationException::withMessages(['draft' => $exception->getMessage()]);
+        }
+
+        $request->attributes->set('admin_activity_target_type', 'manual_publication');
+        $request->attributes->set('admin_activity_target_id', $manualPublicationId);
+        AdminActivityLogger::logFromRequest($request, $request->user('admin'), 'manual_publication_batch.draft_updated', [
+            'batch_id' => $batchId,
+        ]);
+
+        return back()->with('message', '平台稿已更新，可继续批量审核。');
+    }
+
+    public function trash(int $batchId, Request $request, ManualPublicationLifecycleService $lifecycle): RedirectResponse
+    {
+        try {
+            $lifecycle->trashBatch($batchId);
+        } catch (DomainException $exception) {
+            throw ValidationException::withMessages(['trash' => $exception->getMessage()]);
+        }
+        $this->auditLifecycle($request, 'manual_publication_batch.trashed', $batchId);
+
+        return back()->with('message', '发布任务已移入回收站，将保留 30 天。');
+    }
+
+    public function restore(int $batchId, Request $request, ManualPublicationLifecycleService $lifecycle): RedirectResponse
+    {
+        try {
+            $lifecycle->restoreBatch($batchId);
+        } catch (DomainException $exception) {
+            throw ValidationException::withMessages(['restore' => $exception->getMessage()]);
+        }
+        $this->auditLifecycle($request, 'manual_publication_batch.restored', $batchId);
+
+        return back()->with('message', '发布任务及其账号进度已恢复。');
+    }
+
+    public function archive(int $batchId, Request $request, ManualPublicationLifecycleService $lifecycle): RedirectResponse
+    {
+        try {
+            $lifecycle->archiveBatch($batchId);
+        } catch (DomainException $exception) {
+            throw ValidationException::withMessages(['archive' => $exception->getMessage()]);
+        }
+        $this->auditLifecycle($request, 'manual_publication_batch.archived', $batchId);
+
+        return back()->with('message', '已完成发布任务已归档。');
+    }
+
+    public function unarchive(int $batchId, Request $request, ManualPublicationLifecycleService $lifecycle): RedirectResponse
+    {
+        $lifecycle->unarchiveBatch($batchId);
+        $this->auditLifecycle($request, 'manual_publication_batch.unarchived', $batchId);
+
+        return back()->with('message', '发布任务已取消归档。');
     }
 
     public function cancel(int $batchId, Request $request, ManualPublicationService $service): RedirectResponse
@@ -240,5 +435,12 @@ final class SelfMediaController extends Controller
             && (trim((string) $account->profile_url) !== ''
                 || trim((string) $account->account_uid) !== ''
                 || trim((string) $account->homepage_identifier) !== '');
+    }
+
+    private function auditLifecycle(Request $request, string $action, int $batchId): void
+    {
+        $request->attributes->set('admin_activity_target_type', 'manual_publication_batch');
+        $request->attributes->set('admin_activity_target_id', $batchId);
+        AdminActivityLogger::logFromRequest($request, $request->user('admin'), $action);
     }
 }

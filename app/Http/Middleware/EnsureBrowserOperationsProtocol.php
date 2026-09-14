@@ -11,9 +11,11 @@ final class EnsureBrowserOperationsProtocol
 {
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->header('X-GEOFlow-Browser-Protocol') !== '1') {
+        $protocolVersion = (int) $request->header('X-GEOFlow-Browser-Protocol');
+        if (! in_array($protocolVersion, [1, 2], true)) {
             throw new ApiException('upgrade_required', '浏览器协议版本不兼容', 426, [
-                'supported_protocol' => 1,
+                'supported_protocols' => [1, 2],
+                'preferred_protocol' => 2,
             ]);
         }
 
@@ -23,6 +25,7 @@ final class EnsureBrowserOperationsProtocol
         }
 
         $request->attributes->set('browser_client_version', $clientVersion);
+        $request->attributes->set('browser_protocol_version', $protocolVersion);
 
         return $next($request);
     }

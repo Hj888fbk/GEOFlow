@@ -34,14 +34,17 @@ final readonly class SelfMediaBatchGenerationService
 
     public function generate(ManualPublicationBatch $batch): ManualPublicationBatch
     {
-        $persona = ManualPublicationPersona::query()->where('is_active', true)->oldest('id')->first();
-        if (! $persona instanceof ManualPublicationPersona) {
-            throw new DomainException('请先配置一个有效的自媒体发布身份。');
-        }
-
         $batch = $this->claim($batch);
         if ($batch->status === ManualPublicationBatch::STATUS_INVALIDATED) {
             throw new DomainException('官网母稿已经变化，旧批次已失效。');
+        }
+        $persona = ManualPublicationPersona::query()
+            ->where('is_active', true)
+            ->when($batch->persona_id !== null, fn ($query) => $query->whereKey((int) $batch->persona_id))
+            ->oldest('id')
+            ->first();
+        if (! $persona instanceof ManualPublicationPersona) {
+            throw new DomainException('批次指定的自媒体发布身份已停用或不存在。');
         }
 
         $errors = [];
@@ -50,7 +53,12 @@ final readonly class SelfMediaBatchGenerationService
             if (! $this->leaseIsCurrent($batch)) {
                 break;
             }
-            if ($batch->publications()->where('platform', $platform)->exists()) {
+            $selectedAccountIds = $this->selectedAccountIdsForPlatform($batch, $platform);
+            $existing = $batch->publications()->where('platform', $platform);
+            if ($selectedAccountIds !== []) {
+                $existing->whereIn('account_id', $selectedAccountIds);
+            }
+            if ($existing->count() === max(1, count($selectedAccountIds))) {
                 continue;
             }
 
@@ -198,62 +206,86 @@ final readonly class SelfMediaBatchGenerationService
                 $this->invocationGateway->assertReceiptCurrent($context, $receipt);
             }
 
-            $existing = $current->publications()->where('platform', $platform)->first();
-            if ($existing instanceof ManualPublication) {
-                return $existing;
-            }
-
             $creator = $current->creator;
             if (! $creator instanceof Admin) {
                 throw new DomainException('批次创建人已不可用，不能保存平台稿。');
             }
-            $account = ManualPublicationAccount::query()
+            $accountIds = $this->selectedAccountIdsForPlatform($current, $platform);
+            $accounts = ManualPublicationAccount::query()
                 ->where('persona_id', $persona->id)
                 ->where('platform', $platform)
                 ->where('is_active', true)
+                ->when($accountIds !== [], fn ($query) => $query->whereIn('id', $accountIds))
                 ->oldest('id')
-                ->first();
-            $publication = $this->publications->create([
-                'type' => ManualPublication::TYPE_POST,
-                'article_id' => (int) $current->article_id,
-                'persona_id' => (int) $persona->id,
-                'account_id' => $account?->id,
-                'assigned_admin_id' => $current->created_by_admin_id,
-                'platform' => $platform,
-                'custom_platform' => null,
-                'target_url' => $account?->editor_url,
-                'target_context' => null,
-                'content' => $variant['body_plain'],
-                'status' => ManualPublication::STATUS_DRAFT,
-                'manual_publication_batch_id' => (int) $current->id,
-                'platform_title' => $variant['title'],
-                'platform_summary' => $variant['summary'],
-                'body_markdown' => $variant['body_markdown'],
-                'body_html' => $this->resolveBodyHtml($variant),
-                'document_schema_version' => $variant['document_schema_version'] ?? PortableArticleDocumentService::SCHEMA_VERSION,
-                'portable_document' => $variant['portable_document'] ?? null,
-                'render_fingerprint' => $variant['render_fingerprint'] ?? null,
-                'content_type' => $variant['content_type'] ?? 'article',
-                'tags' => $variant['tags'],
-                'media_manifest' => $current->media_manifest,
-                'source_hash' => (string) $current->source_hash,
-                'source_snapshot' => array_merge((array) $current->source_snapshot, [
-                    'formal_url' => (string) $current->source_url,
-                ]),
-            ], $creator);
+                ->get();
+            if ($accountIds !== [] && $accounts->count() !== count($accountIds)) {
+                throw new DomainException('所选平台账号已停用或不再属于当前身份。');
+            }
 
-            $publication->forceFill([
-                'publication_payload' => $this->payloadBuilder->build(array_merge($publication->getAttributes(), [
-                    'source_snapshot' => $publication->source_snapshot,
-                    'identity_snapshot' => $publication->identity_snapshot,
-                    'tags' => $publication->tags,
-                    'media_manifest' => $publication->media_manifest,
-                    'portable_document' => $publication->portable_document,
-                    'render_fingerprint' => $publication->render_fingerprint,
-                ])),
-            ])->save();
+            $targets = $accounts->isEmpty() && $accountIds === [] ? [null] : $accounts->all();
+            $saved = null;
+            foreach ($targets as $account) {
+                $existing = $current->publications()
+                    ->where('platform', $platform)
+                    ->when(
+                        $account instanceof ManualPublicationAccount,
+                        fn ($query) => $query->where('account_id', $account->id),
+                        fn ($query) => $query->whereNull('account_id'),
+                    )
+                    ->first();
+                if ($existing instanceof ManualPublication) {
+                    $saved ??= $existing;
 
-            return $publication->refresh();
+                    continue;
+                }
+
+                $publication = $this->publications->create([
+                    'type' => ManualPublication::TYPE_POST,
+                    'article_id' => (int) $current->article_id,
+                    'persona_id' => (int) $persona->id,
+                    'account_id' => $account?->id,
+                    'assigned_admin_id' => $current->created_by_admin_id,
+                    'platform' => $platform,
+                    'custom_platform' => null,
+                    'target_url' => $account?->editor_url,
+                    'target_context' => null,
+                    'content' => $variant['body_plain'],
+                    'status' => ManualPublication::STATUS_DRAFT,
+                    'manual_publication_batch_id' => (int) $current->id,
+                    'platform_title' => $variant['title'],
+                    'platform_summary' => $variant['summary'],
+                    'body_markdown' => $variant['body_markdown'],
+                    'body_html' => $this->resolveBodyHtml($variant),
+                    'document_schema_version' => $variant['document_schema_version'] ?? PortableArticleDocumentService::SCHEMA_VERSION,
+                    'portable_document' => $variant['portable_document'] ?? null,
+                    'render_fingerprint' => $variant['render_fingerprint'] ?? null,
+                    'content_type' => $variant['content_type'] ?? 'article',
+                    'tags' => $variant['tags'],
+                    'media_manifest' => $current->media_manifest,
+                    'source_hash' => (string) $current->source_hash,
+                    'source_snapshot' => array_merge((array) $current->source_snapshot, [
+                        'formal_url' => (string) $current->source_url,
+                    ]),
+                ], $creator);
+
+                $publication->forceFill([
+                    'publication_payload' => $this->payloadBuilder->build(array_merge($publication->getAttributes(), [
+                        'source_snapshot' => $publication->source_snapshot,
+                        'identity_snapshot' => $publication->identity_snapshot,
+                        'tags' => $publication->tags,
+                        'media_manifest' => $publication->media_manifest,
+                        'portable_document' => $publication->portable_document,
+                        'render_fingerprint' => $publication->render_fingerprint,
+                    ])),
+                ])->save();
+                $saved ??= $publication;
+            }
+
+            if (! $saved instanceof ManualPublication) {
+                throw new DomainException('没有可用于该平台的账号。');
+            }
+
+            return $saved->refresh();
         }, 3);
     }
 
@@ -288,7 +320,10 @@ final readonly class SelfMediaBatchGenerationService
             }
 
             $generatedCount = $current->publications()->count();
-            $targetCount = count(array_unique(array_map('strval', (array) $current->target_platforms)));
+            $targetAccountIds = array_values(array_unique(array_map('intval', (array) $current->target_account_ids)));
+            $targetCount = $targetAccountIds === []
+                ? count(array_unique(array_map('strval', (array) $current->target_platforms)))
+                : count($targetAccountIds);
             $current->forceFill([
                 'status' => $generatedCount === $targetCount && $targetCount > 0
                     ? ManualPublicationBatch::STATUS_PENDING_REVIEW
@@ -301,6 +336,23 @@ final readonly class SelfMediaBatchGenerationService
 
             return $current->refresh()->load('publications');
         }, 3);
+    }
+
+    /** @return list<int> */
+    private function selectedAccountIdsForPlatform(ManualPublicationBatch $batch, string $platform): array
+    {
+        $accountIds = array_values(array_unique(array_map('intval', (array) $batch->target_account_ids)));
+        if ($accountIds === []) {
+            return [];
+        }
+
+        return ManualPublicationAccount::query()
+            ->whereIn('id', $accountIds)
+            ->where('platform', $platform)
+            ->orderBy('id')
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->all();
     }
 
     private function leaseIsCurrent(ManualPublicationBatch $batch): bool

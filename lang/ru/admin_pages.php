@@ -23,6 +23,7 @@ return [
     'article_edit' => 'Изменить статью',
     'browser_connect' => 'Подключить браузер',
     'manual_publications' => 'Ручная публикация',
+    'self_media_publications' => 'Публикация в соцсетях по запросу',
     'manual_publication_create' => 'Создать публикацию',
     'manual_publication_settings' => 'Настройки публикации',
     'manual_publication_detail' => 'Детали публикации',

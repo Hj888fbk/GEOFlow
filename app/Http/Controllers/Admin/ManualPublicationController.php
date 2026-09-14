@@ -9,10 +9,19 @@ use App\Http\Requests\Admin\TransitionManualPublicationRequest;
 use App\Http\Requests\Admin\UpdateManualPublicationRequest;
 use App\Models\Admin;
 use App\Models\Article;
+use App\Models\BrowserOperatorClient;
 use App\Models\ManualPublication;
 use App\Models\ManualPublicationAccount;
+use App\Models\ManualPublicationBatch;
 use App\Models\ManualPublicationPersona;
+use App\Models\Task;
+use App\Models\WebsitePublicationReceipt;
 use App\Services\GeoFlow\ManualPublicationService;
+use App\Services\SelfMedia\ManualPublicationLifecycleService;
+use App\Services\SelfMedia\SelfMediaPlatformRouter;
+use App\Services\SelfMedia\SelfMediaSourceHasher;
+use App\Services\SelfMedia\WebsitePublicationReadbackService;
+use App\Support\AdminActivityLogger;
 use App\Support\AdminWeb;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
@@ -29,34 +38,141 @@ class ManualPublicationController extends Controller
 {
     public function __construct(private readonly ManualPublicationService $service) {}
 
-    public function index(Request $request): View
+    public function index(
+        Request $request,
+        SelfMediaSourceHasher $sourceHasher,
+        WebsitePublicationReadbackService $websiteReadback,
+    ): View
     {
         $admin = $this->admin($request);
         Gate::forUser($admin)->authorize('viewAny', ManualPublication::class);
+        $view = in_array((string) $request->query('view'), ['pending', 'launch', 'history', 'advanced'], true)
+            ? (string) $request->query('view')
+            : 'pending';
         $query = $this->filteredQuery($request, $admin);
+        if ($view === 'pending') {
+            $query->whereNull('archived_at')->whereNotIn('status', [
+                ManualPublication::STATUS_COMPLETED,
+                ManualPublication::STATUS_CANCELLED,
+                ManualPublication::STATUS_SKIPPED,
+            ]);
+        } elseif ($view === 'history') {
+            $query->where(function (Builder $history): void {
+                $history->whereNotNull('archived_at')->orWhereIn('status', [
+                    ManualPublication::STATUS_COMPLETED,
+                    ManualPublication::STATUS_CANCELLED,
+                    ManualPublication::STATUS_SKIPPED,
+                ]);
+            });
+        }
         $publications = (clone $query)
             ->with($this->relations())
             ->latest('id')
             ->paginate(20)
             ->withQueryString();
-        $statsQuery = ManualPublication::query()->visibleTo($admin);
+        $eligibleReceipts = WebsitePublicationReceipt::query()
+            ->with('article:id,title,slug,content,excerpt,task_id')
+            ->where('readback_succeeded', true)
+            ->latest('verified_at')
+            ->limit(100)
+            ->get()
+            ->filter(static fn (WebsitePublicationReceipt $receipt): bool => $receipt->article !== null
+                && $receipt->isVerifiedFor($sourceHasher->hash($receipt->article)));
+
+        // 每次打开发布中心都做一次轻量只读补偿回读。之前只有在完全
+        // 没有旧回执时才轮询，导致已有旧回执时新官网文章永远不会出现。
+        $websiteReadback->pollPending(20);
+        $eligibleReceipts = WebsitePublicationReceipt::query()
+            ->with('article:id,title,slug,content,excerpt,task_id')
+            ->where('readback_succeeded', true)
+            ->latest('verified_at')
+            ->limit(100)
+            ->get()
+            ->filter(static fn (WebsitePublicationReceipt $receipt): bool => $receipt->article !== null
+                && $receipt->isVerifiedFor($sourceHasher->hash($receipt->article)));
+        $batchQuery = ManualPublicationBatch::query()
+            ->with([
+                'article:id,title',
+                'persona:id,name',
+                'publications:id,manual_publication_batch_id,account_id,platform,status,platform_title,body_markdown,source_stale_at',
+                'publications.account:id,account_name,platform',
+            ]);
+        if (! $admin->isSuperAdmin()) {
+            $batchQuery->whereHas('publications', fn (Builder $publications) => $publications->where('assigned_admin_id', $admin->id));
+        }
+        $search = trim((string) $request->query('search'));
+        if ($search !== '') {
+            $batchQuery->where(function (Builder $matching) use ($search): void {
+                $matching->whereHas('article', fn (Builder $article) => $article->where('title', 'like', '%'.$search.'%'))
+                    ->orWhereHas('publications.account', fn (Builder $account) => $account->where('account_name', 'like', '%'.$search.'%'));
+            });
+        }
+        if ($view === 'pending') {
+            $batchQuery->whereNull('archived_at')->whereNotIn('status', [ManualPublicationBatch::STATUS_COMPLETED, ManualPublicationBatch::STATUS_CANCELLED]);
+        } elseif ($view === 'history') {
+            $batchQuery->where(function (Builder $history): void {
+                $history->whereNotNull('archived_at')->orWhereIn('status', [ManualPublicationBatch::STATUS_COMPLETED, ManualPublicationBatch::STATUS_CANCELLED]);
+            });
+        }
+        $personas = ManualPublicationPersona::query()
+            ->where('is_active', true)
+            ->with(['accounts' => fn ($accounts) => $accounts->where('is_active', true)->orderBy('platform')->orderBy('account_name')])
+            ->orderBy('name')
+            ->get();
+        $readyAccounts = ManualPublicationAccount::query()
+            ->where('is_active', true)
+            ->where('browser_adapter_enabled', true)
+            ->whereNotNull('editor_url')
+            ->where(function (Builder $identity): void {
+                $identity->whereNotNull('profile_url')->orWhereNotNull('account_uid')->orWhereNotNull('homepage_identifier');
+            });
 
         return view('admin.manual-publications.index', [
-            'pageTitle' => __('admin.manual_publications.page_title'),
+            'pageTitle' => '发布中心',
             'activeMenu' => 'publishing',
             'adminSiteName' => AdminWeb::siteName(),
+            'view' => $view,
             'publications' => $publications,
+            'batches' => $batchQuery->latest('id')->paginate(20, ['*'], 'batch_page')->withQueryString(),
+            'trashBatches' => $view === 'history'
+                ? ManualPublicationBatch::onlyTrashed()->with(['article:id,title', 'publicationsWithTrashed.account:id,account_name,platform'])->latest('deleted_at')->limit(100)->get()
+                : collect(),
+            'trashPublications' => $view === 'history'
+                ? ManualPublication::onlyTrashed()->whereNull('manual_publication_batch_id')->with($this->relations())->latest('deleted_at')->limit(100)->get()
+                : collect(),
+            'eligibleReceipts' => $eligibleReceipts,
+            'personas' => $personas,
+            'accounts' => $personas->flatMap->accounts->values(),
+            'intents' => SelfMediaPlatformRouter::INTENTS,
+            'tasks' => $view === 'advanced' ? Task::query()->with('selfMediaPolicy')->orderBy('name')->get(['id', 'name', 'status']) : collect(),
             'filters' => $request->only(['status', 'type', 'platform', 'assigned_admin_id', 'article_id', 'scheduled_from', 'scheduled_to', 'search']),
             'stats' => [
-                'total' => (clone $statsQuery)->count(),
-                'ready' => (clone $statsQuery)->where('status', ManualPublication::STATUS_READY)->count(),
-                'in_progress' => (clone $statsQuery)->where('status', ManualPublication::STATUS_IN_PROGRESS)->count(),
-                'completed' => (clone $statsQuery)->where('status', ManualPublication::STATUS_COMPLETED)->count(),
+                'client_connected' => BrowserOperatorClient::query()->where('client_type', BrowserOperatorClient::TYPE_DESKTOP)->where('last_seen_at', '>=', now()->subMinutes(5))->exists(),
+                'account_ready' => (clone $readyAccounts)->count(),
+                'account_total' => ManualPublicationAccount::query()->where('is_active', true)->whereIn('platform', ManualPublicationAccount::DRAFT_SYNC_PLATFORMS)->count(),
+                'pending_review' => ManualPublicationBatch::query()->where('status', ManualPublicationBatch::STATUS_PENDING_REVIEW)->count(),
+                'pending_publish' => ManualPublication::query()->whereIn('status', [ManualPublication::STATUS_READY, ManualPublication::STATUS_IN_PROGRESS, ManualPublication::STATUS_DRAFT_FILLED, ManualPublication::STATUS_OUTCOME_UNKNOWN])->count(),
             ],
             'admins' => $admin->isSuperAdmin() ? $this->activeAdmins() : collect([$admin]),
             'canCreate' => Gate::forUser($admin)->allows('create', ManualPublication::class),
             'platforms' => ManualPublicationAccount::PLATFORMS,
+            'draftSyncPlatforms' => ManualPublicationAccount::DRAFT_SYNC_PLATFORMS,
+            'editorUrlPresets' => ManualPublicationAccount::editorUrlPresets(),
+            'activeDrawer' => in_array((string) $request->query('drawer'), ['accounts', 'settings'], true) ? (string) $request->query('drawer') : null,
+            'selectedBatchId' => max(0, (int) $request->query('batch')),
+            'extensionVersion' => '0.3.1',
+            'extensionSha256' => is_file(base_path('dist/browser-extension/geoflow-chrome-operator-0.3.1.zip'))
+                ? (hash_file('sha256', base_path('dist/browser-extension/geoflow-chrome-operator-0.3.1.zip')) ?: null)
+                : null,
+            'desktopPublisherVersion' => '0.1.0',
+            'desktopPublisherAvailable' => is_file(base_path('dist/desktop-publisher/GEOFlow-Desktop-Publisher-0.1.0-win-x64.exe'))
+                && is_file(base_path('dist/desktop-publisher/GEOFlow-Desktop-Publisher-0.1.0-win-x64.exe.sig')),
         ]);
+    }
+
+    public function redirectCreate(): RedirectResponse
+    {
+        return redirect()->route('admin.manual-publications.index', ['view' => 'advanced']);
     }
 
     public function create(Request $request): View
@@ -169,6 +285,60 @@ class ManualPublicationController extends Controller
         return redirect()
             ->route('admin.manual-publications.show', ['manualPublicationId' => $publication->getKey()])
             ->with('message', __('admin.manual_publications.message.transitioned'));
+    }
+
+    public function trash(Request $request, int $manualPublicationId, ManualPublicationLifecycleService $lifecycle): RedirectResponse
+    {
+        $admin = $this->admin($request);
+        $publication = ManualPublication::query()->whereKey($manualPublicationId)->firstOrFail();
+        Gate::forUser($admin)->authorize('delete', $publication);
+
+        try {
+            $lifecycle->trashPublication($manualPublicationId);
+        } catch (DomainException $exception) {
+            return back()->withErrors($exception->getMessage());
+        }
+        $this->auditLifecycle($request, $admin, 'manual_publication.trashed', $manualPublicationId);
+
+        return back()->with('message', '工单已移入回收站，将保留 30 天。');
+    }
+
+    public function restore(Request $request, int $manualPublicationId, ManualPublicationLifecycleService $lifecycle): RedirectResponse
+    {
+        $admin = $this->admin($request);
+        $publication = ManualPublication::onlyTrashed()->whereKey($manualPublicationId)->firstOrFail();
+        Gate::forUser($admin)->authorize('restore', $publication);
+        $lifecycle->restorePublication($manualPublicationId);
+        $this->auditLifecycle($request, $admin, 'manual_publication.restored', $manualPublicationId);
+
+        return back()->with('message', '工单已从回收站恢复。');
+    }
+
+    public function archive(Request $request, int $manualPublicationId, ManualPublicationLifecycleService $lifecycle): RedirectResponse
+    {
+        $admin = $this->admin($request);
+        $publication = ManualPublication::query()->whereKey($manualPublicationId)->firstOrFail();
+        Gate::forUser($admin)->authorize('archive', $publication);
+
+        try {
+            $lifecycle->archivePublication($manualPublicationId);
+        } catch (DomainException $exception) {
+            return back()->withErrors($exception->getMessage());
+        }
+        $this->auditLifecycle($request, $admin, 'manual_publication.archived', $manualPublicationId);
+
+        return back()->with('message', '已完成工单已归档。');
+    }
+
+    public function unarchive(Request $request, int $manualPublicationId, ManualPublicationLifecycleService $lifecycle): RedirectResponse
+    {
+        $admin = $this->admin($request);
+        $publication = ManualPublication::query()->whereKey($manualPublicationId)->firstOrFail();
+        Gate::forUser($admin)->authorize('archive', $publication);
+        $lifecycle->unarchivePublication($manualPublicationId);
+        $this->auditLifecycle($request, $admin, 'manual_publication.unarchived', $manualPublicationId);
+
+        return back()->with('message', '工单已取消归档。');
     }
 
     public function export(Request $request): StreamedResponse
@@ -357,5 +527,12 @@ class ManualPublicationController extends Controller
         $cell = is_string($value) ? $value : (string) $value;
 
         return $cell !== '' && preg_match('/^[=+\-@\t\r]/', $cell) === 1 ? "'".$cell : $cell;
+    }
+
+    private function auditLifecycle(Request $request, Admin $admin, string $action, int $publicationId): void
+    {
+        $request->attributes->set('admin_activity_target_type', 'manual_publication');
+        $request->attributes->set('admin_activity_target_id', $publicationId);
+        AdminActivityLogger::logFromRequest($request, $admin, $action);
     }
 }

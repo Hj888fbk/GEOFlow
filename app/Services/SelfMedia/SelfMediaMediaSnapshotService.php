@@ -70,17 +70,20 @@ final readonly class SelfMediaMediaSnapshotService
         }
 
         $manifest = [];
-        $seenHashes = [];
+        $seenSourceHashes = [];
         foreach (array_values($ordered) as $reference) {
             [$bytes, $sourceType] = $this->readBytes($reference);
-            $bytes = $this->normalizeImage($bytes);
-            $metadata = $this->inspect($bytes);
-            if (isset($seenHashes[$metadata['sha256']])) {
+            // 去重依据必须是源文件。不同源图在缩放/转 JPEG 后可能得到相同字节，
+            // 但仍是正文中的不同媒体节点，不能因此被吞掉。
+            $sourceSha256 = hash('sha256', $bytes);
+            if (isset($seenSourceHashes[$sourceSha256])) {
                 continue;
             }
-            $seenHashes[$metadata['sha256']] = true;
+            $seenSourceHashes[$sourceSha256] = true;
+            $bytes = $this->normalizeImage($bytes);
+            $metadata = $this->inspect($bytes);
             $position = count($manifest) + 1;
-            $mediaKey = 'm_'.substr($metadata['sha256'], 0, 24);
+            $mediaKey = 'm_'.substr($sourceSha256, 0, 24);
             $extension = match ($metadata['mime_type']) {
                 'image/png' => 'png',
                 'image/gif' => 'gif',

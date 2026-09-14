@@ -19,6 +19,7 @@ return [
     'article_edit' => '編輯文章',
     'browser_connect' => '連線瀏覽器',
     'manual_publications' => '手動釋出',
+    'self_media_publications' => '按需自媒體發布',
     'manual_publication_create' => '建立釋出',
     'manual_publication_settings' => '釋出設定',
     'manual_publication_detail' => '釋出詳情',

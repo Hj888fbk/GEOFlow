@@ -5,9 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 final class ManualPublicationBatch extends Model
 {
+    use SoftDeletes;
+
+    public const TRASH_RETENTION_DAYS = 30;
+
     public const TRIGGER_MANUAL = 'manual';
 
     public const TRIGGER_AUTOMATIC = 'automatic';
@@ -43,6 +48,7 @@ final class ManualPublicationBatch extends Model
     protected $fillable = [
         'article_id',
         'task_id',
+        'persona_id',
         'website_publication_receipt_id',
         'created_by_admin_id',
         'model_access_admin_id',
@@ -56,7 +62,9 @@ final class ManualPublicationBatch extends Model
         'routing_version',
         'routing_reason',
         'target_platforms',
+        'target_account_ids',
         'platform_combination_hash',
+        'account_selection_hash',
         'source_url',
         'website_readback',
         'source_hash',
@@ -70,6 +78,7 @@ final class ManualPublicationBatch extends Model
         'lease_expires_at',
         'generation_attempt',
         'invalidated_at',
+        'archived_at',
         'revision',
     ];
 
@@ -83,6 +92,7 @@ final class ManualPublicationBatch extends Model
         return [
             'article_id' => 'integer',
             'task_id' => 'integer',
+            'persona_id' => 'integer',
             'website_publication_receipt_id' => 'integer',
             'created_by_admin_id' => 'integer',
             'model_access_admin_id' => 'integer',
@@ -91,6 +101,7 @@ final class ManualPublicationBatch extends Model
             'requested_ai_model_snapshot' => 'array',
             'resolver_policy_version' => 'integer',
             'target_platforms' => 'array',
+            'target_account_ids' => 'array',
             'website_readback' => 'array',
             'source_snapshot' => 'array',
             'fact_constraints' => 'array',
@@ -99,6 +110,7 @@ final class ManualPublicationBatch extends Model
             'lease_expires_at' => 'datetime',
             'generation_attempt' => 'integer',
             'invalidated_at' => 'datetime',
+            'archived_at' => 'datetime',
             'revision' => 'integer',
         ];
     }
@@ -111,6 +123,11 @@ final class ManualPublicationBatch extends Model
     public function task(): BelongsTo
     {
         return $this->belongsTo(Task::class);
+    }
+
+    public function persona(): BelongsTo
+    {
+        return $this->belongsTo(ManualPublicationPersona::class, 'persona_id');
     }
 
     public function websiteReceipt(): BelongsTo
@@ -126,6 +143,11 @@ final class ManualPublicationBatch extends Model
     public function publications(): HasMany
     {
         return $this->hasMany(ManualPublication::class, 'manual_publication_batch_id');
+    }
+
+    public function publicationsWithTrashed(): HasMany
+    {
+        return $this->hasMany(ManualPublication::class, 'manual_publication_batch_id')->withTrashed();
     }
 
     public function mediaSnapshots(): HasMany

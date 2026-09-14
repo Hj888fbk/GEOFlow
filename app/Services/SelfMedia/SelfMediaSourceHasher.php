@@ -69,6 +69,40 @@ final class SelfMediaSourceHasher
 
     private function normalize(string $value): string
     {
+        // Gutenberg block comments are transport metadata and must not affect
+        // the readback fingerprint. Remove them before caption handling.
+        $value = preg_replace('/<!--\s*\/?wp:[^>]+-->/iu', '', $value) ?? $value;
+
+        // WordPress/Gutenberg may wrap uploaded images in <figure>, add a
+        // generated <figcaption>, or emit a short caption paragraph after the
+        // figure. The source markdown has no caption field, so retain only an
+        // image-count marker and ignore this transport-only decoration.
+        // A real <figcaption> is unambiguously transport decoration; remove
+        // the optional short paragraph WordPress emits after that figure.
+        $value = preg_replace(
+            '/(<figure\b[^>]*>.*?<figcaption\b[^>]*>.*?<\/figcaption>.*?<\/figure>)\s*(?:(?:<p\b[^>]*>\s*<\/p>)\s*)*<p\b[^>]*>\s*[^<。！？；，,]{1,120}\s*<\/p>/isu',
+            '$1',
+            $value,
+        ) ?? $value;
+        // Some Gutenberg media blocks expose the attachment caption as a
+        // short paragraph followed by an empty paragraph. Requiring that
+        // empty spacer avoids deleting legitimate prose immediately after an
+        // image (for example the table introduction in article 40).
+        $value = preg_replace(
+            '/(<\/figure>)\s*<p\b[^>]*>\s*[^<。！？；，,]{1,120}\s*<\/p>\s*<p\b[^>]*>\s*<\/p>/isu',
+            '$1',
+            $value,
+        ) ?? $value;
+        $value = preg_replace_callback(
+            '/<figure\b[^>]*>.*?<\/figure>/isu',
+            static function (array $matches): string {
+                $count = max(1, substr_count(strtolower((string) ($matches[0] ?? '')), '<img'));
+
+                return str_repeat(' [[image]] ', $count);
+            },
+            $value,
+        ) ?? $value;
+        $value = preg_replace('/<img\b[^>]*>/iu', ' [[image]] ', $value) ?? $value;
         $value = html_entity_decode(strip_tags($value), ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
         return Str::of($value)->replaceMatches('/\s+/u', ' ')->trim()->toString();

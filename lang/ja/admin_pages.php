@@ -23,6 +23,7 @@ return [
     'article_edit' => '記事編集',
     'browser_connect' => 'ブラウザ接続',
     'manual_publications' => '手動公開',
+    'self_media_publications' => 'オンデマンド・ソーシャル公開',
     'manual_publication_create' => '公開を作成',
     'manual_publication_settings' => '公開設定',
     'manual_publication_detail' => '公開詳細',

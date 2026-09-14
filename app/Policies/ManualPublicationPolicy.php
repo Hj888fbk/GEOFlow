@@ -48,4 +48,19 @@ class ManualPublicationPolicy
     {
         return $admin->status === 'active';
     }
+
+    public function delete(Admin $admin, ManualPublication $manualPublication): bool
+    {
+        return $admin->isSuperAdmin();
+    }
+
+    public function restore(Admin $admin, ManualPublication $manualPublication): bool
+    {
+        return $admin->isSuperAdmin();
+    }
+
+    public function archive(Admin $admin, ManualPublication $manualPublication): bool
+    {
+        return $admin->isSuperAdmin();
+    }
 }

@@ -241,13 +241,13 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('workers', [TaskController::class, 'workers'])->name('workers');
             Route::get('jobs', [TaskController::class, 'jobs'])->name('jobs');
             Route::post('title-readiness', [TaskController::class, 'titleReadiness'])->name('title-readiness');
-            Route::post('{taskId}/toggle-status', [TaskController::class, 'toggleStatus'])->name('toggle-status');
-            Route::post('{taskId}/delete', [TaskController::class, 'destroyTask'])->name('delete');
+            Route::post('{taskId}/toggle-status', [TaskController::class, 'toggleStatus'])->whereNumber('taskId')->name('toggle-status');
+            Route::post('{taskId}/delete', [TaskController::class, 'destroyTask'])->whereNumber('taskId')->name('delete');
             Route::post('{taskId}/restore', [TaskController::class, 'restoreTask'])->whereNumber('taskId')->name('restore');
             Route::get('create', [TaskController::class, 'create'])->name('create');
             Route::post('create', [TaskController::class, 'store'])->name('store');
-            Route::get('{taskId}/edit', [TaskController::class, 'edit'])->name('edit');
-            Route::put('{taskId}', [TaskController::class, 'update'])->name('update');
+            Route::get('{taskId}/edit', [TaskController::class, 'edit'])->whereNumber('taskId')->name('edit');
+            Route::put('{taskId}', [TaskController::class, 'update'])->whereNumber('taskId')->name('update');
             Route::get('health-check', [TaskController::class, 'healthCheck'])->name('health');
             Route::post('batch/start', [TaskController::class, 'batchAction'])->name('batch');
         });
@@ -375,20 +375,30 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 ->name('browser-connect.decision');
             Route::get('/', [ManualPublicationController::class, 'index'])->name('index');
             Route::get('export', [ManualPublicationController::class, 'export'])->name('export');
-            Route::get('create', [ManualPublicationController::class, 'create'])->name('create');
+            Route::get('advanced-create', [ManualPublicationController::class, 'create'])->name('advanced-create');
+            Route::get('create', [ManualPublicationController::class, 'redirectCreate'])->name('create');
             Route::post('/', [ManualPublicationController::class, 'store'])->name('store');
             Route::middleware('admin.super')->prefix('self-media')->name('self-media.')->group(function () {
-                Route::get('/', [SelfMediaController::class, 'index'])->name('index');
+                Route::get('/', [SelfMediaController::class, 'redirectIndex'])->name('index');
                 Route::post('website-receipts', [SelfMediaController::class, 'storeReceipt'])->name('receipts.store');
                 Route::post('batches', [SelfMediaController::class, 'storeBatch'])->name('batches.store');
+                Route::post('launch', [SelfMediaController::class, 'launch'])->name('launch');
                 Route::post('batches/{batchId}/generate', [SelfMediaController::class, 'generate'])->name('batches.generate')->whereNumber('batchId');
+                Route::put('batches/{batchId}/publications/{manualPublicationId}', [SelfMediaController::class, 'updateDraft'])
+                    ->name('batches.publications.update')
+                    ->whereNumber(['batchId', 'manualPublicationId']);
                 Route::post('batches/{batchId}/approve', [SelfMediaController::class, 'approve'])->name('batches.approve')->whereNumber('batchId');
                 Route::post('batches/{batchId}/cancel', [SelfMediaController::class, 'cancel'])->name('batches.cancel')->whereNumber('batchId');
+                Route::post('batches/{batchId}/trash', [SelfMediaController::class, 'trash'])->name('batches.trash')->whereNumber('batchId');
+                Route::post('batches/{batchId}/restore', [SelfMediaController::class, 'restore'])->name('batches.restore')->whereNumber('batchId');
+                Route::post('batches/{batchId}/archive', [SelfMediaController::class, 'archive'])->name('batches.archive')->whereNumber('batchId');
+                Route::post('batches/{batchId}/unarchive', [SelfMediaController::class, 'unarchive'])->name('batches.unarchive')->whereNumber('batchId');
                 Route::put('tasks/{taskId}/policy', [SelfMediaController::class, 'savePolicy'])->name('policies.update')->whereNumber('taskId');
             });
             Route::middleware('admin.super')->prefix('settings')->name('settings.')->group(function () {
-                Route::get('/', [ManualPublicationSettingsController::class, 'index'])->name('index');
+                Route::get('/', [ManualPublicationSettingsController::class, 'redirectIndex'])->name('index');
                 Route::get('browser-extension/download', [ManualPublicationSettingsController::class, 'downloadExtension'])->name('extension.download');
+                Route::get('desktop-publisher/download', [ManualPublicationSettingsController::class, 'downloadDesktopPublisher'])->name('desktop.download');
                 Route::post('personas', [ManualPublicationSettingsController::class, 'storePersona'])->name('personas.store');
                 Route::put('personas/{personaId}', [ManualPublicationSettingsController::class, 'updatePersona'])->name('personas.update')->whereNumber('personaId');
                 Route::post('accounts', [ManualPublicationSettingsController::class, 'storeAccount'])->name('accounts.store');
@@ -398,6 +408,12 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('{manualPublicationId}/edit', [ManualPublicationController::class, 'edit'])->name('edit')->whereNumber('manualPublicationId');
             Route::put('{manualPublicationId}', [ManualPublicationController::class, 'update'])->name('update')->whereNumber('manualPublicationId');
             Route::post('{manualPublicationId}/transition', [ManualPublicationController::class, 'transition'])->name('transition')->whereNumber('manualPublicationId');
+            Route::middleware('admin.super')->group(function () {
+                Route::post('{manualPublicationId}/trash', [ManualPublicationController::class, 'trash'])->name('trash')->whereNumber('manualPublicationId');
+                Route::post('{manualPublicationId}/restore', [ManualPublicationController::class, 'restore'])->name('restore')->whereNumber('manualPublicationId');
+                Route::post('{manualPublicationId}/archive', [ManualPublicationController::class, 'archive'])->name('archive')->whereNumber('manualPublicationId');
+                Route::post('{manualPublicationId}/unarchive', [ManualPublicationController::class, 'unarchive'])->name('unarchive')->whereNumber('manualPublicationId');
+            });
         });
 
         // 栏目管理（保持 geo_admin/categories 路径语义）
@@ -405,9 +421,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('/', [CategoryController::class, 'index'])->name('index');
             Route::get('create', [CategoryController::class, 'create'])->name('create');
             Route::post('create', [CategoryController::class, 'store'])->name('store');
-            Route::get('{categoryId}/edit', [CategoryController::class, 'edit'])->name('edit');
-            Route::put('{categoryId}', [CategoryController::class, 'update'])->name('update');
-            Route::post('{categoryId}/delete', [CategoryController::class, 'destroy'])->name('delete');
+            Route::get('{categoryId}/edit', [CategoryController::class, 'edit'])->whereNumber('categoryId')->name('edit');
+            Route::put('{categoryId}', [CategoryController::class, 'update'])->whereNumber('categoryId')->name('update');
+            Route::post('{categoryId}/delete', [CategoryController::class, 'destroy'])->whereNumber('categoryId')->name('delete');
         });
 
         // 素材管理：作者管理
@@ -706,8 +722,11 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 ->name('words.store');
             Route::post('sensitive-words/{wordId}/delete', [SecuritySettingsController::class, 'destroySensitiveWord'])
                 ->middleware('admin.super')
+                ->whereNumber('wordId')
                 ->name('words.delete');
-            Route::post('password', [SecuritySettingsController::class, 'updatePassword'])->name('password.update');
+            Route::post('password', [SecuritySettingsController::class, 'updatePassword'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('password.update');
         });
 
         // 超级管理员功能

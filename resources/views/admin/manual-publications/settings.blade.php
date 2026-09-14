@@ -80,6 +80,33 @@
         </section>
 
         <section class="space-y-5">
+            <form method="POST" action="{{ route('admin.manual-publications.settings.accounts.store') }}" class="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
+                @csrf
+                <input type="hidden" name="bulk_mode" value="1">
+                <h2 class="text-lg font-semibold text-gray-900">批量添加自媒体账号</h2>
+                <p class="mt-2 text-sm leading-6 text-gray-600">一次创建多个平台账号，平台编辑入口会自动匹配。各平台账号信息不同的，可创建后再单独修改。</p>
+                <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div><label class="block text-sm font-medium text-gray-700">{{ __('admin.manual_publications.field.persona') }} *</label><select name="persona_id" required class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm"><option value="">{{ __('admin.manual_publications.option.select_persona') }}</option>@foreach($personas as $persona)<option value="{{ $persona->id }}">{{ $persona->name }}</option>@endforeach</select></div>
+                    <div><label class="block text-sm font-medium text-gray-700">统一账号名称 *</label><input id="bulk-account-name" name="account_name" required maxlength="160" class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm" placeholder="例如：恒佳官方账号"></div>
+                    <div class="sm:col-span-2 rounded-lg border border-gray-200 p-4">
+                        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div><div class="text-sm font-medium text-gray-800">选择自媒体平台 *</div><div class="mt-1 text-xs text-gray-500">当前草稿助手支持 {{ count($draftSyncPlatforms) }} 个平台。</div></div>
+                            <label class="flex items-center gap-2 text-sm font-semibold text-emerald-700"><input id="select-all-self-media" type="checkbox" class="rounded border-gray-300 text-emerald-600">全选当前支持的 {{ count($draftSyncPlatforms) }} 个平台</label>
+                        </div>
+                        <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                            @foreach($draftSyncPlatforms as $platform)
+                                <label class="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700"><input class="bulk-self-media-platform rounded border-gray-300 text-emerald-600" type="checkbox" name="platforms[]" value="{{ $platform }}">{{ __('admin.manual_publications.platform.'.$platform) }}</label>
+                            @endforeach
+                        </div>
+                    </div>
+                    <div class="sm:col-span-2"><label class="block text-sm font-medium text-gray-700">统一主页标识</label><input id="bulk-homepage-identifier" name="homepage_identifier" maxlength="255" class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm" placeholder="留空时使用上面的账号名称"></div>
+                    <label class="sm:col-span-2 flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm"><input type="hidden" name="browser_adapter_enabled" value="0"><input type="checkbox" name="browser_adapter_enabled" value="1" checked>启用浏览器适配器（只填不发）</label>
+                    <div class="sm:col-span-2"><label class="block text-sm font-medium text-gray-700">{{ __('admin.manual_publications.settings.notes') }}</label><textarea name="notes" rows="2" maxlength="5000" class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm" placeholder="选填，会应用到本次创建的全部账号"></textarea></div>
+                </div>
+                <input type="hidden" name="is_active" value="1">
+                <button class="mt-5 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">批量添加所选账号</button>
+            </form>
+
             <form method="POST" action="{{ route('admin.manual-publications.settings.accounts.store') }}" class="rounded-xl border border-purple-200 bg-white p-6 shadow-sm">
                 @csrf
                 <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.manual_publications.settings.new_account') }}</h2>
@@ -130,11 +157,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const presets = @json($editorUrlPresets);
     const platform = document.getElementById('new-account-platform');
     const editor = document.getElementById('new-account-editor-url');
+    const selectAll = document.getElementById('select-all-self-media');
+    const bulkPlatforms = [...document.querySelectorAll('.bulk-self-media-platform')];
     const applyPreset = () => {
         if (editor && !editor.value.trim() && presets[platform?.value]) editor.value = presets[platform.value];
     };
+    const syncSelectAll = () => {
+        if (!selectAll) return;
+        selectAll.checked = bulkPlatforms.length > 0 && bulkPlatforms.every((checkbox) => checkbox.checked);
+        selectAll.indeterminate = bulkPlatforms.some((checkbox) => checkbox.checked) && !selectAll.checked;
+    };
     platform?.addEventListener('change', applyPreset);
+    selectAll?.addEventListener('change', () => {
+        bulkPlatforms.forEach((checkbox) => { checkbox.checked = selectAll.checked; });
+        syncSelectAll();
+    });
+    bulkPlatforms.forEach((checkbox) => checkbox.addEventListener('change', syncSelectAll));
     applyPreset();
+    syncSelectAll();
 });
 </script>
 @endpush

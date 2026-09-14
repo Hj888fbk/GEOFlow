@@ -134,13 +134,14 @@ class AdminActionDialogTest extends TestCase
                 if (! in_array($file->getExtension(), ['js', 'php'], true)) {
                     continue;
                 }
-                if ($file->getPathname() === resource_path('js/admin/action-dialog.js')) {
+                if (realpath($file->getPathname()) === realpath(resource_path('js/admin/action-dialog.js'))) {
                     continue;
                 }
 
                 $source = (string) file_get_contents($file->getPathname());
                 if (preg_match($pattern, $source) === 1) {
-                    $violations[] = str_replace(base_path().'/', '', $file->getPathname());
+                    $normalizedPath = str_replace('\\', '/', $file->getPathname());
+                    $violations[] = str_replace(str_replace('\\', '/', base_path()).'/', '', $normalizedPath);
                 }
                 $beforeUnloadCount += substr_count($source, "addEventListener('beforeunload'");
             }

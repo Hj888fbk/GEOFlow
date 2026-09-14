@@ -18,20 +18,45 @@ use App\Models\ManualPublicationPersona;
 use App\Models\SelfMediaPolicy;
 use App\Models\Task;
 use App\Models\WebsitePublicationReceipt;
+use App\Services\SelfMedia\ManualPublicationLifecycleService;
 use App\Services\SelfMedia\SelfMediaBatchGenerationService;
 use App\Services\SelfMedia\SelfMediaBatchService;
 use App\Services\SelfMedia\SelfMediaPlatformRouter;
 use App\Services\SelfMedia\SelfMediaSourceHasher;
 use App\Services\SelfMedia\WebsitePublicationReceiptService;
 use DomainException;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 final class SelfMediaBatchServiceTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        if (! Schema::hasTable('admin_activity_logs')) {
+            Schema::create('admin_activity_logs', function (Blueprint $table): void {
+                $table->id();
+                $table->foreignId('admin_id')->nullable();
+                $table->string('admin_username', 50);
+                $table->string('admin_role', 20)->default('admin');
+                $table->string('action', 120);
+                $table->string('request_method', 10)->default('POST');
+                $table->string('page')->default('');
+                $table->string('target_type', 50)->default('');
+                $table->unsignedBigInteger('target_id')->nullable();
+                $table->string('ip_address', 64)->default('');
+                $table->text('details')->default('');
+                $table->timestamp('created_at')->nullable();
+            });
+        }
+    }
 
     public function test_disabled_policy_records_website_receipt_without_creating_any_self_media_work(): void
     {
@@ -347,6 +372,11 @@ MD]);
         $second = $service->createManual($article, $receipt, SelfMediaPlatformRouter::INTENT_ENTERPRISE_NEWS, array_reverse($platforms), $admin);
 
         $this->assertSame($first->id, $second->id);
+        $this->assertSame(hash('sha256', implode('|', [
+            (string) $article->id,
+            app(SelfMediaSourceHasher::class)->hash($article),
+            (string) $first->platform_combination_hash,
+        ])), $first->idempotency_hash);
         $this->assertDatabaseCount('manual_publication_batches', 1);
     }
 
@@ -451,9 +481,7 @@ MD]);
 
         $this->actingAs($superAdmin, 'admin')
             ->get(route('admin.manual-publications.self-media.index'))
-            ->assertOk()
-            ->assertSee('候选列表不会生成平台稿')
-            ->assertSee('0');
+            ->assertRedirect(route('admin.manual-publications.index', ['view' => 'launch']));
         $this->actingAs($worker, 'admin')
             ->get(route('admin.manual-publications.self-media.index'))
             ->assertForbidden();
@@ -673,6 +701,214 @@ MD]);
         $this->assertSame(ManualPublicationBatch::STATUS_PENDING_REVIEW, $batch->refresh()->status);
         $this->assertSame(0, $batch->publications()->where('status', '!=', ManualPublication::STATUS_DRAFT)->count());
         $this->assertSame(0, $batch->publications()->whereNotNull('account_id')->count());
+    }
+
+    public function test_one_launch_creates_a_multi_account_batch_and_queues_generation(): void
+    {
+        Queue::fake();
+        [$admin, , $article] = $this->fixtures();
+        $persona = ManualPublicationPersona::query()->create(['name' => '统一发布身份']);
+        $accounts = collect(['账号一', '账号二'])->map(fn (string $name) => ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+            'account_name' => $name,
+            'editor_url' => ManualPublicationAccount::editorUrlPresets()[ManualPublicationAccount::PLATFORM_CSDN],
+            'homepage_identifier' => $name,
+            'browser_adapter_enabled' => true,
+        ]));
+        $receipt = app(WebsitePublicationReceiptService::class)->record($article, $this->receipt($article), $admin);
+
+        $this->actingAs($admin, 'admin')->post(route('admin.manual-publications.self-media.launch'), [
+            'website_publication_receipt_id' => $receipt->id,
+            'persona_id' => $persona->id,
+            'content_intent' => SelfMediaPlatformRouter::INTENT_PRODUCT_EDUCATION,
+            'account_ids' => $accounts->pluck('id')->all(),
+        ])->assertRedirect(route('admin.manual-publications.index', ['view' => 'pending', 'batch' => 1]))
+            ->assertSessionHasNoErrors();
+
+        $batch = ManualPublicationBatch::query()->firstOrFail();
+        $this->assertSame($persona->id, $batch->persona_id);
+        $this->assertEqualsCanonicalizing($accounts->pluck('id')->all(), $batch->target_account_ids);
+        $this->assertSame(hash('sha256', $accounts->pluck('id')->sort()->implode('|')), $batch->account_selection_hash);
+        $this->assertDatabaseHas('admin_activity_logs', [
+            'action' => 'manual_publication_batch.launched',
+            'target_type' => 'manual_publication_batch',
+            'target_id' => $batch->id,
+        ]);
+        Queue::assertPushed(GenerateSelfMediaBatchJob::class, fn (GenerateSelfMediaBatchJob $job): bool => $job->batchId === $batch->id);
+    }
+
+    public function test_one_platform_variant_is_reused_for_multiple_selected_accounts(): void
+    {
+        $generator = $this->fakeGenerator();
+        [$admin, , $article] = $this->fixtures();
+        $persona = ManualPublicationPersona::query()->create(['name' => '多账号身份']);
+        $accounts = collect(['CSDN A', 'CSDN B'])->map(fn (string $name) => ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+            'account_name' => $name,
+            'editor_url' => ManualPublicationAccount::editorUrlPresets()[ManualPublicationAccount::PLATFORM_CSDN],
+            'homepage_identifier' => $name,
+            'browser_adapter_enabled' => true,
+        ]));
+        $receipt = app(WebsitePublicationReceiptService::class)->record($article, $this->receipt($article), $admin);
+        $batch = app(SelfMediaBatchService::class)->createManual(
+            $article,
+            $receipt,
+            SelfMediaPlatformRouter::INTENT_PRODUCT_EDUCATION,
+            [],
+            $admin,
+            $persona->id,
+            $accounts->pluck('id')->all(),
+        );
+
+        $batch = app(SelfMediaBatchGenerationService::class)->generate($batch);
+
+        $this->assertSame(1, $generator->calls);
+        $this->assertSame(ManualPublicationBatch::STATUS_PENDING_REVIEW, $batch->status);
+        $this->assertCount(2, $batch->publications);
+        $this->assertEqualsCanonicalizing($accounts->pluck('id')->all(), $batch->publications->pluck('account_id')->all());
+        $this->assertCount(1, $batch->publications->pluck('body_markdown')->unique());
+    }
+
+    public function test_approval_never_replaces_a_selected_account_with_another_account(): void
+    {
+        $this->fakeGenerator();
+        [$admin, , $article] = $this->fixtures();
+        $persona = ManualPublicationPersona::query()->create(['name' => '固定账号身份']);
+        $selected = ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+            'account_name' => '已选择账号',
+            'editor_url' => ManualPublicationAccount::editorUrlPresets()[ManualPublicationAccount::PLATFORM_CSDN],
+            'homepage_identifier' => 'selected-account',
+            'browser_adapter_enabled' => true,
+        ]);
+        $fallback = ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+            'account_name' => '不应替换的账号',
+            'editor_url' => ManualPublicationAccount::editorUrlPresets()[ManualPublicationAccount::PLATFORM_CSDN],
+            'homepage_identifier' => 'fallback-account',
+            'browser_adapter_enabled' => true,
+        ]);
+        $receipt = app(WebsitePublicationReceiptService::class)->record($article, $this->receipt($article), $admin);
+        $batch = app(SelfMediaBatchService::class)->createManual(
+            $article,
+            $receipt,
+            SelfMediaPlatformRouter::INTENT_PRODUCT_EDUCATION,
+            [],
+            $admin,
+            $persona->id,
+            [$selected->id],
+        );
+        $batch = app(SelfMediaBatchGenerationService::class)->generate($batch);
+        $selected->update(['browser_adapter_enabled' => false]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.manual-publications.self-media.batches.approve', ['batchId' => $batch->id]))
+            ->assertSessionHasErrors(['approval']);
+
+        $publication = $batch->publications()->firstOrFail();
+        $this->assertSame($selected->id, $publication->account_id);
+        $this->assertNotSame($fallback->id, $publication->account_id);
+        $this->assertSame(ManualPublication::STATUS_DRAFT, $publication->status);
+        $this->assertSame(ManualPublicationBatch::STATUS_PENDING_REVIEW, $batch->refresh()->status);
+    }
+
+    public function test_generated_platform_draft_can_be_edited_inside_the_batch_before_approval(): void
+    {
+        $this->fakeGenerator();
+        [$admin, , $article] = $this->fixtures();
+        $persona = ManualPublicationPersona::query()->create(['name' => '审核编辑身份']);
+        $account = ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+            'account_name' => '审核编辑账号',
+            'editor_url' => ManualPublicationAccount::editorUrlPresets()[ManualPublicationAccount::PLATFORM_CSDN],
+            'homepage_identifier' => 'review-editor',
+            'browser_adapter_enabled' => true,
+        ]);
+        $receipt = app(WebsitePublicationReceiptService::class)->record($article, $this->receipt($article), $admin);
+        $batch = app(SelfMediaBatchService::class)->createManual(
+            $article,
+            $receipt,
+            SelfMediaPlatformRouter::INTENT_PRODUCT_EDUCATION,
+            [],
+            $admin,
+            $persona->id,
+            [$account->id],
+        );
+        $batch = app(SelfMediaBatchGenerationService::class)->generate($batch);
+        $publication = $batch->publications->firstOrFail();
+        $body = str_replace('平台正文', '审核后平台正文', (string) $publication->body_markdown);
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.manual-publications.self-media.batches.publications.update', [
+                'batchId' => $batch->id,
+                'manualPublicationId' => $publication->id,
+            ]), [
+                'revision' => $publication->revision,
+                'platform_title' => '审核后的平台标题',
+                'platform_summary' => '审核后的摘要',
+                'body_markdown' => $body,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $publication->refresh();
+        $this->assertSame('审核后的平台标题', $publication->platform_title);
+        $this->assertSame('审核后的平台标题', $publication->publication_payload['title']);
+        $this->assertSame($body, $publication->body_markdown);
+        $this->assertSame(2, $publication->revision);
+        $this->assertDatabaseHas('admin_activity_logs', [
+            'action' => 'manual_publication_batch.draft_updated',
+            'target_type' => 'manual_publication',
+            'target_id' => $publication->id,
+        ]);
+    }
+
+    public function test_batch_trash_restore_invalidation_and_thirty_day_pruning_are_atomic(): void
+    {
+        $this->fakeGenerator();
+        Storage::fake('local');
+        [$admin, , $article] = $this->fixtures();
+        $persona = ManualPublicationPersona::query()->create(['name' => '回收站身份']);
+        $account = ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+            'account_name' => '回收站账号',
+            'editor_url' => ManualPublicationAccount::editorUrlPresets()[ManualPublicationAccount::PLATFORM_CSDN],
+            'homepage_identifier' => 'trash-account',
+            'browser_adapter_enabled' => true,
+        ]);
+        $receipt = app(WebsitePublicationReceiptService::class)->record($article, $this->receipt($article), $admin);
+        $batch = app(SelfMediaBatchService::class)->createManual($article, $receipt, SelfMediaPlatformRouter::INTENT_PRODUCT_EDUCATION, [], $admin, $persona->id, [$account->id]);
+        $batch = app(SelfMediaBatchGenerationService::class)->generate($batch);
+        $publicationId = $batch->publications->firstOrFail()->id;
+        $lifecycle = app(ManualPublicationLifecycleService::class);
+
+        $lifecycle->trashBatch($batch->id);
+        $this->assertTrue(ManualPublicationBatch::withTrashed()->findOrFail($batch->id)->trashed());
+        $this->assertTrue(ManualPublication::withTrashed()->findOrFail($publicationId)->trashed());
+
+        $article->forceFill(['content' => $article->content.' 母稿已修改'])->save();
+        $restored = $lifecycle->restoreBatch($batch->id);
+        $this->assertSame(ManualPublicationBatch::STATUS_INVALIDATED, $restored->status);
+        $this->assertNotNull(ManualPublication::query()->findOrFail($publicationId)->source_stale_at);
+
+        $lifecycle->trashBatch($batch->id);
+        $expiredAt = now()->subDays(31);
+        $managedMediaPath = 'self-media/'.$batch->id.'/m_expired.jpg';
+        Storage::disk('local')->put($managedMediaPath, 'expired managed media');
+        Storage::disk('local')->assertExists($managedMediaPath);
+        ManualPublicationBatch::onlyTrashed()->whereKey($batch->id)->update(['deleted_at' => $expiredAt]);
+        ManualPublication::onlyTrashed()->whereKey($publicationId)->update(['deleted_at' => $expiredAt]);
+        $pruned = $lifecycle->pruneExpired();
+        $this->assertSame(['batches' => 1, 'publications' => 1], $pruned);
+        $this->assertNull(ManualPublicationBatch::withTrashed()->find($batch->id));
+        $this->assertNull(ManualPublication::withTrashed()->find($publicationId));
+        Storage::disk('local')->assertMissing($managedMediaPath);
     }
 
     private function fakeGenerator(): object

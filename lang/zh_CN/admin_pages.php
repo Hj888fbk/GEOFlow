@@ -23,6 +23,7 @@ return [
     'article_edit' => '编辑文章',
     'browser_connect' => '连接浏览器',
     'manual_publications' => '手动发布',
+    'self_media_publications' => '按需自媒体发布',
     'manual_publication_create' => '创建发布',
     'manual_publication_settings' => '发布设置',
     'manual_publication_detail' => '发布详情',

@@ -28,17 +28,13 @@ class AdminManualPublicationsTest extends TestCase
         $articlesResponse
             ->assertOk()
             ->assertSee(route('admin.manual-publications.index'), false)
+            ->assertSee(__('admin.nav.publishing'))
             ->assertSee(__('admin.manual_publications.nav'));
-
-        $this->assertSame(1, substr_count(
-            (string) $articlesResponse->getContent(),
-            'href="'.route('admin.manual-publications.index').'"',
-        ));
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.manual-publications.index'))
             ->assertOk()
-            ->assertViewHas('activeMenu', 'articles');
+            ->assertViewHas('activeMenu', 'publishing');
     }
 
     public function test_super_admin_can_create_post_work_order_from_approved_article_and_open_workbench(): void
@@ -48,7 +44,7 @@ class AdminManualPublicationsTest extends TestCase
         $article = $this->article('approved');
 
         $this->actingAs($superAdmin, 'admin')
-            ->get(route('admin.manual-publications.create', ['article_id' => $article->getKey()]))
+            ->get(route('admin.manual-publications.advanced-create', ['article_id' => $article->getKey()]))
             ->assertOk()
             ->assertSee($article->title)
             ->assertSee(__('admin.manual_publications.create_title'));
@@ -68,7 +64,7 @@ class AdminManualPublicationsTest extends TestCase
         $this->actingAs($superAdmin, 'admin')
             ->get(route('admin.manual-publications.index'))
             ->assertOk()
-            ->assertSee(__('admin.manual_publications.page_title'))
+            ->assertSee('发布中心')
             ->assertSee('最终发布文案');
 
         $this->actingAs($superAdmin, 'admin')
@@ -105,7 +101,7 @@ class AdminManualPublicationsTest extends TestCase
         }
 
         $this->actingAs($superAdmin, 'admin')
-            ->get(route('admin.manual-publications.create', ['article_search' => '归档检索针']))
+            ->get(route('admin.manual-publications.advanced-create', ['article_search' => '归档检索针']))
             ->assertOk()
             ->assertSee($searchableArticle->title)
             ->assertViewHas('articles', fn ($articles): bool => $articles->total() === 1);
@@ -145,7 +141,7 @@ class AdminManualPublicationsTest extends TestCase
             ->get(route('admin.manual-publications.show', ['manualPublicationId' => $other->getKey()]))
             ->assertForbidden();
         $this->actingAs($worker, 'admin')
-            ->get(route('admin.manual-publications.create'))
+            ->get(route('admin.manual-publications.advanced-create'))
             ->assertForbidden();
         $this->actingAs($worker, 'admin')
             ->get(route('admin.manual-publications.settings.index'))
@@ -220,6 +216,40 @@ class AdminManualPublicationsTest extends TestCase
         $this->assertNull($publication->browser_claimed_by_token_id);
     }
 
+    public function test_recovery_command_releases_only_stale_in_progress_browser_claims(): void
+    {
+        $superAdmin = $this->admin('super_admin');
+        [$persona, $account] = $this->identity($superAdmin);
+        $article = $this->article('approved');
+        $service = app(ManualPublicationService::class);
+        $publication = $service->create($this->payload($persona, $account, $superAdmin, [
+            'article_id' => $article->getKey(),
+        ]), $superAdmin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_READY, 1, $superAdmin);
+        $token = $superAdmin->createToken('stale browser', ['browser-operations:read', 'browser-operations:execute']);
+        $staleAt = now()->subHour();
+        $publication->forceFill([
+            'status' => ManualPublication::STATUS_IN_PROGRESS,
+            'status_changed_at' => $staleAt,
+            'browser_claimed_by_token_id' => $token->accessToken->getKey(),
+            'browser_claimed_at' => $staleAt,
+            'browser_last_seen_at' => $staleAt,
+            'revision' => 3,
+        ])->save();
+
+        $this->artisan('geoflow:recover-browser-claims', ['--stale-after' => 10, '--limit' => 10])
+            ->assertExitCode(0);
+
+        $publication->refresh();
+        $this->assertSame(ManualPublication::STATUS_READY, $publication->status);
+        $this->assertNull($publication->browser_claimed_by_token_id);
+        $this->assertNull($publication->browser_last_seen_at);
+        $this->assertSame(4, $publication->revision);
+        $transition = $publication->transitions()->latest('id')->firstOrFail();
+        $this->assertNull($transition->changed_by_admin_id);
+        $this->assertStringContainsString('stale-claim recovery', (string) $transition->result_note);
+    }
+
     public function test_comment_validation_requires_target_and_rejects_account_persona_mismatch(): void
     {
         $superAdmin = $this->admin('super_admin');
@@ -227,23 +257,23 @@ class AdminManualPublicationsTest extends TestCase
         $otherPersona = ManualPublicationPersona::query()->create(['name' => '另一个身份']);
 
         $this->actingAs($superAdmin, 'admin')
-            ->get(route('admin.manual-publications.create'))
+            ->get(route('admin.manual-publications.advanced-create'))
             ->assertOk()
             ->assertSee('maxlength="2000"', false);
 
         $this->actingAs($superAdmin, 'admin')
-            ->from(route('admin.manual-publications.create'))
+            ->from(route('admin.manual-publications.advanced-create'))
             ->post(route('admin.manual-publications.store'), $this->payload($persona, $account, $superAdmin, [
                 'type' => ManualPublication::TYPE_COMMENT,
                 'article_id' => null,
                 'target_url' => null,
                 'target_context' => null,
             ]))
-            ->assertRedirect(route('admin.manual-publications.create'))
+            ->assertRedirect(route('admin.manual-publications.advanced-create'))
             ->assertSessionHasErrors(['target_url', 'target_context']);
 
         $this->actingAs($superAdmin, 'admin')
-            ->from(route('admin.manual-publications.create'))
+            ->from(route('admin.manual-publications.advanced-create'))
             ->post(route('admin.manual-publications.store'), $this->payload($otherPersona, $account, $superAdmin, [
                 'type' => ManualPublication::TYPE_COMMENT,
                 'article_id' => null,
@@ -339,21 +369,101 @@ class AdminManualPublicationsTest extends TestCase
         $this->assertStringStartsWith('[text:', $details['target_context']);
     }
 
-    public function test_extension_download_exposes_the_verified_030_package_only_to_super_admin(): void
+    public function test_super_admin_can_bulk_create_all_supported_self_media_accounts_without_duplicates(): void
+    {
+        $superAdmin = $this->admin('super_admin');
+        $persona = ManualPublicationPersona::query()->create([
+            'name' => '批量发布身份',
+            'is_active' => true,
+            'created_by_admin_id' => $superAdmin->getKey(),
+        ]);
+        $platforms = ManualPublicationAccount::DRAFT_SYNC_PLATFORMS;
+        $payload = [
+            'bulk_mode' => '1',
+            'persona_id' => $persona->getKey(),
+            'platforms' => $platforms,
+            'account_name' => '恒佳官方账号',
+            'browser_adapter_enabled' => '1',
+            'is_active' => '1',
+        ];
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.manual-publications.index', ['drawer' => 'accounts']))
+            ->assertOk()
+            ->assertSee('全选 10 个平台');
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.manual-publications.settings.accounts.store'), $payload)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('message', '已批量添加 '.count($platforms).' 个平台账号。');
+
+        $this->assertSame(count($platforms), ManualPublicationAccount::query()
+            ->where('persona_id', $persona->getKey())
+            ->where('account_name', '恒佳官方账号')
+            ->count());
+        foreach ($platforms as $platform) {
+            $this->assertDatabaseHas('manual_publication_accounts', [
+                'persona_id' => $persona->getKey(),
+                'platform' => $platform,
+                'account_name' => '恒佳官方账号',
+                'editor_url' => ManualPublicationAccount::editorUrlPresets()[$platform],
+                'homepage_identifier' => '恒佳官方账号',
+                'browser_adapter_enabled' => true,
+            ]);
+        }
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.manual-publications.settings.accounts.store'), $payload)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('message', '所选平台账号已存在，没有重复添加。');
+        $this->assertSame(count($platforms), ManualPublicationAccount::query()
+            ->where('persona_id', $persona->getKey())
+            ->where('account_name', '恒佳官方账号')
+            ->count());
+    }
+
+    public function test_bulk_account_creation_rejects_platforms_without_draft_adapter_support(): void
+    {
+        $superAdmin = $this->admin('super_admin');
+        $persona = ManualPublicationPersona::query()->create([
+            'name' => '批量发布身份',
+            'is_active' => true,
+            'created_by_admin_id' => $superAdmin->getKey(),
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.manual-publications.settings.accounts.store'), [
+                'bulk_mode' => '1',
+                'persona_id' => $persona->getKey(),
+                'platforms' => [ManualPublicationAccount::PLATFORM_XIAOHONGSHU],
+                'account_name' => '不支持的批量账号',
+                'browser_adapter_enabled' => '1',
+                'is_active' => '1',
+            ])
+            ->assertSessionHasErrors(['platforms.0']);
+
+        $this->assertDatabaseMissing('manual_publication_accounts', [
+            'account_name' => '不支持的批量账号',
+        ]);
+    }
+
+    public function test_extension_download_exposes_the_verified_031_package_only_to_super_admin(): void
     {
         $superAdmin = $this->admin('super_admin');
         $worker = $this->admin('admin');
-        $path = base_path('dist/browser-extension/geoflow-chrome-operator-0.3.0.zip');
+        $path = base_path('dist/browser-extension/geoflow-chrome-operator-0.3.1.zip');
         $this->assertFileExists($path);
         $sha256 = hash_file('sha256', $path);
         $this->assertIsString($sha256);
 
         $this->actingAs($superAdmin, 'admin')
-            ->get(route('admin.manual-publications.settings.index'))
+            ->get(route('admin.manual-publications.index', ['drawer' => 'settings']))
             ->assertOk()
-            ->assertSee('GEOFlow Chrome 草稿助手 0.3.0')
+            ->assertSee('GEOFlow Chrome 草稿助手 0.3.1')
             ->assertSee($sha256)
-            ->assertSee('实验中');
+            ->assertSee('协议 v1 兼容入口');
         $this->actingAs($worker, 'admin')
             ->get(route('admin.manual-publications.settings.extension.download'))
             ->assertForbidden();
@@ -366,7 +476,7 @@ class AdminManualPublicationsTest extends TestCase
         $zip = new \ZipArchive;
         $this->assertTrue($zip->open($path) === true);
         $manifest = json_decode((string) $zip->getFromName('manifest.json'), true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame('0.3.0', $manifest['version'] ?? null);
+        $this->assertSame('0.3.1', $manifest['version'] ?? null);
         $this->assertNotFalse($zip->locateName('src/adapters/self-media-dom-draft.js'));
         $zip->close();
     }
@@ -404,12 +514,12 @@ class AdminManualPublicationsTest extends TestCase
         $this->actingAs($superAdmin, 'admin')
             ->get(route('admin.articles.edit', ['articleId' => $article->getKey()]))
             ->assertOk()
-            ->assertSee(route('admin.manual-publications.create', ['article_id' => $article->getKey()]), false);
+            ->assertSee(route('admin.manual-publications.index', ['view' => 'launch']), false);
 
         $this->actingAs($worker, 'admin')
             ->get(route('admin.articles.edit', ['articleId' => $article->getKey()]))
             ->assertOk()
-            ->assertDontSee(route('admin.manual-publications.create', ['article_id' => $article->getKey()]), false);
+            ->assertDontSee(route('admin.manual-publications.index', ['view' => 'launch']), false);
     }
 
     public function test_only_super_admin_can_reopen_terminal_work_order_and_invalid_jump_is_rejected(): void

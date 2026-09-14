@@ -9,6 +9,7 @@ use App\Models\DistributionChannel;
 use App\Models\WebsitePublicationReceipt;
 use App\Services\GeoFlow\WordPressRestRequestFactory;
 use App\Services\Outbound\SafeOutboundHttpClient;
+use App\Services\Outbound\OutboundRequestBlockedException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -50,6 +51,20 @@ final readonly class WebsitePublicationReadbackService
             ->where('source_hash', $sourceHash)
             ->first();
         if ($existing instanceof WebsitePublicationReceipt) {
+            // A receipt may have been created by an older worker before the
+            // canonical URL backfill was introduced. Reconcile the linked
+            // distribution from the already verified receipt as well.
+            $verifiedUrl = trim((string) ($existing->formal_url ?? ''));
+            if ($verifiedUrl !== '' && (string) $distribution->remote_url !== $verifiedUrl) {
+                $distribution->forceFill([
+                    'remote_url' => $verifiedUrl,
+                    'remote_meta' => array_replace(
+                        is_array($distribution->remote_meta) ? $distribution->remote_meta : [],
+                        ['canonical_url' => $verifiedUrl],
+                    ),
+                ])->save();
+            }
+
             return $existing;
         }
 
@@ -66,8 +81,29 @@ final readonly class WebsitePublicationReadbackService
         $formalUrl = trim((string) ($distribution->remote_url ?? '')) !== ''
             ? trim((string) $distribution->remote_url)
             : trim((string) data_get($post, 'link', ''));
-        if ($formalUrl === '' || ! $this->publiclyReadable($formalUrl, (int) $article->id)) {
+        $readbackUrl = $formalUrl === '' ? null : $this->publiclyReadable($formalUrl, (int) $article->id);
+        if ($readbackUrl === null) {
             return null;
+        }
+        // WordPress may return a legacy/random slug that redirects to its
+        // canonical permalink. Persist the final same-origin URL so the
+        // publication center and subsequent syncs do not keep exposing the
+        // stale link.
+        $formalUrl = $readbackUrl;
+
+        // Keep the distribution record aligned with the URL that was actually
+        // returned by the public site. WordPress can rewrite a submitted slug
+        // (for example to a translated or title-based permalink); storing only
+        // the receipt URL left the distribution table and later reconciliation
+        // pointing at the obsolete link.
+        if ((string) $distribution->remote_url !== $formalUrl) {
+            $distribution->forceFill([
+                'remote_url' => $formalUrl,
+                'remote_meta' => array_replace(
+                    is_array($distribution->remote_meta) ? $distribution->remote_meta : [],
+                    ['canonical_url' => $formalUrl],
+                ),
+            ])->save();
         }
 
         $readbackHash = $this->hasher->hashNormalized($this->hasher->normalizeReadback(
@@ -107,13 +143,62 @@ final readonly class WebsitePublicationReadbackService
         ], $actor);
     }
 
+    /**
+     * 补偿轮询最近的官网分发记录。
+     *
+     * 定时调度器暂停、升级重启或旧记录由 update 产生时，单靠后台
+     * schedule 可能让发布中心长期看不到回读结果。该方法只读取已存在
+     * 的 WordPress 分发，不创建新分发，也不会改变远端内容；失败项留给
+     * 下一轮继续处理。
+     */
+    public function pollPending(int $limit = 20): int
+    {
+        $limit = max(1, min(100, $limit));
+        $candidates = ArticleDistribution::query()
+            ->with(['channel', 'article.task'])
+            ->whereIn('action', ['publish', 'update'])
+            ->whereIn('status', ['synced', 'outcome_unknown'])
+            ->where(function ($query): void {
+                $query->where(function ($remote): void {
+                    $remote->whereNotNull('remote_id')->where('remote_id', '!=', '');
+                })->orWhere(function ($remote): void {
+                    $remote->whereNotNull('remote_url')->where('remote_url', '!=', '');
+                });
+            })
+            ->whereHas('channel', function ($query): void {
+                $query->where('channel_type', 'wordpress_rest')
+                    ->where('status', DistributionChannel::STATUS_ACTIVE);
+            })
+            ->orderByDesc('updated_at')
+            ->limit($limit * 3)
+            ->get()
+            ->unique('article_id')
+            ->take($limit);
+
+        $submitted = 0;
+        foreach ($candidates as $distribution) {
+            try {
+                if ($this->attemptReceipt($distribution) instanceof WebsitePublicationReceipt) {
+                    $submitted++;
+                }
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        return $submitted;
+    }
+
     /** @return array<string,mixed>|null */
     private function fetchRemotePost(DistributionChannel $channel, string $remoteId, int $articleId): ?array
     {
         try {
-            $base = rtrim((string) $channel->endpoint_url, '/');
+            // 统一使用渠道模型的 REST 基址。直接拼接 endpoint_url 会在
+            // endpoint 已包含 /wp-json 时产生 /wp-json/wp-json/...，回读
+            // 因此永远拿到 404。
+            $base = $channel->wordpressRestBaseUrl();
             $response = $this->wpRequests->request($channel, 15)
-                ->get($base.'/wp-json/wp/v2/posts/'.rawurlencode($remoteId), [
+                ->get($base.'/wp/v2/posts/'.rawurlencode($remoteId), [
                     'context' => 'edit',
                     '_fields' => 'status,link,title,excerpt,content',
                 ]);
@@ -133,16 +218,31 @@ final readonly class WebsitePublicationReadbackService
         }
     }
 
-    private function publiclyReadable(string $url, int $articleId): bool
+    private function publiclyReadable(string $url, int $articleId): ?string
     {
+        $url = trim($url);
+        $originHost = strtolower((string) parse_url($url, PHP_URL_HOST));
+        if ($originHost === '') {
+            return null;
+        }
+        $resolvedUrl = $url;
         try {
             $response = $this->safeHttp->get(
                 Http::timeout(10)->connectTimeout(5),
                 $url,
                 256 * 1024,
+                3,
+                [],
+                static function (string $redirectUrl) use (&$resolvedUrl, $originHost): void {
+                    $redirectHost = strtolower((string) parse_url($redirectUrl, PHP_URL_HOST));
+                    if ($redirectHost === '' || ! hash_equals($originHost, $redirectHost)) {
+                        throw new OutboundRequestBlockedException('public_url_redirect_origin_changed');
+                    }
+                    $resolvedUrl = $redirectUrl;
+                },
             );
 
-            return $response->successful();
+            return $response->successful() ? $resolvedUrl : null;
         } catch (Throwable $exception) {
             Log::warning('website-publication-readback: public url check failed', [
                 'article_id' => $articleId,
@@ -150,7 +250,7 @@ final readonly class WebsitePublicationReadbackService
                 'error' => $exception->getMessage(),
             ]);
 
-            return false;
+            return null;
         }
     }
 
