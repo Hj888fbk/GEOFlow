@@ -341,7 +341,11 @@ final class SiteThemePackageService
                 }
                 $sourcePath = $item->getPathname();
                 $this->storage->regular($sourcePath);
-                $path = $prefix.'/'.substr($sourcePath, strlen($directory) + 1);
+                $relativeSourcePath = substr($sourcePath, strlen($directory) + 1);
+                if (DIRECTORY_SEPARATOR === '\\') {
+                    $relativeSourcePath = str_replace('\\', '/', $relativeSourcePath);
+                }
+                $path = $prefix.'/'.$relativeSourcePath;
                 $this->guard->filePath($path, $id);
                 if (isset($folded[strtolower($path)])) {
                     $this->storage->fail('duplicate_path');

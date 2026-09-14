@@ -27,6 +27,13 @@
             'articleSection' => $article->category?->name,
             'keywords' => $tags,
         ];
+        if (!empty($pageImage)) {
+            $articleSchema['image'] = [
+                preg_match('/^(?:https?:)?\\/\\//i', (string) $pageImage) === 1
+                    ? $pageImage
+                    : url($pageImage),
+            ];
+        }
     @endphp
     @if($article->category)
         <meta property="article:section" content="{{ $article->category->name }}">

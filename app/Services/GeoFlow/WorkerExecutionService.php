@@ -23,6 +23,7 @@ use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\GeoFlow\ImageUrlNormalizer;
+use App\Support\GeoFlow\KeywordNormalizer;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Closure;
 use Illuminate\Support\Facades\DB;
@@ -128,12 +129,18 @@ class WorkerExecutionService
             $executionContext,
             function (array $generation) use ($task, $titleRow, $author, $category, $keyword, $generationEvidenceSnapshot, $executionContext, $knowledgeContext, $knowledgeBundle, $executionStartedAt): array {
                 $aiModel = $generation['model'];
-                $imageResult = $this->insertTaskImagesIntoContent($task, $generation['content']);
+                $imageResult = $this->insertTaskImagesIntoContent(
+                    $task,
+                    $generation['content'],
+                    (string) $titleRow->title,
+                    $keyword,
+                );
                 $content = $imageResult['content'];
                 $selectedImages = $imageResult['images'];
                 $excerpt = $this->buildExcerpt($content);
                 $generatedMetadata = $this->articleGeneratedMetadataService->generate(
                     $task,
+                    $executionContext,
                     $aiModel,
                     (string) $titleRow->title,
                     $keyword,
@@ -175,19 +182,30 @@ class WorkerExecutionService
                         'published_at' => null,
                     ];
 
+                    // Keep every provider-derived text value valid before it
+                    // reaches PostgreSQL. Metadata and content are generated
+                    // in separate calls, and a malformed byte sequence in any
+                    // one of them would otherwise abort the whole transaction.
+                    $articleTitle = OpenAiRuntimeProvider::normalizeGeneratedText((string) $titleRow->title);
+                    $articleKeyword = KeywordNormalizer::normalize('', $keyword);
+                    $articleExcerpt = OpenAiRuntimeProvider::normalizeGeneratedText($excerpt);
+                    $articleContent = OpenAiRuntimeProvider::normalizeGeneratedText($content);
+                    $articleKeywords = OpenAiRuntimeProvider::normalizeGeneratedText($keywords);
+                    $articleMetaDescription = OpenAiRuntimeProvider::normalizeGeneratedText($metaDescription);
+
                     $pendingWorkflow = ArticleWorkflow::normalizeState('draft', 'pending');
                     $article = Article::query()->create([
-                        'title' => (string) $titleRow->title,
-                        'slug' => ArticleWorkflow::generateUniqueSlug((string) $titleRow->title),
-                        'excerpt' => $excerpt,
-                        'content' => $content,
+                        'title' => $articleTitle,
+                        'slug' => ArticleWorkflow::generateUniqueSlug($articleTitle),
+                        'excerpt' => $articleExcerpt,
+                        'content' => $articleContent,
                         'category_id' => $category?->id,
                         'author_id' => $author?->id,
                         'task_id' => (int) $task->id,
                         'source_title_id' => (int) $titleRow->id,
-                        'original_keyword' => $keyword,
-                        'keywords' => $keywords,
-                        'meta_description' => $metaDescription,
+                        'original_keyword' => $articleKeyword,
+                        'keywords' => $articleKeywords,
+                        'meta_description' => $articleMetaDescription,
                         'status' => $pendingWorkflow['status'],
                         'review_status' => $pendingWorkflow['review_status'],
                         'is_ai_generated' => 1,
@@ -253,7 +271,7 @@ class WorkerExecutionService
 
                     $result = [
                         'article_id' => (int) $article->id,
-                        'title' => (string) $titleRow->title,
+                        'title' => $articleTitle,
                         'message' => '草稿生成成功',
                         'meta' => [
                             'task_id' => (int) $task->id,
@@ -554,6 +572,8 @@ class WorkerExecutionService
                 throw $exception;
             } catch (Throwable $exception) {
                 if ($persistenceStarted) {
+                    $this->logPersistenceFailure($task, $exception);
+
                     throw $exception;
                 }
 
@@ -575,6 +595,41 @@ class WorkerExecutionService
         }
 
         throw new RuntimeException('AI模型不可用或已达每日限制');
+    }
+
+    private function logPersistenceFailure(Task $task, Throwable $exception): void
+    {
+        try {
+            $previous = $exception->getPrevious();
+            $sql = method_exists($exception, 'getSql') ? (string) $exception->getSql() : '';
+            Log::error('GeoFlow article result persistence failed.', [
+                'task_id' => (int) $task->getKey(),
+                'exception_type' => $exception::class,
+                'exception_code' => (string) $exception->getCode(),
+                'error' => $this->safeDiagnosticMessage($exception),
+                'has_previous' => $previous instanceof Throwable,
+                'previous_type' => $previous instanceof Throwable ? $previous::class : null,
+                'previous_message_length' => $previous instanceof Throwable ? mb_strlen($previous->getMessage(), 'UTF-8') : 0,
+                'sql_hash' => $sql !== '' ? hash('sha256', $sql) : null,
+            ]);
+        } catch (Throwable) {
+            // Diagnostics must never change the retry behaviour of the worker.
+        }
+    }
+
+    private function safeDiagnosticMessage(Throwable $exception): string
+    {
+        $message = $this->aiExecutionErrorSanitizer->sanitize($exception, '');
+        if ($message !== '') {
+            return $message;
+        }
+
+        $previous = $exception->getPrevious();
+        if ($previous instanceof Throwable) {
+            return $this->aiExecutionErrorSanitizer->sanitize($previous, '');
+        }
+
+        return 'AI execution failed';
     }
 
     /**
@@ -877,7 +932,7 @@ class WorkerExecutionService
      *
      * @return array{content:string,images:list<Image>}
      */
-    private function insertTaskImagesIntoContent(Task $task, string $content): array
+    private function insertTaskImagesIntoContent(Task $task, string $content, string $title = '', string $focusKeyword = ''): array
     {
         $libraryId = (int) ($task->image_library_id ?? 0);
         $imageCount = max(0, (int) ($task->image_count ?? 0));
@@ -888,13 +943,26 @@ class WorkerExecutionService
         /** @var list<Image> $images */
         $images = Image::query()
             ->where('library_id', $libraryId)
-            ->inRandomOrder()
-            ->limit($imageCount)
-            ->get(['id', 'file_path', 'original_name'])
+            ->get(['id', 'file_path', 'original_name', 'tags', 'used_count', 'usage_count'])
             ->all();
         if ($images === []) {
             return ['content' => $content, 'images' => []];
         }
+
+        $signals = $this->imageSearchSignals($title, $focusKeyword);
+        usort($images, function (Image $left, Image $right) use ($signals): int {
+            $scoreDifference = $this->imageRelevanceScore($right, $signals) <=> $this->imageRelevanceScore($left, $signals);
+            if ($scoreDifference !== 0) {
+                return $scoreDifference;
+            }
+
+            $usageDifference = ((int) ($left->usage_count ?? $left->used_count ?? 0)) <=> ((int) ($right->usage_count ?? $right->used_count ?? 0));
+
+            return $usageDifference !== 0
+                ? $usageDifference
+                : ((int) $left->id) <=> ((int) $right->id);
+        });
+        $images = array_slice($images, 0, $imageCount);
 
         $markdownBlocks = [];
         foreach ($images as $image) {
@@ -912,6 +980,50 @@ class WorkerExecutionService
         }
 
         return ['content' => $content, 'images' => $images];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function imageSearchSignals(string $title, string $focusKeyword): array
+    {
+        $signals = KeywordNormalizer::split($focusKeyword);
+        foreach ([$title, $focusKeyword] as $value) {
+            if (preg_match_all('/[\p{Han}]{2,}|[A-Za-z0-9][A-Za-z0-9_-]{1,}/u', $value, $matches)) {
+                foreach ($matches[0] as $match) {
+                    $signals[] = (string) $match;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn (string $signal): string => mb_strtolower(trim($signal), 'UTF-8'),
+            $signals,
+        ), static fn (string $signal): bool => mb_strlen($signal, 'UTF-8') >= 2)));
+    }
+
+    /**
+     * @param  list<string>  $signals
+     */
+    private function imageRelevanceScore(Image $image, array $signals): int
+    {
+        if ($signals === []) {
+            return 0;
+        }
+
+        $haystack = mb_strtolower(implode(' ', [
+            (string) ($image->original_name ?? ''),
+            (string) ($image->tags ?? ''),
+            (string) ($image->file_path ?? ''),
+        ]), 'UTF-8');
+        $score = 0;
+        foreach ($signals as $signal) {
+            if ($signal !== '' && mb_stripos($haystack, $signal, 0, 'UTF-8') !== false) {
+                $score += 100 + min(100, mb_strlen($signal, 'UTF-8') * 5);
+            }
+        }
+
+        return $score;
     }
 
     /**

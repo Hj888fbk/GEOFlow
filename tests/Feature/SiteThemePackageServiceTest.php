@@ -526,6 +526,10 @@ class SiteThemePackageServiceTest extends TestCase
 
     public function test_expired_staging_cleanup_unlinks_a_child_symlink_and_preserves_its_target(): void
     {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('Creating symbolic links requires privileges that are not available in the Windows test environment.');
+        }
+
         $storage = app(SiteThemePackageStorage::class);
         $stage = 'staging/'.str_repeat('a', 40);
         $directory = $storage->exclusiveDirectory($stage);
@@ -598,6 +602,10 @@ class SiteThemePackageServiceTest extends TestCase
 
     public function test_source_symlink_is_rejected_and_exclusive_export_is_cleaned(): void
     {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('Creating symbolic links requires privileges that are not available in the Windows test environment.');
+        }
+
         $id = 'fixture-'.strtolower(Str::random(12));
         $this->createSource($id, ThemePackageFixture::files($id));
         $target = Storage::disk('local')->path('secret.txt');
@@ -615,6 +623,10 @@ class SiteThemePackageServiceTest extends TestCase
 
     public function test_installed_symlink_never_exposes_an_external_file(): void
     {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('Creating symbolic links requires privileges that are not available in the Windows test environment.');
+        }
+
         $service = app(SiteThemePackageService::class);
         $report = $service->inspect(ThemePackageFixture::archive(ThemePackageFixture::files()), 8);
         $theme = $service->install(8, $report['token'], true);

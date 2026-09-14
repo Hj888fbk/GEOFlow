@@ -85,7 +85,7 @@ class ManagedImageFileServiceTest extends TestCase
 
     public function test_rejects_a_symlink_in_an_existing_segment(): void
     {
-        if (! function_exists('symlink')) {
+        if (PHP_OS_FAMILY === 'Windows' || ! function_exists('symlink')) {
             $this->markTestSkipped('Symlinks are not supported.');
         }
 
@@ -118,7 +118,7 @@ class ManagedImageFileServiceTest extends TestCase
 
     public function test_rejects_a_symlink_in_the_managed_root_segments(): void
     {
-        if (! function_exists('symlink')) {
+        if (PHP_OS_FAMILY === 'Windows' || ! function_exists('symlink')) {
             $this->markTestSkipped('Symlinks are not supported.');
         }
 

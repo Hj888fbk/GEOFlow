@@ -89,6 +89,26 @@ class WordPressTaxonomySyncServiceTest extends TestCase
         $this->assertSame([21, 22], $ids);
     }
 
+    public function test_it_splits_chinese_enumeration_and_discards_trailing_punctuation(): void
+    {
+        Http::fake([
+            'https://wp.example.com/wp-json/wp/v2/tags*' => Http::sequence()
+                ->push([])
+                ->push(['id' => 31, 'name' => '法兰', 'slug' => 'fa-lan'], 201)
+                ->push([])
+                ->push(['id' => 32, 'name' => '橡胶鸭嘴', 'slug' => 'xiang-jiao-ya-zui'], 201),
+        ]);
+
+        $ids = app(WordPressTaxonomySyncService::class)->tagIds($this->makeChannel(), [
+            'article' => ['keywords' => '法兰、橡胶鸭嘴?'],
+        ]);
+
+        $this->assertSame([31, 32], $ids);
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && $request->url() === 'https://wp.example.com/wp-json/wp/v2/tags'
+            && in_array($request['name'] ?? null, ['法兰', '橡胶鸭嘴'], true));
+    }
+
     public function test_it_skips_tags_when_tag_strategy_disabled(): void
     {
         Http::fake();

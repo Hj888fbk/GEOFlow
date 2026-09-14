@@ -62,4 +62,18 @@ MD);
         $this->assertStringContainsString('<code class="language-php">echo 1;', $html);
         $this->assertStringNotContainsString('language-markdown', $html);
     }
+
+    public function test_images_get_responsive_dimensions_and_descriptive_alt_text(): void
+    {
+        $html = ArticleHtmlPresenter::markdownToHtml(
+            '![图片](https://example.com/large.png)',
+            '法兰式橡胶鸭嘴阀',
+        );
+
+        $this->assertStringContainsString('alt="法兰式橡胶鸭嘴阀 配图 1"', $html);
+        $this->assertStringContainsString('loading="lazy"', $html);
+        $this->assertStringContainsString('decoding="async"', $html);
+        $this->assertStringContainsString('style="max-width:100%;height:auto"', $html);
+        $this->assertStringNotContainsString('/ style=', $html);
+    }
 }

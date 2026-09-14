@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Models\DistributionChannel;
+use App\Support\GeoFlow\KeywordNormalizer;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -72,7 +73,7 @@ class WordPressTaxonomySyncService
 
         $article = is_array($payload['article'] ?? null) ? $payload['article'] : [];
         $keywords = (string) ($article['keywords'] ?? '');
-        $names = preg_split('/[,，;；\n]+/u', $keywords) ?: [];
+        $names = KeywordNormalizer::split($keywords, (string) ($article['focus_keyword'] ?? ''));
         $ids = [];
         foreach ($names as $name) {
             $name = trim((string) $name);

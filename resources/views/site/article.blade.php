@@ -1,6 +1,41 @@
 @extends('site.layout')
 
 @push('head')
+    @php
+        $schemaAtContext = chr(64).'context';
+        $schemaAtType = chr(64).'type';
+        $schemaAtId = chr(64).'id';
+        $articleSchema = [
+            $schemaAtContext => 'https://schema.org',
+            $schemaAtType => 'Article',
+            'headline' => $article->title,
+            'description' => $pageDescription,
+            'datePublished' => optional($article->published_at ?? $article->created_at)->toAtomString(),
+            'dateModified' => optional($article->updated_at ?? $article->published_at ?? $article->created_at)->toAtomString(),
+            'mainEntityOfPage' => [
+                $schemaAtType => 'WebPage',
+                $schemaAtId => $canonicalUrl ?? route('site.article', $article->slug),
+            ],
+            'author' => [
+                $schemaAtType => 'Person',
+                'name' => $article->author?->name ?? $siteTitle,
+            ],
+            'publisher' => [
+                $schemaAtType => 'Organization',
+                'name' => $siteTitle,
+            ],
+            'articleSection' => $article->category?->name,
+            'keywords' => $tags,
+        ];
+        if (!empty($pageImage)) {
+            $articleSchema['image'] = [
+                preg_match('/^(?:https?:)?\\/\\//i', (string) $pageImage) === 1
+                    ? $pageImage
+                    : url($pageImage),
+            ];
+        }
+    @endphp
+    <x-json-ld :data="$articleSchema" />
 @endpush
 
 @section('content')

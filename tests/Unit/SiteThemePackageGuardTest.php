@@ -523,6 +523,10 @@ class SiteThemePackageGuardTest extends TestCase
 
     public function test_storage_path_chain_and_cleanup_reject_symlink_root_without_touching_target(): void
     {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('Symlinks are not supported.');
+        }
+
         $target = Storage::disk('local')->path('outside');
         mkdir($target);
         file_put_contents($target.'/keep.txt', 'keep');

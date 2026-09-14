@@ -19,7 +19,7 @@ final class SiteThemePackageStorage
     public function path(string $relative): string
     {
         $this->relative($relative);
-        $root = rtrim(Storage::disk('local')->path(''), '/');
+        $root = rtrim(Storage::disk('local')->path(''), '/\\');
         $this->assertChain($root, false);
         $path = $root.'/'.self::ROOT.'/'.$relative;
         $this->assertChain($path, false);
@@ -200,15 +200,26 @@ final class SiteThemePackageStorage
 
     private function assertChain(string $absolute, bool $create): void
     {
-        if (! str_starts_with($absolute, '/')) {
-            $this->fail('invalid_path');
+        if (DIRECTORY_SEPARATOR === '\\') {
+            $absolute = str_replace('/', DIRECTORY_SEPARATOR, $absolute);
+            if (preg_match('/\A[A-Za-z]:\\\\/', $absolute) !== 1) {
+                $this->fail('invalid_path');
+            }
+            $current = substr($absolute, 0, 3);
+            $parts = explode(DIRECTORY_SEPARATOR, substr($absolute, 3));
+        } else {
+            if (! str_starts_with($absolute, DIRECTORY_SEPARATOR)) {
+                $this->fail('invalid_path');
+            }
+            $current = DIRECTORY_SEPARATOR;
+            $parts = explode(DIRECTORY_SEPARATOR, ltrim($absolute, DIRECTORY_SEPARATOR));
         }
-        $current = '';
-        foreach (explode('/', ltrim($absolute, '/')) as $part) {
+
+        foreach ($parts as $part) {
             if ($part === '' || $part === '.' || $part === '..') {
                 $this->fail('invalid_path');
             }
-            $current .= '/'.$part;
+            $current = rtrim($current, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$part;
             $stat = @lstat($current);
             if ($stat === false) {
                 if (! $create) {

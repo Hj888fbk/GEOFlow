@@ -5,6 +5,7 @@
     $seoKeywords = trim((string) ($pageKeywords ?? ($siteKeywords ?? '')));
     $seoCanonical = trim((string) ($canonicalUrl ?? url()->current()));
     $seoOgType = trim((string) ($pageOgType ?? 'website'));
+    $seoImage = trim((string) ($pageImage ?? ''));
     $pwaCurrentSite = app(\App\Support\Site\CurrentSite::class);
     $pwaEnabled = $pwaCurrentSite->isResolved() && $pwaCurrentSite->isPrimary();
 
@@ -43,3 +44,15 @@
 @if($seoSiteName !== '')
     <meta property="og:site_name" content="{{ $seoSiteName }}">
 @endif
+@if($seoImage !== '')
+    @php
+        $seoImageUrl = preg_match('/^(?:https?:)?\\/\\//i', $seoImage) === 1 ? $seoImage : url($seoImage);
+    @endphp
+    <meta property="og:image" content="{{ $seoImageUrl }}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="{{ $seoImageUrl }}">
+@else
+    <meta name="twitter:card" content="summary">
+@endif
+<meta name="twitter:title" content="{{ $seoTitle }}">
+<meta name="twitter:description" content="{{ $seoDescription }}">

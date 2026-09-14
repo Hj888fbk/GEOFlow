@@ -27,6 +27,7 @@ class WordPressRestPublisherTest extends TestCase
                 'id' => 123,
                 'link' => 'https://wp.example.com/hello-world/',
             ], 201),
+            'https://wp.example.com/wp-json/rankmath/v1/updateMeta' => Http::response(['ok' => true], 200),
         ]);
 
         [$channel, $distribution] = $this->makeDistribution();
@@ -37,6 +38,7 @@ class WordPressRestPublisherTest extends TestCase
                 'slug' => 'hello-world',
                 'excerpt' => 'Short summary',
                 'content_html' => '<p>Hello</p>',
+                'focus_keyword' => '主关键词',
                 'keywords' => 'geo, ai',
                 'meta_description' => 'Meta summary',
             ],
@@ -51,8 +53,44 @@ class WordPressRestPublisherTest extends TestCase
                 && $request->url() === 'https://wp.example.com/wp-json/wp/v2/posts'
                 && $request['title'] === 'Hello World'
                 && $request['status'] === 'publish'
-                && $request['content'] === '<p>Hello</p>';
+                && $request['content'] === '<p>Hello</p>'
+                && ($request['meta']['rank_math_focus_keyword'] ?? null) === '主关键词, geo, ai'
+                && ($request['meta']['rank_math_title'] ?? null) === 'Hello World'
+                && ($request['meta']['rank_math_description'] ?? null) === 'Meta summary';
         });
+
+        Http::assertSent(function ($request): bool {
+            return $request->method() === 'POST'
+                && $request->url() === 'https://wp.example.com/wp-json/rankmath/v1/updateMeta'
+                && $request['objectType'] === 'post'
+                && (int) $request['objectID'] === 123
+                && ($request['meta']['rank_math_focus_keyword'] ?? null) === '主关键词, geo, ai';
+        });
+    }
+
+    public function test_it_reconciles_a_wordpress_slug_rewritten_by_the_remote_site(): void
+    {
+        Http::fake([
+            'https://wp.example.com/wp-json/wp/v2/posts*' => Http::response([[
+                'id' => 456,
+                'slug' => '中文规范链接',
+                'link' => 'https://wp.example.com/news/中文规范链接/',
+                'title' => ['raw' => 'Hello World'],
+            ]]),
+        ]);
+
+        [$channel, $distribution] = $this->makeDistribution([
+            'remote_id' => null,
+            'remote_url' => null,
+            'status' => 'outcome_unknown',
+        ]);
+
+        $result = app(WordPressRestPublisher::class)->reconcilePublication($distribution, [
+            'article' => ['title' => 'Hello World', 'slug' => 'hello-world'],
+        ]);
+
+        $this->assertSame('456', $result['remote_id'] ?? null);
+        $this->assertSame('https://wp.example.com/news/中文规范链接/', $result['remote_url'] ?? null);
     }
 
     public function test_it_updates_existing_wordpress_post_id(): void
@@ -234,6 +272,77 @@ class WordPressRestPublisherTest extends TestCase
             $this->assertStringNotContainsString('10.0.0.9', $exception->getMessage());
             $this->assertStringContainsString('HTTP 500', $exception->getMessage());
         }
+    }
+
+    public function test_it_sets_first_uploaded_image_as_featured_media(): void
+    {
+        Http::fake([
+            'https://wp.example.com/wp-json/wp/v2/media*' => Http::sequence()
+                ->push(['id' => 501, 'source_url' => 'https://wp.example.com/uploads/a.jpg'], 201)
+                ->push(['id' => 502, 'source_url' => 'https://wp.example.com/uploads/b.jpg'], 201),
+            'https://wp.example.com/wp-json/wp/v2/posts' => Http::response([
+                'id' => 123,
+                'link' => 'https://wp.example.com/hello-world/',
+            ], 201),
+        ]);
+
+        [$channel, $distribution] = $this->makeDistribution();
+        $config = $channel->channel_config;
+        $config['wordpress_image_strategy'] = 'upload_to_media';
+        $channel->update(['channel_config' => $config]);
+
+        app(WordPressRestPublisher::class)->publish($distribution, [
+            'article' => [
+                'title' => 'Hello World',
+                'slug' => 'hello-world',
+                'excerpt' => 'Short summary',
+                'content_html' => '<p><img src="https://geo.example.com/a.jpg"/></p><p><img src="https://geo.example.com/b.jpg"/></p>',
+            ],
+            'assets' => ['images' => [
+                ['source_url' => 'https://geo.example.com/a.jpg', 'content_base64' => base64_encode('A'), 'filename' => 'a.jpg', 'mime_type' => 'image/jpeg'],
+                ['source_url' => 'https://geo.example.com/b.jpg', 'content_base64' => base64_encode('B'), 'filename' => 'b.jpg', 'mime_type' => 'image/jpeg'],
+            ]],
+        ]);
+
+        Http::assertSent(function ($request): bool {
+            return $request->method() === 'POST'
+                && $request->url() === 'https://wp.example.com/wp-json/wp/v2/posts'
+                && ($request['featured_media'] ?? null) === 501
+                && str_contains((string) $request['content'], 'https://wp.example.com/uploads/a.jpg')
+                && str_contains((string) $request['content'], 'https://wp.example.com/uploads/b.jpg');
+        });
+    }
+
+    public function test_keep_original_strategy_sets_no_featured_media(): void
+    {
+        Http::fake([
+            'https://wp.example.com/wp-json/wp/v2/posts' => Http::response([
+                'id' => 123,
+                'link' => 'https://wp.example.com/hello-world/',
+            ], 201),
+        ]);
+
+        [$channel, $distribution] = $this->makeDistribution();
+
+        app(WordPressRestPublisher::class)->publish($distribution, [
+            'article' => [
+                'title' => 'Hello World',
+                'slug' => 'hello-world',
+                'excerpt' => 'Short summary',
+                'content_html' => '<p><img src="https://geo.example.com/a.jpg"/></p>',
+            ],
+            'assets' => ['images' => [
+                ['source_url' => 'https://geo.example.com/a.jpg', 'content_base64' => base64_encode('A'), 'filename' => 'a.jpg', 'mime_type' => 'image/jpeg'],
+            ]],
+        ]);
+
+        Http::assertSent(function ($request): bool {
+            return $request->method() === 'POST'
+                && $request->url() === 'https://wp.example.com/wp-json/wp/v2/posts'
+                && ! array_key_exists('featured_media', $request->data())
+                && str_contains((string) $request['content'], 'https://geo.example.com/a.jpg');
+        });
+        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), '/wp/v2/media'));
     }
 
     /**

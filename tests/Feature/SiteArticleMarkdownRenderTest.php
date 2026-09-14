@@ -36,6 +36,7 @@ MD);
         $this->assertStringContainsString('<h3>三级标题</h3>', $html);
         $this->assertStringContainsString('<div class="article-table-wrap"><table class="article-table">', $html);
         $this->assertStringContainsString('src="/storage/uploads/images/2026/04/demo.png"', $html);
+        $this->assertStringContainsString('style="max-width:100%;height:auto"', $html);
         $this->assertStringNotContainsString('333.png', $html);
         $this->assertStringContainsString('type="checkbox"', $html);
     }
@@ -75,8 +76,48 @@ MD);
         $this->get(route('site.article', $article->slug))
             ->assertOk()
             ->assertSee('src="/storage/uploads/images/2026/04/demo.png"', false)
+            ->assertSee('alt="Markdown 渲染测试 配图 1"', false)
             ->assertSee('<table class="article-table">', false)
             ->assertDontSee('333.png', false);
+    }
+
+    public function test_published_article_prefers_explicit_seo_metadata_and_exposes_social_image(): void
+    {
+        $category = Category::query()->create([
+            'name' => '工程技术',
+            'slug' => 'engineering-seo',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        $article = Article::query()->create([
+            'title' => '柔性防水套管法兰密封指南',
+            'slug' => 'flexible-sleeve-flange-seal',
+            'excerpt' => '不应作为 SEO 描述的旧摘要。',
+            'content' => '![image](/storage/uploads/images/2026/04/demo.png)\n\n正文内容。',
+            'original_keyword' => '柔性防水套管',
+            'keywords' => '法兰密封,防水套管',
+            'meta_description' => '围绕柔性防水套管法兰连接，说明垫片、螺栓紧固与管道对中的密封控制方法。',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_ai_generated' => 1,
+            'published_at' => now(),
+        ]);
+
+        $imageUrl = url('/storage/uploads/images/2026/04/demo.png');
+
+        $this->get(route('site.article', $article->slug))
+            ->assertOk()
+            ->assertSee('<meta name="description" content="围绕柔性防水套管法兰连接，说明垫片、螺栓紧固与管道对中的密封控制方法。">', false)
+            ->assertDontSee('<meta name="description" content="不应作为 SEO 描述的旧摘要。">', false)
+            ->assertSee('<meta name="keywords" content="柔性防水套管,法兰密封,防水套管">', false)
+            ->assertSee('<meta property="og:image" content="'.$imageUrl.'">', false)
+            ->assertSee('<meta name="twitter:card" content="summary_large_image">', false)
+            ->assertSee('alt="柔性防水套管法兰密封指南 配图 1"', false)
+            ->assertSee('"image":', false)
+            ->assertSee('/storage/uploads/images/2026/04/demo.png', false);
     }
 
     public function test_published_article_page_uses_article_seo_metadata(): void
@@ -433,6 +474,20 @@ MD);
             ->assertDontSee('unpkg.com/lucide', false)
             ->assertDontSee('<style>', false)
             ->assertDontSee('data-hot-carousel]).forEach', false);
+    }
+
+    public function test_toutiao_theme_constrains_article_image_dimensions(): void
+    {
+        $css = file_get_contents(public_path('themes/toutiao-news-20260426/theme.css'));
+        $baseCss = file_get_contents(public_path('assets/css/custom.css'));
+
+        $this->assertIsString($css);
+        $this->assertIsString($baseCss);
+        $this->assertStringContainsString('.tt-article-main .tt-prose img', $css);
+        $this->assertStringContainsString('max-height: min(560px, 70vh);', $css);
+        $this->assertStringContainsString('max-height: 420px;', $css);
+        $this->assertStringContainsString('.article-prose img', $baseCss);
+        $this->assertStringContainsString('object-fit: contain;', $baseCss);
     }
 
     public function test_homepage_renders_configured_carousel_and_sidebar_feed_panel(): void

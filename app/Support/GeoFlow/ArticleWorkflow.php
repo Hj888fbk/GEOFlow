@@ -3,6 +3,7 @@
 namespace App\Support\GeoFlow;
 
 use App\Models\Article;
+use Illuminate\Support\Str;
 
 final class ArticleWorkflow
 {
@@ -57,7 +58,15 @@ final class ArticleWorkflow
 
     public static function generateUniqueSlug(string $title, ?int $excludeArticleId = null): string
     {
-        $slug = self::randomSlug(8);
+        // 文章 URL 需要可读且稳定，尤其是中文标题不能再退化成无意义的
+        // 8 位随机字符串。Laravel 的 transliterate 使用 ICU 生成拼音，
+        // 对型号中的字母/数字也会保留；只有完全没有可用字符时才回退
+        // 到随机 slug。
+        $slug = Str::slug(Str::transliterate(trim($title), '', false));
+        $slug = mb_substr($slug, 0, 100, 'UTF-8');
+        if ($slug === '') {
+            $slug = self::randomSlug(8);
+        }
 
         while (true) {
             try {
@@ -70,7 +79,9 @@ final class ArticleWorkflow
                     return $slug;
                 }
 
-                $slug = self::randomSlug(8);
+                $suffix = self::randomSlug(4);
+                $base = mb_substr($slug, 0, 94, 'UTF-8');
+                $slug = $base.'-'.$suffix;
             } catch (\Throwable) {
                 return self::randomSlug(8);
             }

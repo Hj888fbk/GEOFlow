@@ -12,6 +12,7 @@ use App\Support\Site\ArticleTextAdPicker;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemePreviewContext;
 use App\Support\Site\SiteThemeViewResolver;
+use App\Support\GeoFlow\KeywordNormalizer;
 use Illuminate\View\View;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -54,11 +55,15 @@ class ArticleController extends Controller
         }
 
         $contentHtml = ArticleTextAdPicker::injectIntoContentHtml(
-            ArticleHtmlPresenter::markdownToHtml($body)
+            ArticleHtmlPresenter::markdownToHtml($body, (string) $article->title)
         );
         $excerptPlain = $excerpt !== '' ? ArticleHtmlPresenter::cardSummary($article, 160) : '';
 
         $tags = $this->keywordTags((string) $article->keywords);
+        $focusKeyword = trim((string) $article->original_keyword);
+        if ($focusKeyword !== '' && ! in_array($focusKeyword, $tags, true)) {
+            array_unshift($tags, $focusKeyword);
+        }
 
         $related = $this->siteArticles->query()
             ->where('category_id', $article->category_id)
@@ -68,8 +73,12 @@ class ArticleController extends Controller
             ->get(['id', 'title', 'slug']);
 
         $pageTitle = (string) $article->title;
-        $pageDescription = $excerptPlain !== '' ? $excerptPlain : ArticleHtmlPresenter::cardSummary($article, 160);
+        $storedMetaDescription = trim((string) $article->meta_description);
+        $pageDescription = $storedMetaDescription !== ''
+            ? mb_substr($storedMetaDescription, 0, 160)
+            : ($excerptPlain !== '' ? $excerptPlain : ArticleHtmlPresenter::cardSummary($article, 160));
         $pageKeywords = implode(',', $tags);
+        $pageImage = $this->firstImageUrl($contentHtml);
 
         $stickyAd = ArticleStickyAdPicker::firstEnabled();
 
@@ -86,6 +95,7 @@ class ArticleController extends Controller
             'pageTitle' => $pageTitle,
             'pageDescription' => $pageDescription,
             'pageKeywords' => $pageKeywords,
+            'pageImage' => $pageImage,
             'pageOgType' => 'article',
             'stickyAd' => $stickyAd,
             'canonicalUrl' => $this->urls->article($article),
@@ -102,16 +112,17 @@ class ArticleController extends Controller
             return [];
         }
 
-        $parts = preg_split('/[,，、\n]+/u', $keywords) ?: [];
+        return array_slice(KeywordNormalizer::split($keywords), 0, 12);
+    }
 
-        $out = [];
-        foreach ($parts as $part) {
-            $t = trim((string) $part);
-            if ($t !== '' && ! in_array($t, $out, true)) {
-                $out[] = $t;
-            }
+    private function firstImageUrl(string $contentHtml): ?string
+    {
+        if (preg_match('/<img\b[^>]*\bsrc\s*=\s*(["\'])(.*?)\1/iu', $contentHtml, $matches) !== 1) {
+            return null;
         }
 
-        return array_slice($out, 0, 12);
+        $url = trim((string) ($matches[2] ?? ''));
+
+        return $url !== '' ? $url : null;
     }
 }
