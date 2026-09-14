@@ -149,7 +149,7 @@
                 <h3 class="text-base font-semibold text-red-800">{{ __('admin.url_import.error.job_failed') }}</h3>
                 <p class="mt-2 text-sm text-red-700">{{ $job->error_message }}</p>
                 <p class="mt-3 text-sm leading-6 text-red-700">{{ __('admin.url_import.error.ai_config_help') }}</p>
-                <a href="{{ route('admin.ai-models.index') }}" target="_blank" rel="noopener noreferrer" class="mt-4 inline-flex items-center rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
+                <a href="{{ route('admin.ai-models.index') }}" class="mt-4 inline-flex items-center rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
                     <i data-lucide="external-link" class="mr-2 h-4 w-4"></i>
                     {{ __('admin.url_import.error.ai_config_button') }}
                 </a>
@@ -410,7 +410,7 @@
                 runtimeError.innerHTML = `
                     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <span>${escapeHtml(message)}</span>
-                        <a href="${escapeHtml(root.dataset.aiConfigUrl || '#')}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
+                        <a href="${escapeHtml(root.dataset.aiConfigUrl || '#')}" class="inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
                             ${escapeHtml(aiConfigButtonText)}
                         </a>
                     </div>

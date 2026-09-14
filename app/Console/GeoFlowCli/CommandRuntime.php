@@ -4,6 +4,7 @@ namespace App\Console\GeoFlowCli;
 
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Symfony\Component\Console\Helper\QuestionHelper;
+use Symfony\Component\Console\Helper\TerminalInputHelper;
 use Symfony\Component\Console\Input\StreamableInputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Console\Question\Question;
@@ -248,14 +249,14 @@ final class CommandRuntime
         }
 
         $question = new ConfirmationQuestion("确认删除 {$target}？ [y/N] ", false);
-        if (! (new QuestionHelper)->ask($this->context->input, $this->context->errorOutput, $question)) {
+        if (! $this->questionHelper()->ask($this->context->input, $this->context->errorOutput, $question)) {
             throw new CliException('删除操作已取消');
         }
     }
 
     public function confirm(string $question): bool
     {
-        return (bool) (new QuestionHelper)->ask(
+        return (bool) $this->questionHelper()->ask(
             $this->context->input,
             $this->context->errorOutput,
             new ConfirmationQuestion($question, false),
@@ -273,7 +274,7 @@ final class CommandRuntime
             $question->setHidden(true);
         }
 
-        return trim((string) (new QuestionHelper)->ask(
+        return trim((string) $this->questionHelper()->ask(
             $this->context->input,
             $this->context->errorOutput,
             $question,
@@ -305,6 +306,15 @@ final class CommandRuntime
         }
 
         return $raw;
+    }
+
+    private function questionHelper(): QuestionHelper
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            class_exists(TerminalInputHelper::class);
+        }
+
+        return new QuestionHelper;
     }
 
     private function readRegularFile(string $path, string $label, int $length): string

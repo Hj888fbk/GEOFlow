@@ -1,4 +1,4 @@
-# GEOFlow Chrome Draft Operator 0.3.0
+# GEOFlow Chrome Draft Operator 0.3.1
 
 Manifest V3 extension for human-confirmed publishing work. It connects to a self-hosted GEOFlow instance, claims assigned manual-publication work orders, opens target pages, and fills supported editors. The operator reviews the draft and performs the final publish action.
 

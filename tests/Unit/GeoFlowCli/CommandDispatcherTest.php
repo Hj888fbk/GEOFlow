@@ -43,7 +43,10 @@ class CommandDispatcherTest extends TestCase
         $status = $dispatcher->dispatch($input->getRawTokens(), $input, $stdout, $stderr);
 
         $this->assertSame(0, $status);
-        $this->assertSame("{\"success\":true,\"data\":{\"catalog\":1}}\n", $stdout->fetch());
+        $this->assertSame(
+            '{"success":true,"data":{"catalog":1}}'.PHP_EOL,
+            $stdout->fetch(),
+        );
         $diagnostic = $stderr->fetch();
         $this->assertSame(1, substr_count($diagnostic, '下一主版本'));
         $this->assertStringNotContainsString('secret-token', $diagnostic);
@@ -292,7 +295,9 @@ class CommandDispatcherTest extends TestCase
 
         $dispatcher->dispatch($input->getRawTokens(), $input, $stdout, $stderr);
 
-        $this->assertSame(0600, fileperms($path) & 0777);
+        if (PHP_OS_FAMILY !== 'Windows') {
+            $this->assertSame(0600, fileperms($path) & 0777);
+        }
         $this->assertStringNotContainsString('very-secret-token', $stdout->fetch());
 
         [$dispatcher, $showInput, $showOutput, $showError] = $this->harness($factory, [
@@ -307,6 +312,10 @@ class CommandDispatcherTest extends TestCase
     #[Test]
     public function config_show_reports_default_directory_permission_repairs_to_stderr(): void
     {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('POSIX directory permissions are unavailable on Windows.');
+        }
+
         $directory = $this->root.'/home/.config/geoflow';
         mkdir($directory, 0755, true);
         file_put_contents($directory.'/config.json', '{"base_url":"https://api.example.com","token":"secret-token"}');

@@ -25,10 +25,13 @@ class ArticleAiQualityQueueConfigurationTest extends TestCase
         $this->assertSame(35, config('geoflow.ai_quality_sampled_request_timeout_seconds'));
         $this->assertSame(6000, config('geoflow.ai_quality_sampled_max_characters'));
         $this->assertSame(12, config('geoflow.ai_quality_sampled_max_ranges'));
-        $this->assertSame(2048, config('geoflow.ai_quality_max_output_tokens'));
+        $this->assertSame(4096, config('geoflow.ai_quality_max_output_tokens'));
         $this->assertSame(12, config('geoflow.ai_quality_max_evidence'));
         $this->assertSame(6000, config('geoflow.ai_quality_max_evidence_characters'));
-        $this->assertSame(6, config('geoflow.ai_quality_max_fact_retrievals'));
+        $this->assertSame(
+            max(0, min(12, (int) env('GEOFLOW_AI_QUALITY_MAX_FACT_RETRIEVALS', 6))),
+            config('geoflow.ai_quality_max_fact_retrievals'),
+        );
         $this->assertSame('legacy', config('geoflow.ai_quality_execution_version'));
         $this->assertSame(0, config('geoflow.ai_quality_principle_v2_percent'));
         $this->assertSame(0, config('geoflow.ai_quality_scoring_v2_percent'));
@@ -164,7 +167,7 @@ class ArticleAiQualityQueueConfigurationTest extends TestCase
             $this->assertStringContainsString('GEOFLOW_AI_QUALITY_SAMPLED_REQUEST_TIMEOUT_SECONDS=35', $contents);
             $this->assertStringContainsString('GEOFLOW_AI_QUALITY_SAMPLED_MAX_CHARACTERS=6000', $contents);
             $this->assertStringContainsString('GEOFLOW_AI_QUALITY_SAMPLED_MAX_RANGES=12', $contents);
-            $this->assertStringContainsString('GEOFLOW_AI_QUALITY_MAX_OUTPUT_TOKENS=2048', $contents);
+            $this->assertStringContainsString('GEOFLOW_AI_QUALITY_MAX_OUTPUT_TOKENS=4096', $contents);
             $this->assertStringContainsString('GEOFLOW_AI_QUALITY_MAX_EVIDENCE=12', $contents);
             $this->assertStringContainsString('GEOFLOW_AI_QUALITY_MAX_FACT_RETRIEVALS=6', $contents);
             $this->assertStringContainsString('GEOFLOW_AI_QUALITY_JOB_TIMEOUT_SECONDS=245', $contents);

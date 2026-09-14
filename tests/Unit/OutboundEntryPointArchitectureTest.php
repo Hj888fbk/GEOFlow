@@ -30,7 +30,8 @@ class OutboundEntryPointArchitectureTest extends TestCase
     #[Test]
     public function production_code_cannot_construct_or_install_an_unsecured_http_factory(): void
     {
-        $provider = app_path('Providers/AppServiceProvider.php');
+        $provider = realpath(app_path('Providers/AppServiceProvider.php'));
+        $this->assertIsString($provider);
 
         foreach (File::allFiles(app_path()) as $file) {
             if ($file->getExtension() !== 'php') {

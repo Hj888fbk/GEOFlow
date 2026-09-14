@@ -240,6 +240,10 @@ class EntrypointTest extends TestCase
     #[Test]
     public function repaired_config_warning_is_rendered_before_a_local_validation_error(): void
     {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('POSIX file permissions are unavailable on Windows.');
+        }
+
         $root = sys_get_temp_dir().'/geoflow-entrypoint-warning-'.bin2hex(random_bytes(6));
         $directory = $root.'/home/.config/geoflow';
         mkdir($directory, 0700, true);

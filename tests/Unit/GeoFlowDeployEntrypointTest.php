@@ -10,6 +10,10 @@ class GeoFlowDeployEntrypointTest extends TestCase
 {
     public function test_entrypoint_forwards_arguments_and_requires_an_explicit_data_recovery_point(): void
     {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('The deployment entrypoint requires a Unix shell.');
+        }
+
         $temporary = sys_get_temp_dir().'/geoflow-deploy-'.bin2hex(random_bytes(8));
         mkdir($temporary, 0700);
         file_put_contents($temporary.'/geoflow-updater', "#!/bin/sh\nprintf '%s\\n' \"\$@\"\n");

@@ -12,7 +12,9 @@ class ExecutableEntrypointTest extends TestCase
     public function executable_version_smoke_works_when_curl_functions_are_unavailable(): void
     {
         $path = base_path('bin/geoflow');
-        $this->assertTrue(is_executable($path));
+        if (PHP_OS_FAMILY !== 'Windows') {
+            $this->assertTrue(is_executable($path));
+        }
         $process = new Process([
             PHP_BINARY,
             '-d',

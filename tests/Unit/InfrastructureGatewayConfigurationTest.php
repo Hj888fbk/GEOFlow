@@ -15,7 +15,7 @@ final class InfrastructureGatewayConfigurationTest extends TestCase
 
         self::assertStringNotContainsString("\n    ports:", $app);
         self::assertStringContainsString('"--no-reload"', $app);
-        self::assertStringContainsString('"127.0.0.1:${APP_PORT:-18080}:80"', $web);
+        self::assertStringContainsString('"127.0.0.1:${APP_PORT:-28080}:80"', $web);
         self::assertStringContainsString('./docker/nginx/local.conf:/etc/nginx/conf.d/default.conf:ro', $web);
         self::assertStringNotContainsString("\n    ports:", $reverb);
         self::assertStringContainsString("\n    expose:\n      - \"8080\"", $reverb);

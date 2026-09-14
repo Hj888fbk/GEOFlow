@@ -85,16 +85,18 @@ class UpgradeJournal
             if (! rename($temporary, $path)) {
                 throw new RuntimeException('upgrade_journal_publish_failed');
             }
-            $directory = fopen($this->directory(), 'r');
-            if ($directory === false) {
-                throw new RuntimeException('upgrade_journal_directory_sync_failed');
-            }
-            try {
-                if (! fsync($directory)) {
+            if (PHP_OS_FAMILY !== 'Windows') {
+                $directory = fopen($this->directory(), 'r');
+                if ($directory === false) {
                     throw new RuntimeException('upgrade_journal_directory_sync_failed');
                 }
-            } finally {
-                fclose($directory);
+                try {
+                    if (! fsync($directory)) {
+                        throw new RuntimeException('upgrade_journal_directory_sync_failed');
+                    }
+                } finally {
+                    fclose($directory);
+                }
             }
         } finally {
             if (is_resource($handle)) {

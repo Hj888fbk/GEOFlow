@@ -96,7 +96,10 @@ server {
         proxy_set_header X-Forwarded-Port $geoflow_forwarded_port;
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
-        set $reverb_upstream reverb:18080;
+        # Reverb listens on the internal container port (8080). 18080 is the
+        # host-facing GEOFlow web port and must never be used for service-to-
+        # service proxying; doing so causes a 502 on the websocket endpoint.
+        set $reverb_upstream reverb:8080;
         proxy_pass http://$reverb_upstream;
     }
 }

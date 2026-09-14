@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Ai\Agents\DeepSeekVisibilityAnalysisAgent;
 use App\Jobs\CollectAiVisibilityKeywordJob;
 use App\Jobs\DetectAiVisibilityCompetitorsJob;
 use App\Models\Admin;
@@ -47,7 +47,7 @@ final class AiVisibilityCompetitorWorkflowTest extends TestCase
     public function test_detection_uses_configured_model_and_preserves_manual_competitor(): void
     {
         Http::preventStrayRequests();
-        MarkdownContentWriterAgent::fake(['[{"name":"Acme"}]'])->preventStrayPrompts();
+        DeepSeekVisibilityAnalysisAgent::fake(['[{"name":"Acme"}]'])->preventStrayPrompts();
         $model = $this->model(42);
         $competitor = AiVisibilityCompetitor::query()->create(['name' => 'Acme', 'aliases' => ['Acme Labs'], 'is_active' => false, 'source' => 'manual']);
         $this->sample('Acme provides software.');
@@ -64,7 +64,7 @@ final class AiVisibilityCompetitorWorkflowTest extends TestCase
     public function test_invalid_system_bindings_never_invoke_a_model(string $change): void
     {
         Http::preventStrayRequests();
-        MarkdownContentWriterAgent::fake(['[]'])->preventStrayPrompts();
+        DeepSeekVisibilityAnalysisAgent::fake(['[]'])->preventStrayPrompts();
         $model = $this->model();
         match ($change) {
             'private' => $model->forceFill(['access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT])->save(),
@@ -82,7 +82,7 @@ final class AiVisibilityCompetitorWorkflowTest extends TestCase
         } catch (RuntimeException $exception) {
             $this->assertContains($exception->getMessage(), ['ai_model_not_accessible', 'ai_model_unavailable', 'ai_config_access_revoked']);
         }
-        MarkdownContentWriterAgent::assertNeverPrompted();
+        DeepSeekVisibilityAnalysisAgent::assertNeverPrompted();
         $this->assertDatabaseCount('ai_visibility_competitor_detections', 0);
         $this->assertDatabaseCount('ai_model_usage_events', 0);
         $this->assertSame(0, $model->fresh()->used_today);
@@ -99,7 +99,7 @@ final class AiVisibilityCompetitorWorkflowTest extends TestCase
         Http::preventStrayRequests();
         $model = $this->model();
         $run = $this->sample('Acme');
-        MarkdownContentWriterAgent::fake(static function () use ($response): string {
+        DeepSeekVisibilityAnalysisAgent::fake(static function () use ($response): string {
             if ($response === 'transport') {
                 throw new RuntimeException('HTTP 503 private-provider-detail');
             }
@@ -116,7 +116,7 @@ final class AiVisibilityCompetitorWorkflowTest extends TestCase
         $this->assertSame([$run->id], app(AiVisibilityCompetitorDetectionService::class)->pendingRunIds());
         $this->assertSame(1, $model->fresh()->used_today);
         $this->assertSame(AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::query()->sole()->status);
-        MarkdownContentWriterAgent::fake(['[]'])->preventStrayPrompts();
+        DeepSeekVisibilityAnalysisAgent::fake(['[]'])->preventStrayPrompts();
         app(AiVisibilityCompetitorDetectionService::class)->detectRun($run->id);
         $this->assertDatabaseHas('ai_visibility_competitor_detections', ['run_id' => $run->id, 'names_json' => '[]']);
     }
@@ -132,17 +132,17 @@ final class AiVisibilityCompetitorWorkflowTest extends TestCase
         $model = $this->model();
         $model->forceFill(['daily_limit' => 1, 'used_today' => 1, 'usage_date' => now()->toDateString()])->save();
         $run = $this->sample('Acme');
-        MarkdownContentWriterAgent::fake(['[]'])->preventStrayPrompts();
+        DeepSeekVisibilityAnalysisAgent::fake(['[]'])->preventStrayPrompts();
         try {
             app(AiVisibilityCompetitorDetectionService::class)->detectRun($run->id);
             $this->fail('Quota must be enforced.');
         } catch (RuntimeException $exception) {
             $this->assertSame('ai_model_quota_exhausted', $exception->getMessage());
         }
-        MarkdownContentWriterAgent::assertNeverPrompted();
+        DeepSeekVisibilityAnalysisAgent::assertNeverPrompted();
         $this->assertDatabaseCount('ai_model_usage_events', 0);
         $model->forceFill(['used_today' => 0])->save();
-        MarkdownContentWriterAgent::fake(function () use ($model): string {
+        DeepSeekVisibilityAnalysisAgent::fake(function () use ($model): string {
             Admin::query()->whereKey($model->owner_admin_id)->update(['status' => 'inactive']);
 
             return '[{"name":"Acme"}]';
@@ -165,7 +165,7 @@ final class AiVisibilityCompetitorWorkflowTest extends TestCase
         $model = $this->model();
         $run = $this->sample('Acme Labs');
         AiVisibilityCompetitor::query()->create(['name' => 'Acme', 'aliases' => ['Acme Labs'], 'is_active' => false, 'source' => 'manual']);
-        MarkdownContentWriterAgent::fake(['[{"name":"Acme Labs"}]'])->preventStrayPrompts();
+        DeepSeekVisibilityAnalysisAgent::fake(['[{"name":"Acme Labs"}]'])->preventStrayPrompts();
         $failOnce = true;
         AiVisibilityCompetitorDetection::creating(static function () use (&$failOnce): void {
             if ($failOnce) {
@@ -181,7 +181,7 @@ final class AiVisibilityCompetitorWorkflowTest extends TestCase
         }
         $this->assertDatabaseCount('ai_visibility_competitor_detections', 0);
         SiteSetting::query()->where('setting_key', 'ai_visibility_deepseek_analysis_model_id')->delete();
-        MarkdownContentWriterAgent::fake([])->preventStrayPrompts();
+        DeepSeekVisibilityAnalysisAgent::fake([])->preventStrayPrompts();
         app(AiVisibilityCompetitorDetectionService::class)->detectRun($run->id);
         app(AiVisibilityCompetitorDetectionService::class)->detectRun($run->id);
         $this->assertDatabaseCount('ai_visibility_competitor_detections', 1);
@@ -196,8 +196,8 @@ final class AiVisibilityCompetitorWorkflowTest extends TestCase
         $this->model();
         config()->set('geoflow.site_name', 'Our Site');
         config()->set('geoflow.site_full_name', 'Our Site Company');
-        $run = $this->sample('Our Site and 多次元 and GEOFlow and Acme.');
-        MarkdownContentWriterAgent::fake(['[{"name":"Our Site"},{"name":"多次元"},{"name":"GEOFlow"},{"name":"Acme"},{"name":"Invented"}]'])->preventStrayPrompts();
+        $run = $this->sample('Our Site and 多次元 and GEOFlow and Acme.', AiVisibilityRun::PROVIDER_DOUBAO_ARK_RESPONSES);
+        DeepSeekVisibilityAnalysisAgent::fake(['[{"name":"Our Site"},{"name":"多次元"},{"name":"GEOFlow"},{"name":"Acme"},{"name":"Invented"}]'])->preventStrayPrompts();
         $result = app(AiVisibilityCompetitorDetectionService::class)->detectRun($run->id);
         $this->assertSame(['多次元', 'GEOFlow', 'Acme'], $result);
         $this->assertSame([], app(AiVisibilityCompetitorDetectionService::class)->pendingRunIds());
@@ -228,13 +228,13 @@ final class AiVisibilityCompetitorWorkflowTest extends TestCase
         Queue::fake();
         Http::preventStrayRequests();
         $model = $this->model();
-        MarkdownContentWriterAgent::fake(['Acme'])->preventStrayPrompts();
+        DeepSeekVisibilityAnalysisAgent::fake(['Acme'])->preventStrayPrompts();
         $job = unserialize(serialize(new CollectAiVisibilityKeywordJob('software')));
         $job->handle(app(AiVisibilityCollectionService::class));
         Queue::assertPushed(DetectAiVisibilityCompetitorsJob::class, 1);
         $sample = AiVisibilityRun::query()->sole();
         $detectionJob = (new DetectAiVisibilityCompetitorsJob($sample->id))->withFakeQueueInteractions();
-        MarkdownContentWriterAgent::fake(['invalid'])->preventStrayPrompts();
+        DeepSeekVisibilityAnalysisAgent::fake(['invalid'])->preventStrayPrompts();
         $detectionJob->handle(app(AiVisibilityCompetitorDetectionService::class));
         $detectionJob->assertFailed();
         $this->assertSame(1, AiVisibilityRun::query()->whereIn('provider_type', AiVisibilityRun::SAMPLE_PROVIDERS)->count());
@@ -290,7 +290,7 @@ final class AiVisibilityCompetitorWorkflowTest extends TestCase
     public function test_retry_of_a_failed_execution_uuid_is_terminal_without_another_insert_or_charge(): void
     {
         Http::preventStrayRequests();
-        MarkdownContentWriterAgent::fake([])->preventStrayPrompts();
+        DeepSeekVisibilityAnalysisAgent::fake([])->preventStrayPrompts();
         $this->model();
         $source = $this->sample('Acme');
         $job = (new DetectAiVisibilityCompetitorsJob($source->id))->withFakeQueueInteractions();
@@ -304,7 +304,7 @@ final class AiVisibilityCompetitorWorkflowTest extends TestCase
         $job->assertFailed();
         $job->handle(app(AiVisibilityCompetitorDetectionService::class));
         $job->assertFailed();
-        MarkdownContentWriterAgent::assertNeverPrompted();
+        DeepSeekVisibilityAnalysisAgent::assertNeverPrompted();
         $this->assertDatabaseCount('ai_visibility_runs', 2);
         $this->assertDatabaseCount('ai_model_usage_events', 0);
         $this->assertDatabaseCount('ai_visibility_competitor_detections', 0);

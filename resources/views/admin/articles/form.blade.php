@@ -1432,6 +1432,7 @@
                             <div>
                                 <label for="keywords" class="block text-sm font-medium text-gray-700">{{ __($i18nRoot.'.field.keywords') }}</label>
                                 <input id="keywords" type="text" name="keywords" value="{{ $formData['keywords'] }}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __($i18nRoot.'.placeholder.keywords') }}">
+                                <p class="mt-2 text-xs text-gray-500">{{ __($i18nRoot.'.help.keywords') }}</p>
                             </div>
                             <div>
                                 <label for="meta_description" class="block text-sm font-medium text-gray-700">{{ __($i18nRoot.'.field.meta_description') }}</label>
@@ -1532,7 +1533,7 @@
                             </div>
                         </div>
                         @if($canCreateManualPublication && in_array((string) $formData['review_status'], ['approved', 'auto_approved'], true))
-                            <a href="{{ route('admin.manual-publications.create', ['article_id' => (int) $articleId]) }}" class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-3 text-sm font-semibold text-white hover:bg-purple-700">
+                            <a href="{{ route('admin.manual-publications.index', ['view' => 'launch']) }}" class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-3 text-sm font-semibold text-white hover:bg-purple-700">
                                 <i data-lucide="send" class="h-4 w-4"></i>
                                 {{ __('admin.manual_publications.article_action') }}
                             </a>
@@ -1840,6 +1841,8 @@
                 uploadDisabled: @json(__('admin.article_editor.error.upload_disabled')),
                 imageRequired: @json(__('admin.article_editor.error.image_required')),
                 imageInvalid: @json(__('admin.article_editor.error.image_invalid')),
+                imageTooLarge: @json(__('admin.article_editor.error.image_too_large')),
+                sessionExpired: @json(__('admin.article_editor.error.session_expired')),
                 uploadFailed: @json(__('admin.article_editor.error.upload_failed_generic')),
                 cropUnavailable: @json(__('admin.article_editor.error.crop_unavailable')),
                 uploading: @json(__('admin.article_editor.message.uploading')),
@@ -2396,6 +2399,14 @@
                     setStatus(messages.imageRequired, 'error');
                     return;
                 }
+                if (!file.type || !file.type.startsWith('image/')) {
+                    setStatus(messages.imageInvalid, 'error');
+                    return;
+                }
+                if (file.size > 20 * 1024 * 1024) {
+                    setStatus(messages.imageTooLarge, 'error');
+                    return;
+                }
 
                 uploading = true;
                 uploadOriginalButton.disabled = true;
@@ -2421,7 +2432,16 @@
                         return {};
                     });
                     if (!response.ok) {
-                        throw new Error(payload.message || messages.uploadFailed);
+                        if (response.status === 419) {
+                            throw new Error(messages.sessionExpired);
+                        }
+                        const validationValues = payload.errors && typeof payload.errors === 'object'
+                            ? Object.values(payload.errors)
+                            : [];
+                        const validationMessage = Array.isArray(validationValues[0])
+                            ? validationValues[0][0]
+                            : (validationValues[0] || '');
+                        throw new Error(validationMessage || payload.message || messages.uploadFailed);
                     }
                     insertMarkdown(payload.image?.markdown || '');
                     setStatus(payload.message || messages.uploadSuccess, 'success');
@@ -2461,7 +2481,7 @@
                 upload: {
                     accept: 'image/*',
                     multiple: false,
-                    max: 10 * 1024 * 1024,
+                    max: 20 * 1024 * 1024,
                     handler: async function (files) {
                         saveEditorRange();
                         const file = files && files.length > 0 ? files[0] : null;

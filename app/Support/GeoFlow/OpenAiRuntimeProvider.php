@@ -190,6 +190,11 @@ final class OpenAiRuntimeProvider
      */
     public static function normalizeGeneratedText(string $content): string
     {
+        // Some OpenAI-compatible gateways have returned malformed UTF-8 bytes
+        // in an otherwise valid response. PostgreSQL rejects those bytes when
+        // the generated text is persisted, so normalize before any UTF-8
+        // aware parsing (such as the SSE detection below).
+        $content = self::normalizeUtf8($content);
         $trimmed = trim($content);
         if ($trimmed === '' || ! self::looksLikeSseCompletionPayload($trimmed)) {
             return $trimmed;
@@ -245,6 +250,27 @@ final class OpenAiRuntimeProvider
         }
 
         return trim(implode('', array_filter($segments, static fn (string $segment): bool => $segment !== '')));
+    }
+
+    /**
+     * Remove malformed byte sequences while preserving valid UTF-8 text.
+     *
+     * @internal AI provider responses only; do not use for arbitrary binary data.
+     */
+    private static function normalizeUtf8(string $content): string
+    {
+        if ($content === '' || mb_check_encoding($content, 'UTF-8')) {
+            return $content;
+        }
+
+        $normalized = @iconv('UTF-8', 'UTF-8//IGNORE', $content);
+        if (is_string($normalized)) {
+            return $normalized;
+        }
+
+        // iconv can be unavailable on a minimal PHP build. mbstring still
+        // provides a safe fallback that replaces malformed sequences.
+        return mb_convert_encoding($content, 'UTF-8', 'UTF-8');
     }
 
     public static function looksLikeSseCompletionPayload(string $content): bool

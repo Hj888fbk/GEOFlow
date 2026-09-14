@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Ai\Agents\DeepSeekVisibilityAnalysisAgent;
 use App\Data\Ai\SystemAiIdentity;
 use App\Models\Admin;
 use App\Models\AiModel;
@@ -484,10 +484,16 @@ final class AiVisibilitySystemModelUsageTelemetryTest extends TestCase
         Http::fake([
             'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
                 'LogId' => 'visibility-search-log',
-                'Result' => ['WebResults' => []],
+                'Result' => [
+                    'WebResults' => [[
+                        'Title' => 'Combined visibility source',
+                        'Url' => 'https://example.com/combined-visibility',
+                        'Snippet' => 'Source for the combined visibility analysis.',
+                    ]],
+                ],
             ]),
         ]);
-        MarkdownContentWriterAgent::fake(['Search analysis'])->preventStrayPrompts();
+        DeepSeekVisibilityAnalysisAgent::fake(['Search analysis'])->preventStrayPrompts();
         $owner = $this->superAdmin('visibility-search-analysis-owner');
         $model = $this->systemModel($owner);
         $this->bindModel(AiVisibilityConfigurationResolver::DEEPSEEK_MODEL_SETTING_KEY, $model);
@@ -536,7 +542,7 @@ final class AiVisibilitySystemModelUsageTelemetryTest extends TestCase
 
     public function test_deepseek_collection_records_one_system_model_attempt_after_the_run_commits(): void
     {
-        MarkdownContentWriterAgent::fake(['DeepSeek visibility analysis'])->preventStrayPrompts();
+        DeepSeekVisibilityAnalysisAgent::fake(['DeepSeek visibility analysis'])->preventStrayPrompts();
         $owner = $this->superAdmin('visibility-deepseek-owner');
         $model = $this->systemModel($owner, [
             'name' => 'DeepSeek Visibility',
@@ -575,7 +581,7 @@ final class AiVisibilitySystemModelUsageTelemetryTest extends TestCase
 
     public function test_deepseek_digest_uses_the_exact_full_prompt_including_sources(): void
     {
-        MarkdownContentWriterAgent::fake(['First analysis', 'Second analysis'])->preventStrayPrompts();
+        DeepSeekVisibilityAnalysisAgent::fake(['First analysis', 'Second analysis'])->preventStrayPrompts();
         $owner = $this->superAdmin('visibility-deepseek-digest-owner');
         $model = $this->systemModel($owner, [
             'model_id' => 'deepseek-chat',

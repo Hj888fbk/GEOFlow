@@ -18,6 +18,7 @@ use App\Models\Task;
 use App\Support\Admin\ArticleAiQualityProgressPresenter;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
 use App\Support\GeoFlow\ArticleWorkflow;
+use App\Support\GeoFlow\KeywordNormalizer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -880,7 +881,7 @@ class ArticleGeoFlowService
         $title = trim((string) ($data['title'] ?? ''));
         $content = trim((string) ($data['content'] ?? ''));
         $excerpt = trim((string) ($data['excerpt'] ?? ''));
-        $keywords = trim((string) ($data['keywords'] ?? ''));
+        $keywords = KeywordNormalizer::normalize((string) ($data['keywords'] ?? ''));
         $metaDescription = trim((string) ($data['meta_description'] ?? ''));
         $riskOverrideReason = trim((string) ($data['risk_override_reason'] ?? ''));
         $errors = [];
@@ -977,7 +978,9 @@ class ArticleGeoFlowService
 
         foreach (['excerpt', 'keywords', 'meta_description'] as $field) {
             if (array_key_exists($field, $data)) {
-                $normalized[$field] = trim((string) $data[$field]);
+                $normalized[$field] = $field === 'keywords'
+                    ? KeywordNormalizer::normalize((string) $data[$field])
+                    : trim((string) $data[$field]);
             }
         }
         if (isset($normalized['excerpt']) && mb_strlen($normalized['excerpt'], 'UTF-8') > ArticleRiskScanner::MAX_EXCERPT_CHARACTERS) {

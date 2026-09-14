@@ -199,6 +199,10 @@ class SystemUpdaterBootstrapServiceTest extends TestCase
 
     public function test_download_rejects_a_symlinked_prepared_archive(): void
     {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('Creating symbolic links requires privileges that are not available in the Windows test environment.');
+        }
+
         Storage::fake('local');
         $disk = Storage::disk('local');
         $relativePath = 'system-updater/bootstrap/0.1.0/geoflow-updater_0.1.0_linux_amd64.tar.gz';

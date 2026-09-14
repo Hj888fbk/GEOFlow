@@ -84,6 +84,42 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
         }
     }
 
+    public function test_only_init_can_warm_shared_runtime_caches(): void
+    {
+        $root = dirname(__DIR__, 2);
+
+        foreach (['docker-compose.yml', 'docker-compose.prod.yml', 'docker-compose.prebuilt.yml'] as $composeFile) {
+            $compose = file_get_contents($root.'/'.$composeFile);
+
+            $this->assertIsString($compose);
+            $services = $this->serviceBlocks($compose);
+            $this->assertArrayHasKey('init', $services, $composeFile.' must define the init service.');
+            $this->assertStringContainsString(
+                'AUTO_OPTIMIZE: "true"',
+                $services['init'],
+                $composeFile.' must warm shared caches before runtime services start.'
+            );
+
+            $runtimeServices = array_filter(
+                $services,
+                fn (string $block, string $service): bool => $service !== 'init'
+                    && $this->usesApplicationImage($block),
+                ARRAY_FILTER_USE_BOTH
+            );
+
+            foreach ($runtimeServices as $service => $block) {
+                $this->assertStringContainsString(
+                    'AUTO_OPTIMIZE: "false"',
+                    $block,
+                    sprintf('%s must not concurrently rebuild shared caches in %s.', $composeFile, $service)
+                );
+            }
+
+            $this->assertSame(1, substr_count($compose, 'AUTO_OPTIMIZE: "true"'));
+            $this->assertSame(count($runtimeServices), substr_count($compose, 'AUTO_OPTIMIZE: "false"'));
+        }
+    }
+
     public function test_production_image_prepares_container_local_cache_permissions(): void
     {
         $dockerfile = file_get_contents(dirname(__DIR__, 2).'/docker/Dockerfile.prod');

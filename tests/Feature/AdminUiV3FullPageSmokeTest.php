@@ -87,7 +87,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             ->sortBy(fn (LaravelRoute $route): string => (string) $route->getName())
             ->values();
 
-        $this->assertCount(106, $shellRoutes);
+        $this->assertCount(105, $shellRoutes);
 
         foreach ($shellRoutes as $route) {
             $routeName = (string) $route->getName();
@@ -155,8 +155,8 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             ->groupBy(fn (LaravelRoute $route): string => (string) $registry->routeClassification((string) $route->getName()));
 
         $this->assertCount(3, $routesByClassification->get('special', collect()));
-        $this->assertCount(3, $routesByClassification->get('redirect', collect()));
-        $this->assertCount(6, $routesByClassification->get('download', collect()));
+        $this->assertCount(6, $routesByClassification->get('redirect', collect()));
+        $this->assertCount(8, $routesByClassification->get('download', collect()));
         $this->assertCount(14, $routesByClassification->get('endpoint', collect()));
 
         $this->get(route('admin.login'))
@@ -212,6 +212,12 @@ class AdminUiV3FullPageSmokeTest extends TestCase
 
             if ($routeName === 'admin.articles.batch.export-markdown.download') {
                 $response->assertForbidden();
+
+                continue;
+            }
+
+            if ($routeName === 'admin.manual-publications.settings.desktop.download') {
+                $response->assertNotFound();
 
                 continue;
             }

@@ -14,11 +14,17 @@ class UpgradeStepRunnerTest extends TestCase
     #[DataProvider('unsafeCachePaths')]
     public function test_cache_path_aliases_are_rejected_before_directories_or_commands_are_created(string $target, string $shape): void
     {
+        if ($shape === 'symlink' && PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('Creating symbolic links requires privileges that are not available in the Windows test environment.');
+        }
+
         $root = sys_get_temp_dir().'/geoflow-cache-path-test-'.bin2hex(random_bytes(8));
         mkdir($root.'/bootstrap/cache', 0700, true);
         mkdir($root.'/storage/framework/views', 0700, true);
         file_put_contents($root.'/storage/framework/views/sentinel.php', 'keep');
-        symlink($root.'/storage/framework/views', $root.'/bootstrap/cache/shared-link');
+        if ($shape === 'symlink') {
+            symlink($root.'/storage/framework/views', $root.'/bootstrap/cache/shared-link');
+        }
         $originalBase = $this->app->basePath();
         $originalStorage = $this->app->storagePath();
         $this->app->setBasePath($root);
@@ -107,7 +113,7 @@ class UpgradeStepRunnerTest extends TestCase
             $runner->run(['id' => 'cache', 'kind' => 'cache_warmup', 'phase' => 'apply', 'timeout_seconds' => 10, 'online' => true], [], 'online');
             $this->assertSame(3, $runner->commands);
             $this->assertDirectoryExists($compiled);
-            $this->assertSame(realpath($compiled), config('view.compiled'));
+            $this->assertSame(str_replace('\\', '/', (string) realpath($compiled)), config('view.compiled'));
         } finally {
             File::deleteDirectory($compiled);
         }

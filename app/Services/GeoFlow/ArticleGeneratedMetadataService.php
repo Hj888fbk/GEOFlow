@@ -2,10 +2,13 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Data\Ai\AiExecutionContext;
+use App\Exceptions\AiModelAccessException;
 use App\Models\AiModel;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use App\Support\GeoFlow\KeywordNormalizer;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -13,7 +16,7 @@ final class ArticleGeneratedMetadataService
 {
     public function __construct(
         private readonly ArticleSpecialPromptRenderer $promptRenderer,
-        private readonly ArticleContentGenerationService $contentGenerationService,
+        private readonly WorkerAiModelInvocationGateway $modelInvocationGateway,
     ) {}
 
     /**
@@ -21,13 +24,14 @@ final class ArticleGeneratedMetadataService
      */
     public function generate(
         Task $task,
+        AiExecutionContext $executionContext,
         AiModel $aiModel,
         string $title,
         string $focusKeyword,
         string $content,
         string $fallbackDescription,
     ): array {
-        $keywords = $this->normalizeKeywords('', $focusKeyword);
+        $keywords = KeywordNormalizer::normalize('', $focusKeyword);
         $description = $this->normalizeDescription($fallbackDescription);
         $keywordStatus = (int) ($task->auto_keywords ?? 1) === 1 ? 'prompt_missing' : 'disabled';
         $descriptionStatus = (int) ($task->auto_description ?? 1) === 1 ? 'prompt_missing' : 'disabled';
@@ -36,12 +40,18 @@ final class ArticleGeneratedMetadataService
             $keywordPrompt = $this->latestPrompt('keyword');
             if ($keywordPrompt !== null) {
                 try {
+                    $keywordPromptText = $this->promptRenderer->render($keywordPrompt, $title, $focusKeyword, $content)
+                        ."\n输出规则：只返回 3-8 个完整关键词；关键词必须来自标题或正文，保留产品型号和单位，不要截断中文词，不要使用问号、引号或列表编号。";
                     $rawKeywords = $this->generateText(
+                        $executionContext,
                         $aiModel,
-                        $this->promptRenderer->render($keywordPrompt, $title, $focusKeyword, $content),
+                        $keywordPromptText,
+                        'keywords',
                     );
-                    $keywords = $this->normalizeKeywords($rawKeywords, $focusKeyword);
+                    $keywords = KeywordNormalizer::normalize($rawKeywords, $focusKeyword);
                     $keywordStatus = 'generated';
+                } catch (AiModelAccessException $exception) {
+                    throw $exception;
                 } catch (Throwable $exception) {
                     $keywordStatus = 'fallback';
                     $this->logFallback('keywords', $task, $exception);
@@ -54,8 +64,10 @@ final class ArticleGeneratedMetadataService
             if ($descriptionPrompt !== null) {
                 try {
                     $rawDescription = $this->generateText(
+                        $executionContext,
                         $aiModel,
                         $this->promptRenderer->render($descriptionPrompt, $title, $focusKeyword, $content),
+                        'description',
                     );
                     $generatedDescription = $this->normalizeDescription($rawDescription);
                     if ($generatedDescription !== '') {
@@ -64,6 +76,8 @@ final class ArticleGeneratedMetadataService
                     } else {
                         $descriptionStatus = 'fallback';
                     }
+                } catch (AiModelAccessException $exception) {
+                    throw $exception;
                 } catch (Throwable $exception) {
                     $descriptionStatus = 'fallback';
                     $this->logFallback('description', $task, $exception);
@@ -91,49 +105,29 @@ final class ArticleGeneratedMetadataService
         return $content !== '' ? $content : null;
     }
 
-    private function generateText(AiModel $aiModel, string $prompt): string
-    {
+    private function generateText(
+        AiExecutionContext $executionContext,
+        AiModel $aiModel,
+        string $prompt,
+        string $field,
+    ): string {
         if ($prompt === '') {
             return '';
         }
 
-        $response = $this->contentGenerationService->generate($aiModel, $prompt);
-
-        return OpenAiRuntimeProvider::normalizeGeneratedText((string) ($response->text ?? ''));
-    }
-
-    private function normalizeKeywords(string $raw, string $focusKeyword): string
-    {
-        $raw = preg_replace('/^```(?:text|markdown|json)?\s*|\s*```$/iu', '', trim($raw)) ?? trim($raw);
-        $raw = preg_replace('/^(?:关键词|关键字|keywords?)\s*[：:]\s*/iu', '', $raw) ?? $raw;
-        $parts = preg_split('/[,，;；、|\n\r]+/u', $raw) ?: [];
-        array_unshift($parts, $focusKeyword);
-
-        $normalized = [];
-        $seen = [];
-        foreach ($parts as $part) {
-            $part = preg_replace('/^\s*(?:[-*•]|\d+[.)、])\s*/u', '', (string) $part) ?? (string) $part;
-            $part = trim($part, " \t\n\r\0\x0B\"'`[]【】");
-            if ($part === '' || mb_strlen($part, 'UTF-8') > 100) {
-                continue;
-            }
-
-            $key = mb_strtolower($part, 'UTF-8');
-            if (isset($seen[$key])) {
-                continue;
-            }
-            $seen[$key] = true;
-            $normalized[] = $part;
-            if (count($normalized) >= 8) {
-                break;
-            }
-        }
-
-        while ($normalized !== [] && mb_strlen(implode('，', $normalized), 'UTF-8') > 500) {
-            array_pop($normalized);
-        }
-
-        return implode('，', $normalized);
+        return $this->modelInvocationGateway->generate(
+            $executionContext,
+            $aiModel,
+            $prompt,
+            static fn (array $invocation): string => OpenAiRuntimeProvider::normalizeGeneratedText(
+                (string) ($invocation['response']->text ?? ''),
+            ),
+            [
+                'call_key' => 'metadata-'.$field,
+                'operation' => 'article.metadata.'.$field,
+                'business_source' => 'worker_article_metadata_generation',
+            ],
+        );
     }
 
     private function normalizeDescription(string $raw): string

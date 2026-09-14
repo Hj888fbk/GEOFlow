@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Ai\Agents\DeepSeekVisibilityAnalysisAgent;
 use App\Data\Ai\SystemAiIdentity;
 use App\Models\Admin;
 use App\Models\AiModel;
@@ -225,13 +225,12 @@ class AiVisibilityServiceTest extends TestCase
             app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow');
             $this->fail('Expected embedded provider error to throw.');
         } catch (RuntimeException $exception) {
-            $this->assertStringContainsString('10400', $exception->getMessage());
-            $this->assertStringContainsString('Invalid Parameter', $exception->getMessage());
+            $this->assertSame('ai_provider_request_failed', $exception->getMessage());
         }
 
         $run = AiVisibilityRun::query()->firstOrFail();
         $this->assertSame(AiVisibilityRun::STATUS_FAILED, $run->status);
-        $this->assertStringContainsString('10400', (string) $run->error_message);
+        $this->assertSame('ai_provider_request_failed', (string) $run->error_message);
         $this->assertSame(0, (int) $provider->fresh()->used_today);
     }
 
@@ -244,13 +243,18 @@ class AiVisibilityServiceTest extends TestCase
                 'Result' => ['WebResults' => []],
             ]),
         ]);
-        MarkdownContentWriterAgent::fake()->preventStrayPrompts();
+        DeepSeekVisibilityAnalysisAgent::fake()->preventStrayPrompts();
 
         $provider = $this->createSearchProvider();
         $model = $this->createAiModel();
 
         try {
-            app(AiVisibilityService::class)->runDoubaoSearchThenDeepSeekAnalysis($provider, $model, 'GEOFlow');
+            app(AiVisibilityService::class)->runDoubaoSearchThenDeepSeekAnalysis(
+                SystemAiIdentity::visibilityCollection(),
+                $provider,
+                $model,
+                'GEOFlow',
+            );
             $this->fail('Expected empty search results to stop analysis.');
         } catch (RuntimeException $exception) {
             $this->assertStringContainsString('未返回可用于分析的信源', $exception->getMessage());
@@ -423,22 +427,25 @@ class AiVisibilityServiceTest extends TestCase
         ]);
 
         $model = $this->createAiModel();
+        $this->bindModel(AiVisibilityConfigurationResolver::DEEPSEEK_MODEL_SETTING_KEY, $model);
 
         try {
-            app(AiVisibilityService::class)->runDeepSeekAnalysis($model, 'GEOFlow', '请分析 GEOFlow 的 AI 可见性');
+            app(AiVisibilityService::class)->runDeepSeekAnalysis(
+                SystemAiIdentity::visibilityCollection(),
+                $model,
+                'GEOFlow',
+                '请分析 GEOFlow 的 AI 可见性',
+            );
             $this->fail('Expected reasoning-only DeepSeek response to fail.');
         } catch (RuntimeException $exception) {
-            $this->assertStringContainsString('输出令牌预算已用尽', $exception->getMessage());
-            $this->assertStringContainsString('finish_reason=length', $exception->getMessage());
-            $this->assertStringContainsString('completion_tokens=4096', $exception->getMessage());
-            $this->assertStringContainsString('reasoning_tokens=4096', $exception->getMessage());
+            $this->assertSame('ai_provider_request_failed', $exception->getMessage());
             $this->assertStringNotContainsString('内部推理内容', $exception->getMessage());
         }
 
         $run = AiVisibilityRun::query()->firstOrFail();
         $this->assertSame(AiVisibilityRun::STATUS_FAILED, $run->status);
-        $this->assertStringContainsString('输出令牌预算已用尽', (string) $run->error_message);
-        $this->assertSame(0, (int) $model->fresh()->used_today);
+        $this->assertSame('ai_provider_request_failed', (string) $run->error_message);
+        $this->assertSame(1, (int) $model->fresh()->used_today);
 
         Http::assertSent(fn ($request): bool => ($request['max_completion_tokens'] ?? null) === 4096
             && ! array_key_exists('max_tokens', (array) $request->data())

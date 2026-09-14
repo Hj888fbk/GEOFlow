@@ -72,7 +72,7 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
         WorkerExecutionService $workerExecutionService,
         ?AiExecutionContextFactory $contextFactory = null,
     ): void {
-        $workerId = gethostname().':queue:'.getmypid();
+        $workerId = $this->workerId();
         $job = $queueService->claimPendingJobById(
             $this->taskRunId,
             $workerId,
@@ -186,6 +186,7 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
                     $this->effectiveExecutionLeaseToken(),
                 );
             } else {
+                $this->logUnhandledFailure($taskId, $exception);
                 $queueService->failJob(
                     $this->taskRunId,
                     $taskId,
@@ -201,6 +202,37 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
                 'last_task_run_id' => $this->taskRunId,
             ]);
         }
+    }
+
+    private function logUnhandledFailure(int $taskId, Throwable $exception): void
+    {
+        try {
+            $sanitizer = app(\App\Support\GeoFlow\AiExecutionErrorSanitizer::class);
+            Log::error('GeoFlow task execution failed.', [
+                'task_id' => $taskId,
+                'task_run_id' => $this->taskRunId,
+                'exception_type' => $exception::class,
+                'exception_code' => (string) $exception->getCode(),
+                'error' => $this->safeDiagnosticMessage($sanitizer, $exception),
+            ]);
+        } catch (Throwable) {
+            // Diagnostics must never prevent the failure state from being persisted.
+        }
+    }
+
+    private function safeDiagnosticMessage(\App\Support\GeoFlow\AiExecutionErrorSanitizer $sanitizer, Throwable $exception): string
+    {
+        $message = $sanitizer->sanitize($exception, '');
+        if ($message !== '') {
+            return $message;
+        }
+
+        $previous = $exception->getPrevious();
+        if ($previous instanceof Throwable) {
+            return $sanitizer->sanitize($previous, '');
+        }
+
+        return 'AI execution failed';
     }
 
     /**
@@ -285,6 +317,17 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
         $token = trim((string) ($this->claimedExecutionLeaseToken ?? $this->claimLeaseToken));
 
         return $token !== '' ? $token : null;
+    }
+
+    private function workerId(): string
+    {
+        $hostname = gethostname();
+        $hostname = is_string($hostname) && $hostname !== '' ? $hostname : 'unknown';
+        if (! mb_check_encoding($hostname, 'UTF-8')) {
+            $hostname = 'host-'.substr(hash('sha256', $hostname), 0, 16);
+        }
+
+        return $hostname.':queue:'.getmypid();
     }
 
     /**

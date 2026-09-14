@@ -282,6 +282,10 @@ class ConfigurationRepositoryTest extends TestCase
     #[Test]
     public function token_file_permissions_are_repaired_and_reported(): void
     {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('POSIX file permissions are unavailable on Windows.');
+        }
+
         $path = $this->root.'/cwd/.geoflow.json';
         $this->writeJson($path, [
             'base_url' => 'https://api.example.com',
@@ -299,6 +303,10 @@ class ConfigurationRepositoryTest extends TestCase
     #[Test]
     public function existing_default_config_directory_permissions_are_repaired_and_reported(): void
     {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('POSIX directory permissions are unavailable on Windows.');
+        }
+
         $directory = $this->root.'/home/.config/geoflow';
         $path = $directory.'/config.json';
         $this->writeJson($path, [
@@ -327,8 +335,10 @@ class ConfigurationRepositoryTest extends TestCase
             'allow_insecure_http' => false,
         ]);
 
-        $this->assertSame(0600, fileperms($path) & 0777);
-        $this->assertSame(0700, fileperms(dirname($path)) & 0777);
+        if (PHP_OS_FAMILY !== 'Windows') {
+            $this->assertSame(0600, fileperms($path) & 0777);
+            $this->assertSame(0700, fileperms(dirname($path)) & 0777);
+        }
         $this->assertSame('secret-token', json_decode((string) file_get_contents($path), true)['token']);
     }
 

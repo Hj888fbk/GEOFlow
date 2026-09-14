@@ -48,6 +48,16 @@ class OpenAiRuntimeProviderTest extends TestCase
         $this->assertSame($content, OpenAiRuntimeProvider::normalizeGeneratedText($content));
     }
 
+    public function test_it_strips_malformed_utf8_from_generated_text_before_persistence(): void
+    {
+        $content = "关键词：橡胶软接头\xe9\x98\xef，管道连接";
+
+        $normalized = OpenAiRuntimeProvider::normalizeGeneratedText($content);
+
+        $this->assertTrue(mb_check_encoding($normalized, 'UTF-8'));
+        $this->assertSame('关键词：橡胶软接头，管道连接', $normalized);
+    }
+
     public function test_it_extracts_generated_text_from_sse_chunks(): void
     {
         $content = implode("\n", [

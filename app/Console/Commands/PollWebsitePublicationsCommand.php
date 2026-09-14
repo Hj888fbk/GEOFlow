@@ -21,13 +21,20 @@ final class PollWebsitePublicationsCommand extends Command
     {
         $limit = max(1, min(100, (int) $this->option('limit')));
 
-        // 每篇文章只取最新一条发布分发，避免历史 update 记录重复触发。
+        // 每篇文章只取最新一条官网分发记录，既覆盖首次 publish，也覆盖
+        // 已存在远端文章后的 update。旧实现只筛 publish，文章更新后就
+        // 永远不会回读，导致发布中心看不到已上线文章。
         $candidates = ArticleDistribution::query()
             ->with(['channel', 'article.task'])
-            ->where('action', 'publish')
-            ->where('status', 'synced')
-            ->whereNotNull('remote_id')
-            ->where('remote_id', '!=', '')
+            ->whereIn('action', ['publish', 'update'])
+            ->whereIn('status', ['synced', 'outcome_unknown'])
+            ->where(function ($query): void {
+                $query->where(function ($remote): void {
+                    $remote->whereNotNull('remote_id')->where('remote_id', '!=', '');
+                })->orWhere(function ($remote): void {
+                    $remote->whereNotNull('remote_url')->where('remote_url', '!=', '');
+                });
+            })
             ->whereHas('channel', function ($query): void {
                 $query->where('channel_type', 'wordpress_rest')
                     ->where('status', 'active');

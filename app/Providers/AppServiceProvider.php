@@ -366,9 +366,11 @@ class AppServiceProvider extends ServiceProvider
             || (int) ($reverbOptions['port'] ?? 0) !== $appPort) {
             $errors[] = 'Reverb public host, scheme and port must match APP_URL.';
         }
-        if ((int) config('reverb.servers.reverb.port') !== 18080
+        // Reverb is addressed by Nginx over the Compose network.  Keep its
+        // internal listener separate from the public GEOFlow port (28080).
+        if ((int) config('reverb.servers.reverb.port') !== 8080
             || '/'.trim((string) config('reverb.servers.reverb.path'), '/') !== '/reverb') {
-            $errors[] = 'Bundled Nginx requires Reverb server port 18080 and path /reverb.';
+            $errors[] = 'Bundled Nginx requires Reverb server port 8080 and path /reverb.';
         }
 
         if ($errors !== []) {

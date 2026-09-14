@@ -235,7 +235,8 @@ class AdminTaskTitleReadinessTest extends TestCase
             ->assertSee('role="alertdialog"', false)
             ->assertSee('fixed inset-0 m-auto', false)
             ->assertDontSee('window.confirm', false)
-            ->assertDontSee('alert(', false);
+            ->assertDontSee('alert(', false)
+            ->assertDontSee('<a href="#" target="_blank"', false);
     }
 
     public function test_task_index_has_a_centered_readiness_dialog_for_start_failures(): void
@@ -258,7 +259,8 @@ class AdminTaskTitleReadinessTest extends TestCase
             ->assertSee('w-[min(600px,calc(100vw-2rem))]', false)
             ->assertSee('max-h-[min(760px,calc(100dvh-2rem))]', false)
             ->assertSee('data-task-index-readiness-edit', false)
-            ->assertSee('data-task-index-readiness-manage', false);
+            ->assertSee('data-task-index-readiness-manage', false)
+            ->assertDontSee('<a href="#" target="_blank"', false);
     }
 
     public function test_active_form_submission_is_blocked_with_structured_report_while_paused_submission_is_allowed(): void

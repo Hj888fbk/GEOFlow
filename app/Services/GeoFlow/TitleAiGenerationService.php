@@ -199,7 +199,7 @@ class TitleAiGenerationService
         if ($customPrompt !== '') {
             $userPrompt .= "额外要求：{$customPrompt}\n\n";
         }
-        $userPrompt .= "要求：\n1. 每个标题独占一行\n2. 标题要有吸引力和可读性\n3. 适合搜索引擎优化\n4. 不要添加序号或其他标记\n5. 直接输出标题内容";
+        $userPrompt .= "要求：\n1. 每个标题独占一行\n2. 标题要有吸引力和可读性\n3. 适合搜索引擎优化\n4. 不要添加序号或其他标记\n5. 直接输出标题内容\n6. 关键词必须出现在标题最前面（第一个词就是关键词本身），日期、月份、年份等修饰信息一律放在关键词之后，或用括号放到标题末尾，例如「{$keywordsText}选型指南（2026年9月）」，禁止生成以日期开头的标题\n7. 标题长度控制在 20-30 个字";
 
         $configuredMaxTokens = (int) ($aiModel->max_tokens ?? 0);
         $outputTokenLimit = max(512, min(4096, $count * 64));

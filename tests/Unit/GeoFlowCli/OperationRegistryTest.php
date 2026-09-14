@@ -19,9 +19,13 @@ class OperationRegistryTest extends TestCase
             ->values();
         $browserRoutes = $v1Routes->filter(fn (Route $route): bool => str_starts_with($route->uri(), 'api/v1/browser-operations')
             || str_starts_with($route->uri(), 'api/v1/manual-publications'));
+        $websitePublicationReceiptRoutes = $v1Routes->filter(
+            fn (Route $route): bool => $route->uri() === 'api/v1/articles/{article}/website-publication-receipt',
+        );
         $apiRoutes = $v1Routes
             ->reject(fn (Route $route): bool => str_starts_with($route->uri(), 'api/v1/browser-operations')
-                || str_starts_with($route->uri(), 'api/v1/manual-publications'))
+                || str_starts_with($route->uri(), 'api/v1/manual-publications')
+                || $route->uri() === 'api/v1/articles/{article}/website-publication-receipt')
             // The CLI reads the latest candidate and keeps rollback in the authenticated API and Admin surfaces.
             ->reject(fn (Route $route): bool => in_array($route->getName(), [
                 'api.v1.articles.ai-quality.optimization.candidate',
@@ -36,7 +40,10 @@ class OperationRegistryTest extends TestCase
             ->values()
             ->all();
 
-        $this->assertCount(10, $browserRoutes);
+        // Browser operations now include the desktop account lifecycle endpoints
+        // (list, bind and status) and desktop update metadata/package routes.
+        $this->assertCount(18, $browserRoutes);
+        $this->assertCount(1, $websitePublicationReceiptRoutes);
         $this->assertCount(35, $apiRoutes);
         $this->assertSame($apiRoutes, OperationRegistry::routeSignatures());
     }

@@ -1259,13 +1259,22 @@ class EvaluateArticleAiQualityCommand extends Command
 
     private function absolutePath(string $path): string
     {
-        return str_starts_with($path, DIRECTORY_SEPARATOR) ? $path : base_path($path);
+        $isAbsolute = str_starts_with($path, '/')
+            || str_starts_with($path, '\\')
+            || preg_match('/^[A-Za-z]:[\\\\\/]/', $path) === 1;
+
+        return $isAbsolute ? $path : base_path($path);
     }
 
     private function portablePath(string $path): string
     {
-        $base = rtrim(base_path(), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        $absolute = str_replace('\\', '/', $path);
+        $base = rtrim(str_replace('\\', '/', base_path()), '/').'/';
+        $comparisonPath = PHP_OS_FAMILY === 'Windows' ? strtolower($absolute) : $absolute;
+        $comparisonBase = PHP_OS_FAMILY === 'Windows' ? strtolower($base) : $base;
 
-        return str_starts_with($path, $base) ? substr($path, strlen($base)) : $path;
+        return str_starts_with($comparisonPath, $comparisonBase)
+            ? substr($absolute, strlen($base))
+            : $absolute;
     }
 }

@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Ai\Agents\DeepSeekVisibilityAnalysisAgent;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
@@ -36,7 +36,7 @@ class GeoFlowAiVisibilityCollectCommandTest extends TestCase
                 ],
             ]),
         ]);
-        MarkdownContentWriterAgent::fake(['分析完成'])->preventStrayPrompts();
+        DeepSeekVisibilityAnalysisAgent::fake(['分析完成'])->preventStrayPrompts();
 
         $provider = AiSourceProvider::query()->create([
             'name' => 'Doubao Search Custom',

@@ -36,6 +36,7 @@ class OpenSourceReleaseScriptsTest extends TestCase
 
     public function test_release_sync_refuses_a_staged_only_target_without_changing_it(): void
     {
+        $this->requireUnixShell();
         [$root, $source, $target] = $this->releaseRepositories();
 
         File::put($target.'/protected.txt', "staged target content\n");
@@ -57,6 +58,7 @@ class OpenSourceReleaseScriptsTest extends TestCase
 
     public function test_release_sync_checks_the_source_repository_independently_of_the_calling_directory(): void
     {
+        $this->requireUnixShell();
         [$root, $source, $target] = $this->releaseRepositories();
 
         File::put($source.'/source.txt', "staged source content\n");
@@ -75,6 +77,7 @@ class OpenSourceReleaseScriptsTest extends TestCase
 
     public function test_release_sync_refuses_an_unrelated_target_repository_without_changing_it(): void
     {
+        $this->requireUnixShell();
         [$root, $source, $target] = $this->releaseRepositories();
         $this->runProcess([
             'git', '-C', $target, 'remote', 'set-url', 'origin', 'https://github.com/example/unrelated.git',
@@ -93,6 +96,7 @@ class OpenSourceReleaseScriptsTest extends TestCase
 
     public function test_release_sync_refreshes_a_clean_official_target_and_preserves_git_state(): void
     {
+        $this->requireUnixShell();
         [$root, $source, $target] = $this->releaseRepositories();
 
         $process = $this->runProcess(
@@ -156,5 +160,12 @@ class OpenSourceReleaseScriptsTest extends TestCase
         }
 
         return $process;
+    }
+
+    private function requireUnixShell(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('The release sync script requires a Unix shell.');
+        }
     }
 }

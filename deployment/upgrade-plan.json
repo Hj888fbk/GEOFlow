@@ -85,7 +85,7 @@
     },
     {
       "name": "2026_04_26_101000_add_chinese_geo_content_prompts",
-      "sha256": "b520c0906935bd5c490b8671356225a0a33f2375d2eb9090e1c5d1caf0d51741",
+      "sha256": "42c3942b6a281a65be1acd4c34367571f300fa12734a5db5423e7e0c7cd66e7a",
       "online": false
     },
     {
@@ -759,8 +759,23 @@
       "online": false
     },
     {
+      "name": "2026_09_07_000000_create_self_media_publication_planning_tables",
+      "sha256": "7014daf280f6d38cef7a4808f8119d8125a8894366a590df9faef98b26abefce",
+      "online": false
+    },
+    {
+      "name": "2026_09_08_000000_add_portable_self_media_documents",
+      "sha256": "d971e2d711431ba7f522e093932e9c2dc2b1965b79fab265e508312cb3d5be4b",
+      "online": false
+    },
+    {
       "name": "2026_09_08_094502_add_task_draft_to_ai_conversations",
       "sha256": "a0b77e05ee6d8d4aed9a32baf1cac3a204ea5f70dcd3f0fd965f7b00b1261910",
+      "online": false
+    },
+    {
+      "name": "2026_09_12_120000_unify_manual_publication_center",
+      "sha256": "9304c1d8304bebe42b25dc503cb93615d98ef3b7a47577330e0ad1fc6cdf7f50",
       "online": false
     }
   ],

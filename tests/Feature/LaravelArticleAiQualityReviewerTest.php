@@ -233,7 +233,7 @@ class LaravelArticleAiQualityReviewerTest extends TestCase
         $this->assertSame($this->validResult(), $review['result']);
         Http::assertSent(function (Request $request): bool {
             $this->assertSame('json_schema', $request['response_format']['type']);
-            $this->assertSame(2048, $request['max_tokens']);
+            $this->assertSame(4096, $request['max_tokens']);
             $this->assertArrayNotHasKey('reasoning_split', $request->data());
             $this->assertArrayNotHasKey('thinking', $request->data());
 
@@ -273,7 +273,7 @@ class LaravelArticleAiQualityReviewerTest extends TestCase
             'MiniMax international' => ['https://api.minimax.io/v1', 'MiniMax-M2.1', ['reasoning_split' => true]],
             'GLM cached JSON mode' => ['https://open.bigmodel.cn/api/paas/v4', 'glm-4.5-air', ['thinking' => ['type' => 'disabled'], 'response_format' => ['type' => 'json_object']], true],
             'MiniMax cached JSON mode' => ['https://api.minimaxi.com/v1', 'MiniMax-M2.5', ['reasoning_split' => true], true],
-            'DeepSeek runtime provider' => ['https://api.deepseek.com/v1', 'deepseek-v4-flash', ['thinking' => ['type' => 'disabled'], 'max_tokens' => 2048]],
+            'DeepSeek runtime provider' => ['https://api.deepseek.com/v1', 'deepseek-v4-flash', ['thinking' => ['type' => 'disabled'], 'max_tokens' => 4096]],
         ];
     }
 

@@ -19,6 +19,8 @@ class ArticleEditorAssetController extends Controller
 {
     private const EDITOR_LIBRARY_NAME = '文章编辑器图片';
 
+    private const MAX_EDITOR_IMAGE_KILOBYTES = 20 * 1024;
+
     public function __construct(private readonly ManagedImageFileService $managedImages) {}
 
     public function exportWeChatHtml(Request $request, WeChatArticleHtmlExporter $exporter): JsonResponse
@@ -50,7 +52,7 @@ class ArticleEditorAssetController extends Controller
         $payload = $request->validate([
             'image' => [
                 'required',
-                File::image()->types(['jpg', 'jpeg', 'png', 'gif', 'webp'])->max(10 * 1024),
+                File::image()->types(['jpg', 'jpeg', 'png', 'gif', 'webp'])->max(self::MAX_EDITOR_IMAGE_KILOBYTES),
             ],
             'alt' => ['nullable', 'string', 'max:120'],
             'position' => ['nullable', 'integer', 'min:0'],

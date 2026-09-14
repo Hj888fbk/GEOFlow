@@ -67,18 +67,22 @@ class ArticleAiQualityGate
             $policy['model_candidates'] = $this->policyResolver->modelCandidates($policy);
 
             $versionSelection = $this->versionPolicy->selection((int) $article->id);
-            $currentFingerprint = $this->inspectionService->currentFingerprint(
-                $article,
-                $policy,
-                $this->inspectionService->rules(),
-                $versionSelection,
-            );
             $check = ArticleAiQualityCheck::query()
                 ->where('article_id', $article->id)
                 ->where('gate_applied', true)
                 ->latest('id')
                 ->lockForUpdate()
                 ->first();
+            $currentFingerprint = null;
+            if ($check instanceof ArticleAiQualityCheck) {
+                $policy = $this->inspectionService->policyForPersistedCheck($policy, $check);
+                $currentFingerprint = $this->inspectionService->currentFingerprint(
+                    $article,
+                    $policy,
+                    $this->inspectionService->rules(),
+                    $versionSelection,
+                );
+            }
 
             $optimizationStillApplies = $optimization && $check && (
                 in_array((int) $check->id, array_filter([
@@ -198,18 +202,22 @@ class ArticleAiQualityGate
         $policy['model_candidates'] = $this->policyResolver->modelCandidates($policy);
         $versionSelection = $this->versionPolicy->selection((int) $article->id);
 
-        $currentFingerprint = $this->inspectionService->currentFingerprint(
-            $article,
-            $policy,
-            $this->inspectionService->rules(),
-            $versionSelection,
-        );
         $check = ArticleAiQualityCheck::query()
             ->where('article_id', $article->id)
             ->where('gate_applied', true)
             ->latest('id')
             ->lockForUpdate()
             ->first();
+        $currentFingerprint = null;
+        if ($check instanceof ArticleAiQualityCheck) {
+            $policy = $this->inspectionService->policyForPersistedCheck($policy, $check);
+            $currentFingerprint = $this->inspectionService->currentFingerprint(
+                $article,
+                $policy,
+                $this->inspectionService->rules(),
+                $versionSelection,
+            );
+        }
 
         $optimizationStillApplies = $optimization && $check && (
             in_array((int) $check->id, array_filter([

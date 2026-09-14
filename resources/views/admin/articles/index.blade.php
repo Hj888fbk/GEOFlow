@@ -670,7 +670,7 @@
                                                 <i data-lucide="edit" class="w-4 h-4"></i>
                                             </a>
                                             @if($canCreateManualPublication && in_array((string) $article->review_status, ['approved', 'auto_approved'], true))
-                                                <a href="{{ route('admin.manual-publications.create', ['article_id' => (int) $article->id]) }}" class="text-purple-600 hover:text-purple-800" title="{{ __('admin.manual_publications.article_action') }}">
+                                                <a href="{{ route('admin.manual-publications.index', ['view' => 'launch']) }}" class="text-purple-600 hover:text-purple-800" title="{{ __('admin.manual_publications.article_action') }}">
                                                     <i data-lucide="send" class="w-4 h-4"></i>
                                                 </a>
                                             @endif

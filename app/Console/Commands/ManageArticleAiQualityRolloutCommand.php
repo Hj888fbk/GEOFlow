@@ -318,15 +318,23 @@ class ManageArticleAiQualityRolloutCommand extends Command
             return '';
         }
 
-        return str_starts_with($path, DIRECTORY_SEPARATOR) ? $path : base_path($path);
+        $isAbsolute = str_starts_with($path, '/')
+            || str_starts_with($path, '\\')
+            || preg_match('/^[A-Za-z]:[\\\\\/]/', $path) === 1;
+
+        return $isAbsolute ? $path : base_path($path);
     }
 
     private function portablePath(string $path): string
     {
-        $absolute = $this->absolutePath($path);
-        $prefix = rtrim(base_path(), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        $absolute = str_replace('\\', '/', $this->absolutePath($path));
+        $prefix = rtrim(str_replace('\\', '/', base_path()), '/').'/';
+        $comparisonPath = PHP_OS_FAMILY === 'Windows' ? strtolower($absolute) : $absolute;
+        $comparisonPrefix = PHP_OS_FAMILY === 'Windows' ? strtolower($prefix) : $prefix;
 
-        return str_starts_with($absolute, $prefix) ? substr($absolute, strlen($prefix)) : $absolute;
+        return str_starts_with($comparisonPath, $comparisonPrefix)
+            ? substr($absolute, strlen($prefix))
+            : $absolute;
     }
 
     /** @return list<int> */

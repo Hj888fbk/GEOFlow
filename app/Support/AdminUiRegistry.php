@@ -144,6 +144,8 @@ final class AdminUiRegistry
             'admin.articles.edit' => ['key' => 'article_edit', 'icon' => 'file-pen-line', 'body_heading' => 'hidden'],
             'admin.manual-publications.browser-connect.show' => ['key' => 'browser_connect', 'icon' => 'monitor-smartphone', 'body_heading' => 'hidden'],
             'admin.manual-publications.index' => ['key' => 'manual_publications', 'icon' => 'send', 'body_heading' => 'hidden'],
+            'admin.manual-publications.advanced-create' => ['key' => 'manual_publication_create', 'icon' => 'send', 'body_heading' => 'hidden'],
+            'admin.manual-publications.self-media.index' => ['key' => 'self_media_publications', 'icon' => 'radio-tower', 'body_heading' => 'hidden'],
             'admin.manual-publications.create' => ['key' => 'manual_publication_create', 'icon' => 'send', 'body_heading' => 'hidden'],
             'admin.manual-publications.settings.index' => ['key' => 'manual_publication_settings', 'icon' => 'settings-2', 'body_heading' => 'hidden'],
             'admin.manual-publications.show' => ['key' => 'manual_publication_detail', 'icon' => 'file-check-2', 'body_heading' => 'content'],
@@ -355,10 +357,18 @@ final class AdminUiRegistry
     public function routeClassification(string $routeName): ?string
     {
         $classifications = [
-            'redirect' => ['admin.entry', 'admin.locale.switch', 'admin.security-settings.index'],
+            'redirect' => [
+                'admin.entry',
+                'admin.locale.switch',
+                'admin.security-settings.index',
+                'admin.manual-publications.create',
+                'admin.manual-publications.self-media.index',
+                'admin.manual-publications.settings.index',
+            ],
             'special' => ['admin.site-settings.theme-packages.preview.frame', 'admin.login', 'admin.site-settings.theme-replications.preview'],
             'download' => [
-                'admin.leads.export', 'admin.manual-publications.export',
+                'admin.leads.export', 'admin.manual-publications.export', 'admin.manual-publications.settings.extension.download',
+                'admin.manual-publications.settings.desktop.download',
                 'admin.articles.batch.export-markdown.download',
                 'admin.site-settings.theme-replications.package', 'admin.site-settings.theme-packages.exports.download',
                 'admin.system-updates.updater.download',

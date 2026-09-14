@@ -83,8 +83,8 @@ class UpgradeStepRunner
     private function cacheCommands(string $strategy): array
     {
         $cacheRoot = $this->canonicalPath(base_path('bootstrap/cache'), 'upgrade_isolated_bootstrap_cache_required');
-        $baseRoot = realpath(base_path());
-        if ($baseRoot === false || $cacheRoot !== $baseRoot.'/bootstrap/cache') {
+        $baseRoot = $this->canonicalPath(base_path(), 'upgrade_isolated_bootstrap_cache_required');
+        if ($cacheRoot !== $baseRoot.'/bootstrap/cache') {
             throw new RuntimeException('upgrade_isolated_bootstrap_cache_required');
         }
         $compiled = $this->canonicalPath((string) config('view.compiled'), 'upgrade_isolated_view_cache_required');
@@ -107,7 +107,13 @@ class UpgradeStepRunner
 
     private function canonicalPath(string $path, string $error): string
     {
-        if (! str_starts_with($path, '/') || str_contains($path, "\0") || str_contains($path, '\\')
+        if (DIRECTORY_SEPARATOR === '\\') {
+            $path = str_replace('\\', '/', $path);
+            $absolute = preg_match('/\A[A-Za-z]:\//', $path) === 1;
+        } else {
+            $absolute = str_starts_with($path, '/') && ! str_contains($path, '\\');
+        }
+        if (! $absolute || str_contains($path, "\0")
             || array_intersect(explode('/', $path), ['.', '..']) !== []) {
             throw new RuntimeException($error);
         }
@@ -123,6 +129,8 @@ class UpgradeStepRunner
         if ($suffix !== [] && ! is_dir($resolved)) {
             throw new RuntimeException($error);
         }
+
+        $resolved = str_replace('\\', '/', $resolved);
 
         return rtrim($resolved, '/').($suffix === [] ? '' : '/'.implode('/', $suffix));
     }

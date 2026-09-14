@@ -2469,6 +2469,18 @@ class ArticleAiQualityInspectionService
         return hash_equals($storedHash, $basis->hash());
     }
 
+    /** @param array<string,mixed> $policy @return array<string,mixed> */
+    public function policyForPersistedCheck(array $policy, ArticleAiQualityCheck $check): array
+    {
+        [$executionSnapshot, $invalidExecutionSnapshot] = $this->qualityExecutionSnapshotForCheck(
+            is_array($check->execution_meta) ? $check->execution_meta : [],
+        );
+
+        return ! $invalidExecutionSnapshot && $executionSnapshot !== null
+            ? $this->withFrozenExecutionCandidates($policy, $executionSnapshot)
+            : $policy;
+    }
+
     public function rolloutEpochMatches(ArticleAiQualityCheck $check, ?int $committedEpoch = null): bool
     {
         $storedEpoch = max(1, (int) data_get($check->execution_meta, 'retrieval_basis.rollout.epoch', 1));
@@ -3092,6 +3104,7 @@ class ArticleAiQualityInspectionService
             $basisIsCurrent = $this->rolloutEpochMatches($check, $committedEpoch);
             try {
                 $policy = $this->policyResolver->resolve($article);
+                $policy = $this->policyForPersistedCheck($policy, $check);
                 $this->policyResolver->assertExecutable($policy);
                 $currentFingerprint = $this->currentFingerprint(
                     $article,
@@ -3175,6 +3188,7 @@ class ArticleAiQualityInspectionService
         $check = ArticleAiQualityCheck::query()->with(['article.task'])->find($checkId);
         if (! $check
             || (string) $check->status !== 'completed'
+            || (string) $check->decision !== 'passed'
             || ! (bool) $check->gate_applied
             || (string) $check->evaluation_mode === 'optimization_candidate'
             || ! $check->article) {
@@ -3184,17 +3198,19 @@ class ArticleAiQualityInspectionService
         $article = $check->article;
         $policy = $this->policyResolver->resolve($article);
         $basisChanged = ! (bool) ($policy['required'] ?? false);
+        $comparisonPolicy = $policy;
         try {
             if (! $basisChanged) {
-                $this->policyResolver->assertExecutable($policy);
+                $comparisonPolicy = $this->policyForPersistedCheck($policy, $check);
+                $this->policyResolver->assertExecutable($comparisonPolicy);
                 $currentFingerprint = $this->currentFingerprint(
                     $article,
-                    $policy,
+                    $comparisonPolicy,
                     $this->rules(),
                     $this->versionPolicy->selection((int) $article->id),
                 );
                 $basisChanged = ! hash_equals((string) $check->input_fingerprint, $currentFingerprint)
-                    || ! $this->retrievalBasisMatches($check, $policy, $this->rules());
+                    || ! $this->retrievalBasisMatches($check, $comparisonPolicy, $this->rules());
             }
         } catch (Throwable $exception) {
             $basisChanged = true;
@@ -3206,7 +3222,9 @@ class ArticleAiQualityInspectionService
 
         $superseded = DB::transaction(function () use ($checkId): bool {
             $locked = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
-            if (! $locked || (string) $locked->status !== 'completed') {
+            if (! $locked
+                || (string) $locked->status !== 'completed'
+                || (string) $locked->decision !== 'passed') {
                 return false;
             }
             $executionMeta = is_array($locked->execution_meta) ? $locked->execution_meta : [];

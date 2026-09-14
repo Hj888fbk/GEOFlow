@@ -494,6 +494,15 @@ class AdminAiExecutionIdentityTest extends TestCase
         $model = $this->model($admin, 'atomic-completion-model');
         [$task, $title] = $this->generationTask($admin, $model, 'Atomic completion task');
         $imageLibrary = ImageLibrary::query()->create(['name' => 'Atomic completion images']);
+        Image::query()->create([
+            'library_id' => $imageLibrary->id,
+            'filename' => 'unrelated.png',
+            'original_name' => 'Unrelated catalog image.png',
+            'file_path' => 'images/unrelated.png',
+            'managed_path_hash' => hash('sha256', 'images/unrelated.png'),
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
         $image = Image::query()->create([
             'library_id' => $imageLibrary->id,
             'filename' => 'atomic.png',
@@ -529,6 +538,8 @@ class AdminAiExecutionIdentityTest extends TestCase
         $this->assertNull($run->execution_lease_token);
         $this->assertSame(1, Article::query()->where('task_id', $task->id)->count());
         $this->assertSame(1, ArticleImage::query()->where('image_id', $image->id)->count());
+        $this->assertStringContainsString('atomic.png', (string) Article::query()->whereKey($result['article_id'])->value('content'));
+        $this->assertStringNotContainsString('unrelated.png', (string) Article::query()->whereKey($result['article_id'])->value('content'));
         $this->assertSame(1, (int) $image->fresh()->used_count);
         $this->assertSame(1, (int) $image->fresh()->usage_count);
         $this->assertSame(1, (int) $title->fresh()->used_count);

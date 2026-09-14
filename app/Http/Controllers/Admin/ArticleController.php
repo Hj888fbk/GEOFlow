@@ -38,6 +38,7 @@ use App\Support\Admin\ArticleAiQualityProgressPresenter;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
 use App\Support\GeoFlow\ArticleWorkflow;
+use App\Support\GeoFlow\KeywordNormalizer;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -1490,6 +1491,8 @@ class ArticleController extends Controller
                 ]);
             }
         }
+
+        $validated['keywords'] = KeywordNormalizer::normalize((string) ($validated['keywords'] ?? ''));
 
         return $validated;
     }

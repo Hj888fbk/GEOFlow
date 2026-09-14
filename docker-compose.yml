@@ -11,7 +11,7 @@ services:
     ports:
       - "127.0.0.1:${DB_EXPOSE_PORT:-15432}:5432"
     volumes:
-      - ${POSTGRES_DATA_DIR:-./docker-data/dev/postgres}:${POSTGRES_CONTAINER_DATA_DIR:-/var/lib/postgresql}
+      - ${DEV_POSTGRES_DATA_DIR:-./docker-data/dev/postgres}:${POSTGRES_CONTAINER_DATA_DIR:-/var/lib/postgresql}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-geo_user} -d ${DB_DATABASE:-geo_flow}"]
       interval: 10s
@@ -22,6 +22,25 @@ services:
   redis:
     image: ${REDIS_IMAGE:-redis:7-alpine}
     container_name: geoflow-redis
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        if [ -n "$${REDIS_PASSWORD:-}" ]; then
+          exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"
+        fi
+        exec redis-server --appendonly yes
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "if [ -n \"$${REDIS_PASSWORD:-}\" ]; then redis-cli -a \"$${REDIS_PASSWORD}\" ping; else redis-cli ping; fi",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     ports:
       - "127.0.0.1:${REDIS_EXPOSE_PORT:-16379}:6379"
     restart: unless-stopped
@@ -50,6 +69,7 @@ services:
       - ./.env
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "${AUTO_FIX_STORAGE_PERMISSIONS:-true}"
+      AUTO_OPTIMIZE: "true"
       AUTO_INIT_ONCE: "true"
       GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED: "true"
     # 交给 entrypoint 执行自动初始化（生成 APP_KEY / migrate / geoflow:install）
@@ -69,6 +89,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_OPTIMIZE: "false"
     command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080", "--no-reload"]
     volumes:
       - ./:/var/www/html
@@ -83,7 +104,7 @@ services:
     image: nginx:1.27-alpine
     container_name: geoflow-web
     ports:
-      - "127.0.0.1:${APP_PORT:-18080}:80"
+      - "127.0.0.1:${APP_PORT:-28080}:80"
     volumes:
       - ./:/var/www/html:ro
       - ./docker/nginx/local.conf:/etc/nginx/conf.d/default.conf:ro
@@ -100,6 +121,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_OPTIMIZE: "false"
       COMPOSER_ON_START: "false"
       AUTO_MIGRATE: "false"
     command: ["php", "-d", "memory_limit=256M", "artisan", "queue:work", "redis", "--queue=system-updates,geoflow,distribution,theme-replication,self-media,default", "--sleep=1", "--tries=1", "--timeout=930", "--memory=128", "--max-jobs=100", "--max-time=3600"]
@@ -117,6 +139,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_OPTIMIZE: "false"
       COMPOSER_ON_START: "false"
       AUTO_MIGRATE: "false"
     command: ["php", "-d", "memory_limit=256M", "artisan", "geoflow:work-ai-quality", "front"]
@@ -137,6 +160,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_OPTIMIZE: "false"
       COMPOSER_ON_START: "false"
       AUTO_MIGRATE: "false"
     command: ["php", "-d", "memory_limit=192M", "artisan", "geoflow:work-ai-quality", "backfill"]
@@ -155,6 +179,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_OPTIMIZE: "false"
       COMPOSER_ON_START: "false"
       AUTO_MIGRATE: "false"
     command: ["php", "-d", "memory_limit=256M", "artisan", "geoflow:work-ai-optimization"]
@@ -173,6 +198,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_OPTIMIZE: "false"
       COMPOSER_ON_START: "false"
       AUTO_MIGRATE: "false"
     command: ["php", "-d", "memory_limit=160M", "artisan", "queue:work", "redis", "--queue=knowledge", "--sleep=1", "--tries=1", "--timeout=210", "--memory=128", "--max-jobs=20", "--max-time=1800"]
@@ -191,6 +217,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_OPTIMIZE: "false"
       COMPOSER_ON_START: "false"
       AUTO_MIGRATE: "false"
     command: ["php", "artisan", "schedule:work"]
@@ -207,6 +234,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_OPTIMIZE: "false"
       COMPOSER_ON_START: "false"
       AUTO_MIGRATE: "false"
     command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]

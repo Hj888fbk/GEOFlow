@@ -100,8 +100,10 @@ class AdminUiV3RouteRegistryTest extends TestCase
         $this->assertSame('endpoint', $registry->routeClassification('admin.recent.index'));
         $this->assertSame('endpoint', $registry->routeClassification('admin.ai-workspace.conversations.show'));
         $this->assertSame('download', $registry->routeClassification('admin.system-updates.updater.download'));
+        $this->assertSame('download', $registry->routeClassification('admin.manual-publications.settings.extension.download'));
         $this->assertSame('binary', $registry->routeClassification('admin.ai-workspace.media.show'));
         $this->assertSame('shell', $registry->routeClassification('admin.ai-workspace'));
+        $this->assertSame('redirect', $registry->routeClassification('admin.manual-publications.self-media.index'));
         $this->assertSame('shell', $registry->routeClassification('admin.title-libraries.ai-generate'));
         $this->assertSame('shell', $registry->routeClassification('admin.system-updates.backups.show'));
         $this->assertNull($registry->routeClassification('admin.unregistered-page'));
@@ -117,7 +119,7 @@ class AdminUiV3RouteRegistryTest extends TestCase
                 && $registry->routeClassification($name) === 'shell')
             ->values();
 
-        $this->assertCount(106, $shellRouteNames);
+        $this->assertCount(105, $shellRouteNames);
         $shellRouteNames->each(function (string $routeName) use ($registry): void {
             $identity = $registry->pageIdentity($routeName);
 
@@ -154,7 +156,7 @@ class AdminUiV3RouteRegistryTest extends TestCase
             ->unique()
             ->values();
 
-        $this->assertCount(109, $routeNames);
+        $this->assertCount(111, $routeNames);
 
         foreach (array_keys(AdminWeb::supportedLocales()) as $locale) {
             App::setLocale($locale);

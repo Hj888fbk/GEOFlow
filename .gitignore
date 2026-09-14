@@ -30,3 +30,9 @@ __pycache__/
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Desktop publisher subproject (Electron) build artifacts
+/desktop-publisher/node_modules
+/desktop-publisher/dist
+/desktop-publisher/out
+/dist

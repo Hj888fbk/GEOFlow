@@ -1328,6 +1328,79 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertLessThanOrEqual(160, $reviewer->timeouts[1]);
     }
 
+    public function test_completed_execution_check_keeps_frozen_candidates_when_a_new_failover_model_is_added(): void
+    {
+        Queue::fake();
+        $this->setQualityRollout(execution: 100);
+        $this->bindPassingReviewer();
+
+        $executor = $this->qualityAdmin('quality-frozen-candidates', 'super_admin');
+        $article = $this->createQualityFixture('frozen-candidates', needReview: false);
+        $primary = $article->task->aiModel;
+        $primary->forceFill([
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+        ])->save();
+        $article->task->forceFill([
+            'model_selection_mode' => 'smart_failover',
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'super_admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+
+        $this->assertSame([$primary->id], data_get($check->execution_meta, 'model_candidate_ids'));
+
+        $this->qualityModel($executor, 'quality-frozen-fallback', 1);
+
+        $completed = $service->process($check);
+
+        $this->assertSame('completed', $completed->status);
+        $this->assertSame('passed', $completed->decision);
+        $this->assertSame('succeeded', data_get($completed->fresh()->execution_meta, 'workflow_apply.status'));
+        $this->assertSame('approved', $article->fresh()->review_status);
+        $this->assertSame((int) $check->id, (int) $article->fresh()->latestAiQualityCheck->id);
+    }
+
+    public function test_basis_change_recheck_uses_current_model_candidates(): void
+    {
+        Queue::fake();
+        $this->setQualityRollout(execution: 100);
+        $this->bindPassingReviewer();
+
+        $executor = $this->qualityAdmin('quality-current-candidates', 'super_admin');
+        $article = $this->createQualityFixture('current-candidates', needReview: false);
+        $original = $article->task->aiModel;
+        $original->forceFill([
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+        ])->save();
+        $article->task->forceFill([
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'super_admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $replacement = $this->qualityModel($executor, 'quality-current-replacement', 0);
+        $article->task()->update(['ai_model_id' => $replacement->id]);
+
+        $service->process($check);
+
+        $check->refresh();
+        $latest = $article->aiQualityChecks()->latest('id')->firstOrFail();
+        $this->assertSame('stale', $check->status);
+        $this->assertSame('quality_basis_changed', $check->error_code);
+        $this->assertSame('queued', $latest->status);
+        $this->assertSame((int) $replacement->id, (int) $latest->ai_model_id);
+        $this->assertSame([(int) $replacement->id], data_get($latest->execution_meta, 'model_candidate_ids'));
+    }
+
     public function test_execution_bound_quality_check_uses_requested_then_personal_then_shared_candidates_only(): void
     {
         config()->set('geoflow.ai_quality_max_model_candidates', 3);
@@ -2352,6 +2425,33 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertNotSame((int) $check->id, (int) $latest->id);
         $this->assertSame('queued', $latest->status);
         Queue::assertPushed(ProcessArticleAiQualityJob::class, fn (ProcessArticleAiQualityJob $job): bool => $job->checkId === (int) $latest->id);
+    }
+
+    public function test_completed_needs_review_check_is_not_superseded_when_quality_basis_changes(): void
+    {
+        Queue::fake();
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('workflow-needs-review-basis-changed', needReview: false);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $completed = $service->process($service->createOrReuse($article, dispatch: false));
+
+        $executionMeta = $completed->fresh()->execution_meta;
+        $executionMeta['workflow_apply']['status'] = 'pending';
+        $completed->forceFill([
+            'decision' => 'needs_review',
+            'execution_meta' => $executionMeta,
+        ])->save();
+        $article->task()->update(['ai_quality_pass_score' => 90]);
+        $checksBefore = $article->aiQualityChecks()->count();
+
+        $service->applyCompletedWorkflow($completed->fresh());
+
+        $completed->refresh();
+        $this->assertSame('completed', $completed->status);
+        $this->assertSame('needs_review', $completed->decision);
+        $this->assertNull($completed->error_code);
+        $this->assertSame('succeeded', data_get($completed->execution_meta, 'workflow_apply.status'));
+        $this->assertSame($checksBefore, $article->fresh()->aiQualityChecks()->count());
     }
 
     public function test_exact_reconciliation_ids_do_not_touch_unrelated_stale_articles(): void

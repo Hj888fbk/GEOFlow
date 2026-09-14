@@ -92,12 +92,13 @@
         ];
         $updaterInstallCommands = [];
         if ($hasPreparedUpdater && $updaterHostRootConfigured) {
-            $archiveArg = escapeshellarg((string) ($preparedUpdater['filename'] ?? ''));
-            $updaterInstanceArg = escapeshellarg($updaterInstanceId);
-            $updaterEnrollRootArg = escapeshellarg($updaterHostRoot);
-            $updaterEnvironmentArg = escapeshellarg(rtrim($updaterHostRoot, '/').'/.env.prod');
-            $updaterReleaseEnvironmentArg = escapeshellarg('/var/lib/geoflow-updater/instances/'.$updaterInstanceId.'/release.env');
-            $updaterComposeArg = escapeshellarg('/var/lib/geoflow-updater/instances/'.$updaterInstanceId.'/docker-compose.managed.yml');
+            $posixShellArg = static fn (string $value): string => "'".str_replace("'", "'\"'\"'", $value)."'";
+            $archiveArg = $posixShellArg((string) ($preparedUpdater['filename'] ?? ''));
+            $updaterInstanceArg = $posixShellArg($updaterInstanceId);
+            $updaterEnrollRootArg = $posixShellArg($updaterHostRoot);
+            $updaterEnvironmentArg = $posixShellArg(rtrim($updaterHostRoot, '/').'/.env.prod');
+            $updaterReleaseEnvironmentArg = $posixShellArg('/var/lib/geoflow-updater/instances/'.$updaterInstanceId.'/release.env');
+            $updaterComposeArg = $posixShellArg('/var/lib/geoflow-updater/instances/'.$updaterInstanceId.'/docker-compose.managed.yml');
             $updaterInstallCommands = [
                 'unpack' => 'tar -xzf '.$archiveArg,
                 'install' => 'sudo ./packaging/scripts/install.sh',

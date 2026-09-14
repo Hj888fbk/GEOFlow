@@ -14,6 +14,8 @@ class UnixSocketAgentClientTest extends TestCase
 {
     public function test_rejected_rollback_keeps_diagnostic_context_without_logging_the_authorization_code(): void
     {
+        $this->requireUnixSocketRuntime();
+
         $previous = ini_get('zend.exception_ignore_args');
         ini_set('zend.exception_ignore_args', '0');
         $authorizationCode = '604827';
@@ -71,6 +73,9 @@ class UnixSocketAgentClientTest extends TestCase
             $invoke = fn (UnixSocketAgentClient $client): array => $method === 'startRollback'
                 ? $client->startRollback('20260827T120000Z-1234abcd', $authorizationCode)
                 : $client->{$method}($authorizationCode);
+            if ($failure !== 'validation') {
+                $this->requireUnixSocketRuntime();
+            }
             try {
                 if ($failure === 'validation') {
                     $invoke(new UnixSocketAgentClient);
@@ -105,6 +110,8 @@ class UnixSocketAgentClientTest extends TestCase
 
     public function test_it_reads_authenticated_status_from_the_local_unix_socket(): void
     {
+        $this->requireUnixSocketRuntime();
+
         $directory = sys_get_temp_dir().'/geoflow-updater-client-'.bin2hex(random_bytes(8));
         mkdir($directory, 0700, true);
         $socketPath = $directory.'/agent.sock';
@@ -163,6 +170,8 @@ class UnixSocketAgentClientTest extends TestCase
 
     public function test_it_rejects_a_control_token_with_header_injection_characters(): void
     {
+        $this->requireUnixSocketRuntime();
+
         $tokenPath = tempnam(sys_get_temp_dir(), 'geoflow-updater-token-');
         file_put_contents($tokenPath, str_repeat('a', 43)."\r\nX-Injection: yes");
         chmod($tokenPath, 0640);
@@ -184,6 +193,8 @@ class UnixSocketAgentClientTest extends TestCase
 
     public function test_it_uses_only_the_typed_operation_endpoints(): void
     {
+        $this->requireUnixSocketRuntime();
+
         $directory = sys_get_temp_dir().'/geoflow-updater-client-'.bin2hex(random_bytes(8));
         mkdir($directory, 0700, true);
         $socketPath = $directory.'/agent.sock';
@@ -452,6 +463,8 @@ class UnixSocketAgentClientTest extends TestCase
 
     private function withAgentResponse(array $payload, callable $callback, int $httpStatus = 200): mixed
     {
+        $this->requireUnixSocketRuntime();
+
         $directory = sys_get_temp_dir().'/geoflow-updater-client-'.bin2hex(random_bytes(8));
         mkdir($directory, 0700, true);
         $socketPath = $directory.'/agent.sock';
@@ -494,6 +507,13 @@ class UnixSocketAgentClientTest extends TestCase
             @unlink($socketPath);
             @unlink($tokenPath);
             @rmdir($directory);
+        }
+    }
+
+    private function requireUnixSocketRuntime(): void
+    {
+        if (! in_array('unix', stream_get_transports(), true) || ! function_exists('pcntl_fork')) {
+            $this->markTestSkipped('Unix sockets and process forking are required by this integration test.');
         }
     }
 }

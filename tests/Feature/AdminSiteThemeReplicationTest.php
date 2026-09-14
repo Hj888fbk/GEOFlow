@@ -1292,6 +1292,10 @@ class AdminSiteThemeReplicationTest extends TestCase
 
     public function test_theme_replication_package_rejects_abnormal_storage_filename_and_cleans_partial_zip(): void
     {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('Windows cannot create a filesystem entry containing a drive-letter separator.');
+        }
+
         Storage::fake('local');
 
         $replication = $this->replicationWithDraftFiles('safe-package-theme');
