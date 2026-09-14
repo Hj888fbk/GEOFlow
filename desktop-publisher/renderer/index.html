@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'">
+  <title>GEOFlow 发布助手</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header><div><p class="eyebrow">GEOFLOW DESKTOP</p><h1>发布助手</h1><p class="muted">保存各平台草稿，最终发布由你确认。</p></div><span id="connection" class="badge">检查中</span></header>
+    <section class="card instance"><div><h2>GEOFlow 实例</h2><p id="instance" class="muted"></p></div><button id="discover" class="secondary">检测本机</button></section>
+    <section id="pairing" class="card hidden"><h2>首次连接</h2><p class="muted">在 GEOFlow 后台确认设备码。授权后令牌只保存在 Windows 系统凭据保护区。</p><div class="pair"><strong id="user-code">—</strong><button id="approve" class="secondary">打开确认页</button></div><button id="poll" class="primary">我已确认，完成连接</button></section>
+    <section class="card"><div class="section-title"><div><h2>平台账号</h2><p class="muted">每个实例与账号使用独立登录会话。</p></div><button id="refresh" class="secondary">刷新</button></div><div id="accounts" class="accounts"><p class="empty">连接后显示账号。</p></div></section>
+    <section id="update-card" class="card hidden"><div class="section-title"><div><h2>发布助手有新版本</h2><p id="update-version" class="muted"></p></div><button id="install-update" class="secondary">校验并安装</button></div></section>
+    <footer><div id="message" class="muted">等待操作</div><button id="sync" class="primary" disabled>一键同步全部草稿</button></footer>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>

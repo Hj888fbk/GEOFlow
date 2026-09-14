@@ -1,0 +1,54 @@
+{
+  "name": "geoflow-desktop-publisher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GEOFlow Windows desktop draft publisher",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "sign:update": "node scripts/sign-update.cjs",
+    "dist:win": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.geoflow.desktop.publisher",
+    "productName": "GEOFlow Desktop Publisher",
+    "protocols": [
+      {
+        "name": "GEOFlow Publisher Login",
+        "schemes": [
+          "geoflow-publisher"
+        ]
+      }
+    ],
+    "asar": true,
+    "files": [
+      "src/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "GEOFlow-Desktop-Publisher-${version}-win-x64.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    },
+    "directories": {
+      "output": "../dist/desktop-publisher"
+    }
+  }
+}
