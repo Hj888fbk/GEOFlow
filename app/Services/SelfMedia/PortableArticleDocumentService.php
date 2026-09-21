@@ -13,7 +13,7 @@ final class PortableArticleDocumentService
     private const MEDIA_TOKEN_PATTERN = '/\{\{media:([a-z0-9][a-z0-9_-]{7,79})\}\}/i';
 
     /**
-     * @param list<array<string,mixed>> $mediaManifest
+     * @param  list<array<string,mixed>>  $mediaManifest
      * @return array<string,mixed>
      */
     public function build(string $title, string $markdown, array $mediaManifest, string $platform): array
@@ -69,6 +69,7 @@ final class PortableArticleDocumentService
         foreach ($lines as $index => $line) {
             if (preg_match('/^\s*(```|~~~)/', $line) === 1) {
                 $insideFence = ! $insideFence;
+
                 continue;
             }
             if ($insideFence || preg_match('/^#\s+(.+?)\s*$/u', $line, $heading) !== 1) {
@@ -200,6 +201,7 @@ final class PortableArticleDocumentService
                         $out[] = ($lead !== '' ? '- **'.$lead.'**：' : '- ').implode('；', $parts);
                         $i++;
                     }
+
                     continue;
                 }
             }
@@ -314,10 +316,12 @@ final class PortableArticleDocumentService
                     $code = [];
                 }
                 $insideCode = ! $insideCode;
+
                 continue;
             }
             if ($insideCode) {
                 $code[] = $line;
+
                 continue;
             }
             if (preg_match(self::MEDIA_TOKEN_PATTERN, trim($line), $media) === 1) {

@@ -5,6 +5,7 @@ namespace App\Services\GeoFlow;
 use App\Models\Article;
 use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\Site\ArticleHtmlPresenter;
+use Illuminate\Support\Facades\Log;
 
 class DistributionPayloadBuilder
 {
@@ -131,6 +132,13 @@ class DistributionPayloadBuilder
             $size = filesize($path);
             if (is_int($size) && $size > self::MAX_EMBEDDED_IMAGE_BYTES) {
                 $asset['skip_reason'] = 'file_too_large';
+                Log::warning('分发载荷图片超过内嵌体积上限，目标站可能展示裂图。', [
+                    'source_url' => $url,
+                    'path' => $path,
+                    'skip_reason' => 'file_too_large',
+                    'file_size' => $size,
+                    'max_bytes' => self::MAX_EMBEDDED_IMAGE_BYTES,
+                ]);
 
                 return $asset;
             }
@@ -141,10 +149,36 @@ class DistributionPayloadBuilder
                 $asset['mime_type'] = $mimeType;
                 $asset['content_base64'] = base64_encode($contents);
                 $asset['filename'] = $this->imageAssetFilename($url, (string) $mimeType);
+            } else {
+                Log::warning('分发载荷图片文件读取失败，目标站可能展示裂图。', [
+                    'source_url' => $url,
+                    'path' => $path,
+                    'skip_reason' => 'file_unreadable',
+                ]);
             }
+        } elseif ($path !== null && $this->isLocalImageUrl($url)) {
+            Log::warning('分发载荷引用的本地图片文件不存在或不可读，目标站可能展示裂图。', [
+                'source_url' => $url,
+                'path' => $path,
+                'skip_reason' => 'file_unreadable',
+            ]);
         }
 
         return $asset;
+    }
+
+    /**
+     * 只有明确指向本站的图片才按本地文件对待；站外 URL 缺文件属于正常情况，不告警。
+     */
+    private function isLocalImageUrl(string $url): bool
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+        if (! is_string($host) || $host === '') {
+            return true;
+        }
+        $appHost = parse_url((string) config('app.url'), PHP_URL_HOST);
+
+        return is_string($appHost) && $appHost !== '' && strcasecmp($host, $appHost) === 0;
     }
 
     private function publicPathForImageUrl(string $url): ?string

@@ -287,7 +287,7 @@ SH;
             'DOCKER_NETWORK_SUBNET' => '10.89.0.0/16',
             'DOCKER_NETWORK_GATEWAY' => '10.89.0.1',
             'WEB_PORT' => '18081',
-            'POSTGRES_DATA_DIR' => './docker-data/prod-a/postgres',
+            'POSTGRES_DATA_VOLUME' => 'geoflow-a-postgres-data',
         ], 'geoflow-a');
         $second = $this->renderCompose($root, 'docker-compose.prod.yml', [
             'GEOFLOW_APP_IMAGE' => false,
@@ -296,7 +296,7 @@ SH;
             'DOCKER_NETWORK_SUBNET' => '10.90.0.0/16',
             'DOCKER_NETWORK_GATEWAY' => '10.90.0.1',
             'WEB_PORT' => '18082',
-            'POSTGRES_DATA_DIR' => './docker-data/prod-b/postgres',
+            'POSTGRES_DATA_VOLUME' => 'geoflow-b-postgres-data',
         ], 'geoflow-b');
 
         $this->assertSame('geoflow-a', $first['name'] ?? null);
@@ -309,13 +309,13 @@ SH;
         $this->assertSame('10.90.0.0/16', $second['networks']['default']['ipam']['config'][0]['subnet'] ?? null);
         $this->assertSame('18081', $first['services']['web']['ports'][0]['published'] ?? null);
         $this->assertSame('18082', $second['services']['web']['ports'][0]['published'] ?? null);
-        $this->assertStringEndsWith(
-            '/docker-data/prod-a/postgres',
-            str_replace('\\', '/', $first['services']['postgres']['volumes'][0]['source'] ?? '')
+        $this->assertSame(
+            'geoflow-a-postgres-data',
+            $first['volumes']['postgres-data']['name'] ?? ''
         );
-        $this->assertStringEndsWith(
-            '/docker-data/prod-b/postgres',
-            str_replace('\\', '/', $second['services']['postgres']['volumes'][0]['source'] ?? '')
+        $this->assertSame(
+            'geoflow-b-postgres-data',
+            $second['volumes']['postgres-data']['name'] ?? ''
         );
 
         foreach ([['project' => 'geoflow-a', 'rendered' => $first], ['project' => 'geoflow-b', 'rendered' => $second]] as $scenario) {

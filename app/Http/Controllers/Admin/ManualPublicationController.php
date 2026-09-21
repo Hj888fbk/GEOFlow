@@ -42,8 +42,7 @@ class ManualPublicationController extends Controller
         Request $request,
         SelfMediaSourceHasher $sourceHasher,
         WebsitePublicationReadbackService $websiteReadback,
-    ): View
-    {
+    ): View {
         $admin = $this->admin($request);
         Gate::forUser($admin)->authorize('viewAny', ManualPublication::class);
         $view = in_array((string) $request->query('view'), ['pending', 'launch', 'history', 'advanced'], true)

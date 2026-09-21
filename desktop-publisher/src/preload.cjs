@@ -23,6 +23,11 @@ contextBridge.exposeInMainWorld('geoflowPublisher', Object.freeze({
   bindAccount: (account) => ipcRenderer.invoke('publisher:bind-account', sanitizeAccount(account)),
   onDeepLinkError: (listener) => ipcRenderer.on('publisher:deep-link-error', (_event, code) => listener(String(code))),
   syncAll: (accountIds) => ipcRenderer.invoke('publisher:sync-all', accountIds.map(Number).filter(Number.isInteger)),
+  autoSyncConfig: () => ipcRenderer.invoke('publisher:auto-sync-config'),
+  setAutoSync: (config) => ipcRenderer.invoke('publisher:set-auto-sync', {
+    autoSyncEnabled: Boolean(config?.autoSyncEnabled),
+    autoSyncIntervalMinutes: Number(config?.autoSyncIntervalMinutes),
+  }),
 }));
 
 function sanitizeAccount(account) {

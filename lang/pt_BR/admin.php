@@ -4652,6 +4652,7 @@ return array_replace_recursive($base, [
         'help' => [
             'markdown_supported' => 'Suporta Markdown',
             'focus_keyword' => 'O principal termo de busca trazido da biblioteca de títulos para atribuição e revisão de SEO. Adicione termos de marca, produto e cenário em Palavras-chave.',
+            'keywords' => 'Todas as palavras-chave listadas são sincronizadas com o WordPress Rank Math e as tags do post. Separe os termos com vírgulas.',
             'review_status' => 'Estados pendentes ou rejeitados voltam automaticamente para rascunho. O status de publicação também mantém consistência com o estado de revisão e o tempo de publicação.',
             'recommendation' => 'Apenas artigos publicados são exibidos no frontend. Os artigos em destaque estão limitados aos 5 mais recentes; múltiplos artigos "quentes" alternam no carrossel da página inicial.',
             'is_hot' => 'Exibir este artigo no carrossel quente da página inicial e na lista da barra lateral quente.',
@@ -4705,6 +4706,7 @@ return array_replace_recursive($base, [
         'help' => [
             'markdown_supported' => 'Suporta Markdown',
             'focus_keyword' => 'O principal termo de busca trazido da biblioteca de títulos. O campo é somente leitura; adicione termos de marca, produto e cenário em Palavras-chave.',
+            'keywords' => 'Todas as palavras-chave listadas são sincronizadas com o WordPress Rank Math e as tags do post. Separe os termos com vírgulas.',
             'review_status' => 'Salvar reconcilia automaticamente o status de publicação, resultado da revisão e tempo de publicação para evitar estados conflitantes.',
             'recommendation' => 'Apenas artigos publicados são exibidos no frontend. Os artigos em destaque estão limitados aos 5 mais recentes; múltiplos artigos "quentes" alternam no carrossel da página inicial.',
             'is_hot' => 'Exibir este artigo no carrossel quente da página inicial e na lista da barra lateral quente.',
@@ -4850,6 +4852,7 @@ return array_replace_recursive($base, [
             'upload_disabled' => 'Save the article first, then upload images from the edit page.',
             'upload_failed' => 'Image upload failed: :message',
             'upload_failed_generic' => 'Image upload failed. Please try again later.',
+            'session_expired' => 'Sua sessão expirou. Atualize a página e tente novamente.',
             'crop_unavailable' => 'Image cropping is temporarily unavailable. You can upload the original image.',
             'upload_directory_failed' => 'Failed to create the image upload directory',
             'upload_store_failed' => 'Failed to save the image',

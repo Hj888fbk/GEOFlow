@@ -2,14 +2,16 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, BrowserWindow, ipcMain, net, safeStorage, session, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, net, Notification, safeStorage, session, shell } = require('electron');
 const { AdapterRegistry } = require('./adapter-registry.cjs');
 const { AccountTaskQueue } = require('./account-queue.cjs');
 const { GeoFlowApiClient, normalizeInstance } = require('./api-client.cjs');
+const { createAutoSyncScheduler } = require('./auto-sync.cjs');
 const { CredentialStore } = require('./credential-store.cjs');
 const { findPublisherDeepLink, parsePublisherDeepLink } = require('./deep-link.cjs');
-const { DraftRunner, observedAccountHash } = require('./draft-runner.cjs');
+const { observedAccountHash } = require('./draft-runner.cjs');
 const { PublicationResultObserver } = require('./publication-observer.cjs');
+const { createSyncRunner } = require('./sync-all.cjs');
 const { AccountWindowManager } = require('./window-manager.cjs');
 const { verifyUpdatePackage } = require('./updater.cjs');
 
@@ -20,6 +22,9 @@ let registry;
 let windows;
 let queue;
 let observer;
+let syncRunner;
+let autoSyncScheduler;
+let autoSyncSettings;
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -36,13 +41,27 @@ if (!hasSingleInstanceLock) {
     windows = new AccountWindowManager(BrowserWindow, session, registry);
     queue = new AccountTaskQueue();
     observer = new PublicationResultObserver(api, registry, app.getVersion());
+    autoSyncSettings = { autoSyncEnabled: saved.autoSyncEnabled, autoSyncIntervalMinutes: saved.autoSyncIntervalMinutes };
+    syncRunner = createSyncRunner({
+      api,
+      registry,
+      windows,
+      observer,
+      queue,
+      adapterVersion: app.getVersion(),
+      onRoundComplete: notifySyncResults,
+    });
     createMainWindow();
     registerIpc();
+    applyAutoSyncConfig();
     void openDeepLink(findPublisherDeepLink(process.argv));
   });
 }
 
 app.on('window-all-closed', () => app.quit());
+app.on('before-quit', () => {
+  autoSyncScheduler?.stop();
+});
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
@@ -66,6 +85,39 @@ function createMainWindow() {
 function registerProtocolHandler() {
   if (process.defaultApp && process.argv[1]) app.setAsDefaultProtocolClient('geoflow-publisher', process.execPath, [path.resolve(process.argv[1])]);
   else app.setAsDefaultProtocolClient('geoflow-publisher');
+}
+
+function applyAutoSyncConfig() {
+  if (!autoSyncScheduler) {
+    autoSyncScheduler = createAutoSyncScheduler({
+      run: () => syncRunner.runSyncAll(),
+      // 定时轮静默失败：未绑定账号、上一轮进行中、离线等场景都不打扰用户
+      onError: () => {},
+    });
+  }
+  if (autoSyncSettings.autoSyncEnabled) autoSyncScheduler.start(autoSyncSettings.autoSyncIntervalMinutes);
+  else autoSyncScheduler.stop();
+}
+
+function notifyUser(title, body) {
+  if (!Notification.isSupported()) return;
+  try {
+    new Notification({ title, body }).show();
+  } catch { /* 通知失败不影响同步结果 */ }
+}
+
+function notifySyncResults(results, accounts) {
+  const accountName = (accountId) => accounts.find((account) => account.id === accountId)?.account_name || `账号#${accountId}`;
+  const needsAction = [...new Set(results
+    .filter((result) => result.status === 'action_required' || result.status === 'account_mismatch')
+    .map((result) => accountName(result.accountId)))];
+  if (needsAction.length) {
+    notifyUser('账号需要人工处理', `${needsAction.join('、')} 需要重新登录或人工处理`);
+  }
+  const ready = results.filter((result) => result.status === 'draft_saved' || result.status === 'awaiting_manual_publish').length;
+  if (ready > 0) {
+    notifyUser('草稿已就绪', `${ready} 篇草稿已填好，请到各平台审核后发布`);
+  }
 }
 
 async function openDeepLink(candidate) {
@@ -145,23 +197,14 @@ function registerIpc() {
     await api.bindAccount(account.id, observedHash, login.observedAccount);
     return { bound: true };
   });
-  ipcMain.handle('publisher:sync-all', async (_event, accountIds) => {
-    const accountData = await api.listAccounts();
-    const selected = accountData.accounts.filter((account) => accountIds.includes(account.id));
-    const work = await api.listQueue(selected.map((account) => account.id));
-    const runner = new DraftRunner(registry, api, windows, observer);
-    const results = [];
-    for (const account of selected) {
-      const items = work.items.filter((item) => item.account?.id === account.id);
-      for (const item of items) {
-        try {
-          results.push(await queue.enqueue(account.id, () => runner.run(item, { ...account, instance: api.instance })));
-        } catch (error) {
-          results.push({ status: 'action_required', accountId: account.id, publicationId: item.id, error: error.code || error.message });
-          break;
-        }
-      }
-    }
-    return results;
+  ipcMain.handle('publisher:sync-all', (_event, accountIds) => syncRunner.runSyncAll(accountIds));
+  ipcMain.handle('publisher:auto-sync-config', () => ({ ...autoSyncSettings }));
+  ipcMain.handle('publisher:set-auto-sync', (_event, config) => {
+    autoSyncSettings = credentials.saveAutoSync({
+      autoSyncEnabled: Boolean(config?.autoSyncEnabled),
+      autoSyncIntervalMinutes: config?.autoSyncIntervalMinutes,
+    });
+    applyAutoSyncConfig();
+    return { ...autoSyncSettings };
   });
 }

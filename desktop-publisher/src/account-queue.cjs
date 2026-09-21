@@ -9,9 +9,10 @@ class AccountTaskQueue {
     const key = String(accountId);
     const previous = this.chains.get(key) || Promise.resolve();
     const current = previous.catch(() => undefined).then(operation);
-    const settled = current.finally(() => {
+    const cleanup = () => {
       if (this.chains.get(key) === settled) this.chains.delete(key);
-    });
+    };
+    const settled = current.then(cleanup, cleanup);
     this.chains.set(key, settled);
     return current;
   }

@@ -228,7 +228,11 @@ final readonly class SelfMediaBatchService
                     'status' => ManualPublicationBatch::STATUS_PLANNED,
                 ], $aiExecution));
                 $stagedBatchId = (int) $created->id;
-                $media = $this->mediaSnapshots->freeze($created, $article);
+                $mediaDiagnostics = null;
+                $media = $this->mediaSnapshots->freeze($created, $article, $mediaDiagnostics);
+                if (is_array($mediaDiagnostics) && (int) ($mediaDiagnostics['missing_image_relations'] ?? 0) > 0) {
+                    $sourceSnapshot['media_freeze'] = $mediaDiagnostics;
+                }
                 $sourceSnapshot['content'] = $this->portableDocuments->injectSourceMediaTokens(
                     (string) $sourceSnapshot['content'],
                     $media,

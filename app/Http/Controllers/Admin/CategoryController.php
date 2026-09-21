@@ -8,6 +8,7 @@ use App\Models\Task;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 /**
@@ -198,18 +199,28 @@ class CategoryController extends Controller
     }
 
     /**
-     * 生成唯一 slug：优先使用手输 slug，缺省时按名称生成。
+     * 生成唯一 slug：优先使用手输 slug，缺省时按名称转拼音生成。
+     * 中文名称走 ICU 拼音（与文章 slug 逻辑一致），仅在完全没有可用
+     * 字符时回退到 cat-<md5前8位>。
      */
     private function buildCategorySlug(string $name, string $rawSlug = '', int $excludeId = 0): string
     {
-        $source = trim($rawSlug) !== '' ? trim($rawSlug) : trim($name);
-        $slug = mb_strtolower($source, 'UTF-8');
-        $slug = preg_replace('/[^a-z0-9]+/i', '-', $slug) ?: '';
-        $slug = trim((string) $slug, '-');
+        $rawSlug = trim($rawSlug);
+        if ($rawSlug !== '') {
+            $slug = mb_strtolower($rawSlug, 'UTF-8');
+            $slug = preg_replace('/[^a-z0-9]+/i', '-', $slug) ?: '';
+            $slug = trim((string) $slug, '-');
+        } else {
+            $slug = Str::slug(Str::transliterate(trim($name), '', false));
+        }
 
         if ($slug === '') {
             $slug = 'cat-'.substr(md5($name), 0, 8);
         }
+
+        // slug 列 VARCHAR(100)：为 -2/-3 等唯一性后缀预留 4 字符，
+        // 超长时尽量在 '-' 词边界切断，避免截断拼音音节。
+        $slug = self::truncateSlugAtWordBoundary($slug, 96);
 
         $baseSlug = $slug;
         $counter = 2;
@@ -224,6 +235,24 @@ class CategoryController extends Controller
             $slug = $baseSlug.'-'.$counter;
             $counter++;
         }
+    }
+
+    /**
+     * 在不超过 $maxLength 的前提下尽量于 '-' 词边界截断 slug。
+     */
+    private static function truncateSlugAtWordBoundary(string $slug, int $maxLength): string
+    {
+        if (mb_strlen($slug, 'UTF-8') <= $maxLength) {
+            return $slug;
+        }
+
+        $truncated = mb_substr($slug, 0, $maxLength, 'UTF-8');
+        $lastDash = mb_strrpos($truncated, '-', 0, 'UTF-8');
+        if ($lastDash !== false && $lastDash > 0) {
+            $truncated = mb_substr($truncated, 0, $lastDash, 'UTF-8');
+        }
+
+        return rtrim($truncated, '-');
     }
 
     /**
