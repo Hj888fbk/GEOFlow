@@ -68,4 +68,9 @@ return array_replace_recursive($base, [
         'assignee' => '担当者', 'status' => '状態', 'scheduled_at' => '予定時刻', 'target_url' => '対象 URL', 'content' => '内容',
         'risk_status' => 'リスク状態', 'duplicates' => '重複警告', 'completion_url' => '公開済み URL', 'result_note' => '結果メモ', 'created_at' => '作成日時',
     ],
+    'readiness' => [
+        'ready' => '準備完了', 'unbound' => 'アカウント未紐付け',
+        'gap_inactive' => 'アカウントが無効です', 'gap_adapter' => 'ブラウザアダプターが未有効です',
+        'gap_editor_url' => '編集ページ URL 未設定', 'gap_identity' => 'アカウント識別情報が未設定です',
+    ],
 ]);

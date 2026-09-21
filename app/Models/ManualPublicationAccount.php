@@ -49,7 +49,7 @@ class ManualPublicationAccount extends Model
         self::PLATFORM_DOUYIN,
     ];
 
-    /** 当前十平台高保真草稿同步范围；微博仅为 v1 历史路由兼容保留。 */
+    /** 当前十一平台高保真草稿同步范围；微博走普通微博发布器，同时保留 v1 历史路由兼容。 */
     public const DRAFT_SYNC_PLATFORMS = [
         self::PLATFORM_SOHU_MEDIA,
         self::PLATFORM_NETEASE_MEDIA,
@@ -61,6 +61,7 @@ class ManualPublicationAccount extends Model
         self::PLATFORM_JIANSHU,
         self::PLATFORM_CSDN,
         self::PLATFORM_DOUYIN,
+        self::PLATFORM_WEIBO,
     ];
 
     public const PLATFORM_WECHAT = 'wechat';
@@ -167,6 +168,7 @@ class ManualPublicationAccount extends Model
             self::PLATFORM_DAYU => 'https://mp.dayu.com/',
             self::PLATFORM_JIANSHU => 'https://www.jianshu.com/writer',
             self::PLATFORM_DOUYIN => 'https://creator.douyin.com/creator-micro/content/publish',
+            self::PLATFORM_WEIBO => 'https://weibo.com',
         ];
     }
 }

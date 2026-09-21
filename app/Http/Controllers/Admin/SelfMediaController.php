@@ -72,7 +72,7 @@ final class SelfMediaController extends Controller
         $data = $request->validate([
             'website_publication_receipt_id' => ['required', 'integer', Rule::exists('website_publication_receipts', 'id')],
             'content_intent' => ['required', Rule::in(SelfMediaPlatformRouter::INTENTS)],
-            'platforms' => ['required', 'array', 'min:1', 'max:10'],
+            'platforms' => ['required', 'array', 'min:1', 'max:'.count(ManualPublicationAccount::DRAFT_SYNC_PLATFORMS)],
             'platforms.*' => ['required', Rule::in(ManualPublicationAccount::DRAFT_SYNC_PLATFORMS)],
         ]);
         $receipt = WebsitePublicationReceipt::query()->with('article')->findOrFail((int) $data['website_publication_receipt_id']);
@@ -177,6 +177,8 @@ final class SelfMediaController extends Controller
                 $selectedAccountIds = array_values(array_unique(array_map('intval', (array) $batch->target_account_ids)));
                 $allowsLegacyAccountFallback = $selectedAccountIds === [];
 
+                $resolvedAccounts = [];
+                $readinessProblems = [];
                 foreach ($publications as $publication) {
                     $account = $publication->account;
                     if (! $allowsLegacyAccountFallback
@@ -194,10 +196,20 @@ final class SelfMediaController extends Controller
                             ->oldest('id')
                             ->first();
                     }
-                    if (! $this->isUsableBrowserAccount($account, $publication)) {
-                        throw new DomainException('平台 '.$publication->platform.' 尚未配置并启用浏览器适配器。');
-                    }
+                    $blockers = $this->browserAccountBlockers($account, $publication);
+                    if ($blockers !== []) {
+                        $readinessProblems[] = '平台 '.$publication->platform.'（'.implode('、', $blockers).'）';
 
+                        continue;
+                    }
+                    $resolvedAccounts[(int) $publication->id] = $account;
+                }
+                if ($readinessProblems !== []) {
+                    throw new DomainException('以下平台账号尚未就绪，请先在账号中心补齐后再提交平台处理：'.implode('；', $readinessProblems).'。');
+                }
+
+                foreach ($publications as $publication) {
+                    $account = $resolvedAccounts[(int) $publication->id];
                     $publication = $service->update($publication, [
                         'type' => $publication->type,
                         'article_id' => $publication->article_id,
@@ -407,7 +419,7 @@ final class SelfMediaController extends Controller
         $data = $request->validate([
             'enabled' => ['nullable', 'boolean'],
             'content_intent' => ['required', Rule::in(SelfMediaPlatformRouter::INTENTS)],
-            'platform_override' => ['nullable', 'array', 'max:10'],
+            'platform_override' => ['nullable', 'array', 'max:'.count(ManualPublicationAccount::DRAFT_SYNC_PLATFORMS)],
             'platform_override.*' => ['required', Rule::in(ManualPublicationAccount::DRAFT_SYNC_PLATFORMS)],
             'daily_source_limit' => ['required', 'integer', 'in:1'],
             'pending_batch_limit' => ['required', 'integer', 'between:1,2'],
@@ -435,6 +447,52 @@ final class SelfMediaController extends Controller
             && (trim((string) $account->profile_url) !== ''
                 || trim((string) $account->account_uid) !== ''
                 || trim((string) $account->homepage_identifier) !== '');
+    }
+
+    /** @return list<string> */
+    private function browserAccountBlockers(?ManualPublicationAccount $account, ManualPublication $publication): array
+    {
+        if ($account instanceof ManualPublicationAccount
+            && (int) $account->persona_id === (int) $publication->persona_id
+            && $account->platform === $publication->platform) {
+            return $this->accountReadinessGaps($account);
+        }
+
+        $candidates = ManualPublicationAccount::query()
+            ->where('persona_id', $publication->persona_id)
+            ->where('platform', $publication->platform)
+            ->oldest('id')
+            ->get();
+        if ($candidates->isEmpty()) {
+            return ['尚未配置平台账号'];
+        }
+
+        return $candidates
+            ->map(fn (ManualPublicationAccount $candidate): array => $this->accountReadinessGaps($candidate))
+            ->sortBy(fn (array $gaps): int => count($gaps))
+            ->first();
+    }
+
+    /** @return list<string> */
+    private function accountReadinessGaps(ManualPublicationAccount $account): array
+    {
+        $gaps = [];
+        if (! $account->is_active) {
+            $gaps[] = '账号未激活';
+        }
+        if (! $account->browser_adapter_enabled) {
+            $gaps[] = '未启用浏览器适配器';
+        }
+        if (trim((string) $account->editor_url) === '') {
+            $gaps[] = '缺少编辑页 URL';
+        }
+        if (trim((string) $account->profile_url) === ''
+            && trim((string) $account->account_uid) === ''
+            && trim((string) $account->homepage_identifier) === '') {
+            $gaps[] = '缺少账号身份标识';
+        }
+
+        return $gaps;
     }
 
     private function auditLifecycle(Request $request, string $action, int $batchId): void

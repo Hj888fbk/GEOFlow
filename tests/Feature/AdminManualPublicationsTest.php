@@ -390,7 +390,7 @@ class AdminManualPublicationsTest extends TestCase
         $this->actingAs($superAdmin, 'admin')
             ->get(route('admin.manual-publications.index', ['drawer' => 'accounts']))
             ->assertOk()
-            ->assertSee('全选 10 个平台');
+            ->assertSee('全选 '.count($platforms).' 个平台');
 
         $this->actingAs($superAdmin, 'admin')
             ->post(route('admin.manual-publications.settings.accounts.store'), $payload)

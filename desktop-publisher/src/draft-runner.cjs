@@ -43,24 +43,26 @@ class DraftRunner {
 
     const claimed = (await this.api.claim(publication)).publication;
     const payload = claimed.publication_payload;
+    // 无标题平台（如微博）：titleSelectors 为空时跳过填标题与标题回读校验
+    const hasTitle = (adapter.titleSelectors || []).length > 0;
     let draftSaved = false;
     try {
       const media = await this.downloadMedia(payload.media_manifest || []);
       await executor.openEditor(this.registry.assertAllowedUrl(publication.platform, account.editor_url || adapter.editorUrl));
-      await executor.fillTitle(adapter, payload.title || '');
+      if (hasTitle) await executor.fillTitle(adapter, payload.title || '');
       await executor.fillBody(adapter, payload.body_html || payload.body_markdown || payload.body_plain || '');
       await executor.uploadImages(adapter, media);
       const draft = await executor.saveDraft(adapter);
       draftSaved = true;
       await executor.reopenDraft(adapter, draft);
       const readback = await executor.readDraft(adapter);
-      assertDraftReadback(payload, readback);
+      assertDraftReadback(payload, readback, adapter);
       const receipt = {
         revision: claimed.revision,
         adapter_version: this.adapterVersion,
         target_origin: new URL(account.editor_url || adapter.editorUrl).origin,
         observed_account_hash: observedHash,
-        filled_fields: ['title', 'body', ...(readback.imageCount ? ['images'] : [])],
+        filled_fields: [...(hasTitle ? ['title'] : []), 'body', ...(readback.imageCount ? ['images'] : [])],
         persistence: 'remote_saved',
         draft_id: draft.id,
         draft_url: draft.url,
@@ -150,9 +152,11 @@ function normalizeProfileUrl(value) {
   return `${url.protocol.toLowerCase()}//${url.host.toLowerCase()}${url.pathname.replace(/\/$/, '').toLowerCase()}`;
 }
 
-function assertDraftReadback(payload, readback) {
+function assertDraftReadback(payload, readback, adapter = null) {
+  // 无标题平台（adapter.titleSelectors 为空）跳过标题一致性校验；不传 adapter 时保持原行为
+  const expectsTitle = !adapter || (adapter.titleSelectors || []).length > 0;
   const expectedTitle = String(payload.title || '').trim();
-  if (!readback || String(readback.title || '').trim() !== expectedTitle) throw coded('draft_title_mismatch');
+  if (expectsTitle && (!readback || String(readback.title || '').trim() !== expectedTitle)) throw coded('draft_title_mismatch');
   const expectedTextHash = String(payload.render_fingerprint?.text_sha256 || '').toLowerCase();
   if (expectedTextHash && String(readback.textHash || '').toLowerCase() !== expectedTextHash) throw coded('draft_text_mismatch');
   const expectedHeadings = payload.render_fingerprint?.heading_outline || [];

@@ -129,7 +129,7 @@ final class SelfMediaBatchServiceTest extends TestCase
         $this->assertSame(ManualPublicationBatch::STATUS_PENDING_REVIEW, $batch->status);
     }
 
-    public function test_manual_plan_accepts_the_complete_ten_platform_draft_sync_set_without_generating_content(): void
+    public function test_manual_plan_accepts_the_complete_draft_sync_platform_set_without_generating_content(): void
     {
         Queue::fake();
         [$admin, , $article] = $this->fixtures();
@@ -150,7 +150,7 @@ final class SelfMediaBatchServiceTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    public function test_routing_v2_uses_only_the_ten_platform_scope_while_v1_keeps_legacy_weibo_rules(): void
+    public function test_routing_v2_auto_routing_excludes_weibo_while_v1_keeps_legacy_weibo_rules(): void
     {
         $router = app(SelfMediaPlatformRouter::class);
         $v2 = $router->route(SelfMediaPlatformRouter::INTENT_ENTERPRISE_NEWS, null, SelfMediaPolicy::ROUTING_VERSION);
@@ -797,6 +797,72 @@ MD]);
         $this->assertSame(ManualPublicationBatch::STATUS_PENDING_REVIEW, $batch->refresh()->status);
         $this->assertSame(0, $batch->publications()->where('status', '!=', ManualPublication::STATUS_DRAFT)->count());
         $this->assertSame(0, $batch->publications()->whereNotNull('account_id')->count());
+    }
+
+    public function test_approval_reports_every_unready_platform_with_specific_reasons_in_one_error(): void
+    {
+        $this->fakeGenerator();
+        [$admin, , $article] = $this->fixtures();
+        $persona = ManualPublicationPersona::query()->create(['name' => '前置校验身份']);
+        $receipt = app(WebsitePublicationReceiptService::class)->record($article, $this->receipt($article), $admin);
+        $batch = app(SelfMediaBatchService::class)->createManual(
+            $article,
+            $receipt,
+            SelfMediaPlatformRouter::INTENT_PRODUCT_EDUCATION,
+            [
+                ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+                ManualPublicationAccount::PLATFORM_SOHU_MEDIA,
+                ManualPublicationAccount::PLATFORM_WEIBO,
+            ],
+            $admin,
+        );
+        $batch = app(SelfMediaBatchGenerationService::class)->generate($batch);
+        $this->assertCount(3, $batch->publications);
+        ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+            'account_name' => '未激活百家号',
+            'profile_url' => 'https://baijiahao.baidu.com/bjournal/profile/hengjia',
+            'editor_url' => 'https://baijiahao.baidu.com/builder/rc/edit',
+            'browser_adapter_enabled' => true,
+            'is_active' => false,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.manual-publications.self-media.batches.approve', ['batchId' => $batch->id]))
+            ->assertSessionHasErrors([
+                'approval' => '以下平台账号尚未就绪，请先在账号中心补齐后再提交平台处理：'
+                    .'平台 baijiahao（账号未激活）；平台 sohu_media（尚未配置平台账号）；平台 weibo（尚未配置平台账号）。',
+            ]);
+
+        $this->assertSame(ManualPublicationBatch::STATUS_PENDING_REVIEW, $batch->refresh()->status);
+        $this->assertSame(0, $batch->publications()->where('status', '!=', ManualPublication::STATUS_DRAFT)->count());
+    }
+
+    public function test_launch_view_lists_each_account_readiness_gap_before_generation(): void
+    {
+        [$admin, , $article] = $this->fixtures();
+        $persona = ManualPublicationPersona::query()->create(['name' => '就绪检查身份']);
+        ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_WEIBO,
+            'account_name' => '缺身份微博',
+            'editor_url' => ManualPublicationAccount::editorUrlPresets()[ManualPublicationAccount::PLATFORM_WEIBO],
+            'browser_adapter_enabled' => true,
+        ]);
+        ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+            'account_name' => '缺编辑页CSDN',
+            'profile_url' => 'https://blog.csdn.net/hengjia',
+            'browser_adapter_enabled' => true,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.manual-publications.index', ['view' => 'launch']))
+            ->assertOk()
+            ->assertSee('缺少账号身份标识')
+            ->assertSee('缺少编辑页 URL');
     }
 
     public function test_one_launch_creates_a_multi_account_batch_and_queues_generation(): void
