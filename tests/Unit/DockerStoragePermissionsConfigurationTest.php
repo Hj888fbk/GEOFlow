@@ -311,11 +311,11 @@ SH;
         $this->assertSame('18082', $second['services']['web']['ports'][0]['published'] ?? null);
         $this->assertSame(
             'geoflow-a-postgres-data',
-            $first['services']['postgres']['volumes'][0]['source'] ?? ''
+            $first['volumes']['postgres-data']['name'] ?? ''
         );
         $this->assertSame(
             'geoflow-b-postgres-data',
-            $second['services']['postgres']['volumes'][0]['source'] ?? ''
+            $second['volumes']['postgres-data']['name'] ?? ''
         );
 
         foreach ([['project' => 'geoflow-a', 'rendered' => $first], ['project' => 'geoflow-b', 'rendered' => $second]] as $scenario) {
