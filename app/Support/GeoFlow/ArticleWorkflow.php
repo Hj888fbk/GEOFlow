@@ -63,7 +63,16 @@ final class ArticleWorkflow
         // 对型号中的字母/数字也会保留；只有完全没有可用字符时才回退
         // 到随机 slug。
         $slug = Str::slug(Str::transliterate(trim($title), '', false));
-        $slug = mb_substr($slug, 0, 100, 'UTF-8');
+        // 80 字符上限，超长时在最后一个 '-' 词边界切断，避免硬切
+        // 断拼音音节；同时为冲突时的 4 位随机后缀保留充足空间。
+        if (mb_strlen($slug, 'UTF-8') > 80) {
+            $slug = mb_substr($slug, 0, 80, 'UTF-8');
+            $lastDash = mb_strrpos($slug, '-', 0, 'UTF-8');
+            if ($lastDash !== false && $lastDash > 0) {
+                $slug = mb_substr($slug, 0, $lastDash, 'UTF-8');
+            }
+            $slug = trim($slug, '-');
+        }
         if ($slug === '') {
             $slug = self::randomSlug(8);
         }

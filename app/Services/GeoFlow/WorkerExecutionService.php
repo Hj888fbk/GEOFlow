@@ -134,6 +134,7 @@ class WorkerExecutionService
                     $generation['content'],
                     (string) $titleRow->title,
                     $keyword,
+                    $executionContext->taskRunId,
                 );
                 $content = $imageResult['content'];
                 $selectedImages = $imageResult['images'];
@@ -932,7 +933,7 @@ class WorkerExecutionService
      *
      * @return array{content:string,images:list<Image>}
      */
-    private function insertTaskImagesIntoContent(Task $task, string $content, string $title = '', string $focusKeyword = ''): array
+    private function insertTaskImagesIntoContent(Task $task, string $content, string $title = '', string $focusKeyword = '', ?int $taskRunId = null): array
     {
         $libraryId = (int) ($task->image_library_id ?? 0);
         $imageCount = max(0, (int) ($task->image_count ?? 0));
@@ -946,6 +947,13 @@ class WorkerExecutionService
             ->get(['id', 'file_path', 'original_name', 'tags', 'used_count', 'usage_count'])
             ->all();
         if ($images === []) {
+            Log::warning('GeoFlow 任务已配置配图数量，但图库中没有可选图片，正文将不带图片。', [
+                'task_id' => (int) $task->id,
+                'task_run_id' => $taskRunId,
+                'image_library_id' => $libraryId,
+                'image_count' => $imageCount,
+            ]);
+
             return ['content' => $content, 'images' => []];
         }
 

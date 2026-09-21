@@ -9,6 +9,7 @@ use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Support\GeoFlow\ImageUrlNormalizer;
 use DomainException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -34,15 +35,29 @@ final readonly class SelfMediaMediaSnapshotService
         }
     }
 
-    /** @return list<array<string,mixed>> */
-    public function freeze(ManualPublicationBatch $batch, Article $article): array
+    /**
+     * @param  array{missing_image_relations:int}|null  $diagnostics
+     *
+     * @param-out array{missing_image_relations:int}  $diagnostics
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function freeze(ManualPublicationBatch $batch, Article $article, ?array &$diagnostics = null): array
     {
         $article->loadMissing('articleImages.image');
         $references = $this->bodyReferences((string) $article->content, (string) $batch->source_url);
         $knownImages = [];
+        $missingImageRelations = 0;
         foreach ($article->articleImages->sortBy('position')->values() as $relation) {
             $image = $relation->image;
             if ($image === null) {
+                $missingImageRelations++;
+                Log::warning('自媒体媒体快照：文章配图关联的图片记录缺失，冻结时已跳过。', [
+                    'manual_publication_batch_id' => (int) $batch->id,
+                    'article_id' => (int) $article->id,
+                    'article_image_id' => (int) $relation->id,
+                ]);
+
                 continue;
             }
             $url = $this->absoluteUrl(ImageUrlNormalizer::toPublicUrl((string) $image->file_path), (string) $batch->source_url);
@@ -131,6 +146,8 @@ final readonly class SelfMediaMediaSnapshotService
                 'upload_required' => true,
             ];
         }
+
+        $diagnostics = ['missing_image_relations' => $missingImageRelations];
 
         return $manifest;
     }

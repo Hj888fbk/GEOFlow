@@ -13,6 +13,8 @@ use App\Services\GeoFlow\WordPressRestPublisher;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Tests\TestCase;
 
 class WordPressMediaSyncServiceTest extends TestCase
@@ -130,6 +132,138 @@ class WordPressMediaSyncServiceTest extends TestCase
 
         Http::assertSent(fn ($request): bool => $request->url() === 'https://wp.example.com/wp-json/wp/v2/posts'
             && $request['content'] === '<p><img src="https://wp.example.com/wp-content/uploads/image.jpg"></p>');
+    }
+
+    public function test_it_logs_warning_when_asset_has_no_base64_content(): void
+    {
+        Log::spy();
+        Http::fake();
+
+        $html = app(WordPressMediaSyncService::class)->rewriteContentImages(
+            $this->makeChannel(),
+            [
+                'article' => ['id' => 42],
+                'assets' => [
+                    'images' => [
+                        ['source_url' => 'https://cdn.example.com/image.jpg', 'filename' => 'image.jpg'],
+                    ],
+                ],
+            ],
+            '<p><img src="https://cdn.example.com/image.jpg"></p>'
+        );
+
+        $this->assertSame('<p><img src="https://cdn.example.com/image.jpg"></p>', $html);
+        Http::assertNothingSent();
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            static fn (string $message, array $context): bool => str_contains($message, '裂图')
+                && ($context['source_url'] ?? null) === 'https://cdn.example.com/image.jpg'
+                && (int) ($context['article_id'] ?? 0) === 42
+                && ($context['skip_reason'] ?? null) === 'missing_content_base64',
+        );
+    }
+
+    public function test_it_logs_error_before_throwing_when_media_upload_fails(): void
+    {
+        Log::spy();
+        Http::fake([
+            'https://wp.example.com/wp-json/wp/v2/media' => Http::response('Server Error', 500),
+        ]);
+
+        try {
+            app(WordPressMediaSyncService::class)->rewriteContentImages(
+                $this->makeChannel(),
+                $this->payloadWithImage(),
+                '<p><img src="/storage/uploads/images/demo.png"></p>'
+            );
+            $this->fail('Expected media upload failure to throw.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('HTTP 500', $exception->getMessage());
+        }
+
+        Log::shouldHaveReceived('error')->once()->withArgs(
+            static fn (string $message, array $context): bool => str_contains($message, '媒体上传失败')
+                && (int) ($context['http_status'] ?? 0) === 500
+                && ($context['source_url'] ?? null) === '/storage/uploads/images/demo.png'
+                && ($context['filename'] ?? null) === 'demo.png',
+        );
+    }
+
+    public function test_it_reuses_mapped_media_from_distribution_remote_meta_without_uploading(): void
+    {
+        Http::fake();
+        $channel = $this->makeChannel();
+        $distribution = ArticleDistribution::query()->create([
+            'article_id' => $this->makeArticleId(),
+            'distribution_channel_id' => (int) $channel->id,
+            'action' => 'update',
+            'status' => 'sending',
+            'idempotency_key' => 'wp-media-reuse',
+            'remote_meta' => [
+                'wp_media_map' => [
+                    hash('sha256', 'image-bytes') => [
+                        'id' => 456,
+                        'source_url' => 'https://wp.example.com/wp-content/uploads/image.jpg',
+                    ],
+                ],
+            ],
+        ]);
+
+        $service = app(WordPressMediaSyncService::class);
+        $html = $service->rewriteContentImages(
+            $channel,
+            $this->payloadWithImage(),
+            '<p><img src="/storage/uploads/images/demo.png"></p>',
+            $distribution,
+        );
+
+        $this->assertSame('<p><img src="https://wp.example.com/wp-content/uploads/image.jpg"></p>', $html);
+        Http::assertNothingSent();
+        // 复用的媒体仍进入本次上传列表，保证特色图片（featured_media）不因重试丢失。
+        $this->assertSame(456, $service->takeLastUploadedMedia()[0]['id'] ?? null);
+        $this->assertSame(
+            ['id' => 456, 'source_url' => 'https://wp.example.com/wp-content/uploads/image.jpg'],
+            $service->takeMediaMap()[hash('sha256', 'image-bytes')] ?? null,
+        );
+    }
+
+    public function test_publisher_returns_media_map_in_remote_meta_for_retry_reuse(): void
+    {
+        Http::fake([
+            'https://wp.example.com/wp-json/wp/v2/media' => Http::response([
+                'id' => 456,
+                'source_url' => 'https://wp.example.com/wp-content/uploads/image.jpg',
+            ], 201),
+            'https://wp.example.com/wp-json/wp/v2/posts' => Http::response([
+                'id' => 123,
+                'link' => 'https://wp.example.com/hello/',
+            ], 201),
+        ]);
+
+        $channel = $this->makeChannel();
+        $distribution = ArticleDistribution::query()->create([
+            'article_id' => $this->makeArticleId(),
+            'distribution_channel_id' => (int) $channel->id,
+            'action' => 'publish',
+            'status' => 'queued',
+            'idempotency_key' => 'wp-media-map-test',
+        ]);
+
+        $result = app(WordPressRestPublisher::class)->publish($distribution, [
+            'article' => [
+                'title' => 'Hello',
+                'slug' => 'hello',
+                'excerpt' => '',
+                'content_html' => '<p><img src="/storage/uploads/images/demo.png"></p>',
+                'keywords' => '',
+            ],
+            'assets' => $this->payloadWithImage()['assets'],
+        ]);
+
+        $contentHash = hash('sha256', 'image-bytes');
+        $this->assertSame(
+            ['id' => 456, 'source_url' => 'https://wp.example.com/wp-content/uploads/image.jpg'],
+            $result['remote_meta']['wp_media_map'][$contentHash] ?? null,
+        );
     }
 
     /**

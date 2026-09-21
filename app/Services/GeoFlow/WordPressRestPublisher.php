@@ -109,7 +109,7 @@ class WordPressRestPublisher implements DistributionPublisherInterface
         $article = is_array($payload['article'] ?? null) ? $payload['article'] : [];
         $response = $this->requestFactory->request($channel)
             ->withHeaders(['Idempotency-Key' => (string) $distribution->idempotency_key])
-            ->post($channel->wordpressRestBaseUrl().'/wp/v2/posts', $this->postPayload($channel, $payload));
+            ->post($channel->wordpressRestBaseUrl().'/wp/v2/posts', $this->postPayload($channel, $payload, $distribution));
         $this->throwIfFailed($response, 'WordPress 文章发布');
 
         return $this->postResult($response, $channel, $article);
@@ -127,7 +127,7 @@ class WordPressRestPublisher implements DistributionPublisherInterface
 
         $response = $this->requestFactory->request($channel)
             ->withHeaders(['Idempotency-Key' => (string) $distribution->idempotency_key])
-            ->post($channel->wordpressRestBaseUrl().'/wp/v2/posts/'.$postId, $this->postPayload($channel, $payload));
+            ->post($channel->wordpressRestBaseUrl().'/wp/v2/posts/'.$postId, $this->postPayload($channel, $payload, $distribution));
         $this->throwIfFailed($response, 'WordPress 文章更新');
 
         return $this->postResult($response, $channel, $article);
@@ -262,7 +262,7 @@ class WordPressRestPublisher implements DistributionPublisherInterface
      * @param  array<string,mixed>  $payload
      * @return array<string,mixed>
      */
-    private function postPayload(DistributionChannel $channel, array $payload): array
+    private function postPayload(DistributionChannel $channel, array $payload, ?ArticleDistribution $distribution = null): array
     {
         $article = is_array($payload['article'] ?? null) ? $payload['article'] : [];
         $config = $channel->resolvedChannelConfig();
@@ -270,7 +270,7 @@ class WordPressRestPublisher implements DistributionPublisherInterface
         $featuredMediaId = 0;
 
         if ($config['wordpress_image_strategy'] === 'upload_to_media') {
-            $contentHtml = $this->mediaSyncService->rewriteContentImages($channel, $payload, $contentHtml);
+            $contentHtml = $this->mediaSyncService->rewriteContentImages($channel, $payload, $contentHtml, $distribution);
             // 正文第一张图同步设为 WP 特色图片（featured_media），
             // 否则列表/卡片全部落回主题默认图，看起来"每篇都配同一张"。
             $uploadedMedia = $this->mediaSyncService->takeLastUploadedMedia();
@@ -375,6 +375,13 @@ class WordPressRestPublisher implements DistributionPublisherInterface
         $remoteMeta = [
             'wordpress_post_id' => $postId,
         ];
+
+        // 媒体映射（源内容 sha256 → WP 媒体）随发布结果并入 remote_meta，
+        // 后续 update/重试可直接复用已上传媒体，不重复产生媒体库文件。
+        $mediaMap = $this->mediaSyncService->takeMediaMap();
+        if ($mediaMap !== []) {
+            $remoteMeta['wp_media_map'] = $mediaMap;
+        }
 
         $seoSync = $this->syncRankMathMeta($channel, $postId, $article);
         if ($seoSync !== []) {

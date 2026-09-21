@@ -81,4 +81,47 @@ test('protected media is downloaded in body order and hash checked before upload
   await assert.rejects(() => runner.downloadMedia([items[0]]), /media_hash_mismatch/);
 });
 
+test('media download retries transient failures with backoff before succeeding', async () => {
+  const image = Buffer.from('retry-image');
+  const item = { media_key: 'img', position: 1, role: 'body', required: true, sha256: sha(image), download_path: '/media/img' };
+  let attempts = 0;
+  const api = {
+    downloadMedia: async () => {
+      attempts += 1;
+      if (attempts < 3) throw new Error('socket hangup');
+      return { buffer: image, mimeType: 'image/png' };
+    },
+  };
+  const sleeps = [];
+  const runner = new DraftRunner({}, api, {}, null, 'test', { sleep: async (ms) => { sleeps.push(ms); } });
+
+  const media = await runner.downloadMedia([item]);
+  assert.equal(media.length, 1);
+  assert.equal(media[0].sha256, sha(image));
+  assert.equal(attempts, 3);
+  assert.deepEqual(sleeps, [1000, 2000]);
+});
+
+test('media hash mismatch is retried and aborts after the final attempt', async () => {
+  const item = { media_key: 'img', position: 1, role: 'body', sha256: sha(Buffer.from('good')), download_path: '/media/img' };
+  let attempts = 0;
+  const api = {
+    downloadMedia: async () => {
+      attempts += 1;
+      return { buffer: Buffer.from('tampered'), mimeType: 'image/png' };
+    },
+  };
+  const runner = new DraftRunner({}, api, {}, null, 'test', { sleep: async () => {} });
+
+  let failure = null;
+  try {
+    await runner.downloadMedia([item]);
+  } catch (error) {
+    failure = error;
+  }
+  assert.equal(failure?.code, 'media_hash_mismatch');
+  assert.equal(attempts, 3);
+  assert.equal(failure.attempts, 3);
+});
+
 function sha(buffer) { return crypto.createHash('sha256').update(buffer).digest('hex'); }

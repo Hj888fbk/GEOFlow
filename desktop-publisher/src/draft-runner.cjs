@@ -8,11 +8,14 @@ const STRUCTURAL_FAILURES = new Set([
 ]);
 
 class DraftRunner {
-  constructor(registry, api, windows, observer = null) {
+  constructor(registry, api, windows, observer = null, adapterVersion = '0.1.0', options = {}) {
     this.registry = registry;
     this.api = api;
     this.windows = windows;
     this.observer = observer;
+    this.adapterVersion = adapterVersion;
+    this.retryDelaysMs = Array.isArray(options.retryDelaysMs) ? options.retryDelaysMs : [1000, 2000];
+    this.sleep = typeof options.sleep === 'function' ? options.sleep : defaultSleep;
   }
 
   async run(publication, account) {
@@ -54,7 +57,7 @@ class DraftRunner {
       assertDraftReadback(payload, readback);
       const receipt = {
         revision: claimed.revision,
-        adapter_version: '0.1.0',
+        adapter_version: this.adapterVersion,
         target_origin: new URL(account.editor_url || adapter.editorUrl).origin,
         observed_account_hash: observedHash,
         filled_fields: ['title', 'body', ...(readback.imageCount ? ['images'] : [])],
@@ -79,7 +82,7 @@ class DraftRunner {
       if (STRUCTURAL_FAILURES.has(error.code)) {
         await this.api.adapterFailure(claimed.id, {
           revision: claimed.revision,
-          adapter_version: '0.1.0',
+          adapter_version: this.adapterVersion,
           error_code: error.code,
           target_origin: new URL(account.editor_url || adapter.editorUrl).origin,
           finished_at: new Date().toISOString(),
@@ -98,13 +101,27 @@ class DraftRunner {
     const media = [];
     for (const item of required) {
       if (!item.media_key || !item.download_path || !item.sha256) throw coded('media_manifest_invalid');
-      const downloaded = await this.api.downloadMedia(item.download_path);
-      const digest = crypto.createHash('sha256').update(downloaded.buffer).digest('hex');
-      const expected = String(item.sha256).toLowerCase();
-      if (digest !== expected || (downloaded.sha256 && downloaded.sha256 !== expected)) throw coded('media_hash_mismatch');
-      media.push({ ...item, ...downloaded, sha256: digest });
+      media.push(await this.downloadMediaItem(item));
     }
     return media;
+  }
+
+  async downloadMediaItem(item) {
+    const expected = String(item.sha256).toLowerCase();
+    let lastError = null;
+    for (let attempt = 0; attempt <= this.retryDelaysMs.length; attempt += 1) {
+      try {
+        const downloaded = await this.api.downloadMedia(item.download_path);
+        const digest = crypto.createHash('sha256').update(downloaded.buffer).digest('hex');
+        if (digest !== expected || (downloaded.sha256 && downloaded.sha256 !== expected)) throw coded('media_hash_mismatch');
+        return { ...item, ...downloaded, sha256: digest };
+      } catch (error) {
+        lastError = error;
+        if (attempt < this.retryDelaysMs.length) await this.sleep(this.retryDelaysMs[attempt]);
+      }
+    }
+    lastError.attempts = this.retryDelaysMs.length + 1;
+    throw lastError;
   }
 }
 
@@ -146,5 +163,7 @@ function assertDraftReadback(payload, readback) {
 }
 
 function coded(code) { const error = new Error(code); error.code = code; return error; }
+
+function defaultSleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 module.exports = { DraftRunner, STRUCTURAL_FAILURES, accountIdentityHash, observedAccountHash, assertDraftReadback };

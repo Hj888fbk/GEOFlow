@@ -27,6 +27,7 @@ use App\Services\SelfMedia\WebsitePublicationReceiptService;
 use DomainException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -216,6 +217,101 @@ MD]);
         ));
         $this->assertStringContainsString('{{media:'.$batch->media_manifest[0]['media_key'].'}}', $batch->source_snapshot['content']);
         $this->assertDatabaseCount('self_media_media_snapshots', 3);
+    }
+
+    public function test_missing_article_image_relation_is_logged_and_counted_in_batch_snapshot(): void
+    {
+        Storage::fake('public');
+        Storage::fake('local');
+        Log::spy();
+        [$admin, , $article] = $this->fixtures();
+        $library = ImageLibrary::query()->create(['name' => '缺图图片库']);
+        Storage::disk('public')->put('uploads/ok.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='));
+        $image = Image::query()->create([
+            'library_id' => $library->id,
+            'filename' => 'ok.png',
+            'original_name' => '正常图.png',
+            'file_name' => 'ok.png',
+            'file_path' => 'storage/uploads/ok.png',
+            'managed_path_hash' => hash('sha256', 'storage/uploads/ok.png'),
+            'file_size' => 68,
+            'mime_type' => 'image/png',
+            'width' => 1,
+            'height' => 1,
+        ]);
+        ArticleImage::query()->create(['article_id' => $article->id, 'image_id' => $image->id, 'position' => 0]);
+        // 构造“配图关联还在、图片记录已丢失”的孤儿数据：article_images 的外键不允许
+        // 直接删除图片行，因此在内存里挂一个 image 为 null 的关联来模拟。
+        $phantom = new ArticleImage(['article_id' => $article->id, 'image_id' => 424242, 'position' => 1]);
+        $phantom->id = 424242;
+        $phantom->exists = true;
+        $phantom->setRelation('image', null);
+        $article->update(['content' => "正文开始。\n\n![正常图](/storage/uploads/ok.png)"]);
+        $receipt = app(WebsitePublicationReceiptService::class)->record($article->fresh(), $this->receipt($article->fresh()), $admin);
+
+        $articleWithMedia = $article->fresh();
+        $articleWithMedia->setRelation('articleImages', collect([
+            ArticleImage::query()->where('article_id', $article->id)->firstOrFail()->setRelation('image', $image),
+            $phantom,
+        ]));
+
+        $batch = app(SelfMediaBatchService::class)->createManual(
+            $articleWithMedia,
+            $receipt,
+            SelfMediaPlatformRouter::INTENT_PRODUCT_EDUCATION,
+            [ManualPublicationAccount::PLATFORM_BAIJIAHAO],
+            $admin,
+        );
+
+        $this->assertCount(1, $batch->media_manifest);
+        $this->assertSame(1, (int) data_get($batch->source_snapshot, 'media_freeze.missing_image_relations'));
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            static fn (string $message, array $context): bool => str_contains($message, '图片记录缺失')
+                && (int) ($context['article_id'] ?? 0) === (int) $article->id
+                && (int) ($context['article_image_id'] ?? 0) === 424242
+                && (int) ($context['manual_publication_batch_id'] ?? 0) === (int) $batch->id,
+        );
+    }
+
+    public function test_batch_creation_rolls_back_when_body_image_cannot_be_frozen(): void
+    {
+        Storage::fake('public');
+        Storage::fake('local');
+        [$admin, , $article] = $this->fixtures();
+        $library = ImageLibrary::query()->create(['name' => '坏图图片库']);
+        Storage::disk('public')->put('uploads/broken.png', 'this-is-not-an-image');
+        $image = Image::query()->create([
+            'library_id' => $library->id,
+            'filename' => 'broken.png',
+            'original_name' => '坏图.png',
+            'file_name' => 'broken.png',
+            'file_path' => 'storage/uploads/broken.png',
+            'managed_path_hash' => hash('sha256', 'storage/uploads/broken.png'),
+            'file_size' => 19,
+            'mime_type' => 'image/png',
+            'width' => 1,
+            'height' => 1,
+        ]);
+        ArticleImage::query()->create(['article_id' => $article->id, 'image_id' => $image->id, 'position' => 0]);
+        $article->update(['content' => "正文开始。\n\n![坏图](/storage/uploads/broken.png)"]);
+        $receipt = app(WebsitePublicationReceiptService::class)->record($article->fresh(), $this->receipt($article->fresh()), $admin);
+
+        try {
+            app(SelfMediaBatchService::class)->createManual(
+                $article->fresh(),
+                $receipt,
+                SelfMediaPlatformRouter::INTENT_PRODUCT_EDUCATION,
+                [ManualPublicationAccount::PLATFORM_BAIJIAHAO],
+                $admin,
+            );
+            $this->fail('Expected an unreadable body image to abort batch creation.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('正文图片', $exception->getMessage());
+        }
+
+        $this->assertDatabaseCount('manual_publication_batches', 0);
+        $this->assertDatabaseCount('self_media_media_snapshots', 0);
+        $this->assertSame([], Storage::disk('local')->allFiles('self-media'));
     }
 
     public function test_cancelled_batch_is_revived_when_same_plan_is_created_again(): void
@@ -713,7 +809,6 @@ MD]);
             'platform' => ManualPublicationAccount::PLATFORM_CSDN,
             'account_name' => $name,
             'editor_url' => ManualPublicationAccount::editorUrlPresets()[ManualPublicationAccount::PLATFORM_CSDN],
-            'homepage_identifier' => $name,
             'browser_adapter_enabled' => true,
         ]));
         $receipt = app(WebsitePublicationReceiptService::class)->record($article, $this->receipt($article), $admin);
@@ -730,6 +825,11 @@ MD]);
         $this->assertSame($persona->id, $batch->persona_id);
         $this->assertEqualsCanonicalizing($accounts->pluck('id')->all(), $batch->target_account_ids);
         $this->assertSame(hash('sha256', $accounts->pluck('id')->sort()->implode('|')), $batch->account_selection_hash);
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.manual-publications.index', ['view' => 'launch']))
+            ->assertOk()
+            ->assertSee('同步前登录绑定')
+            ->assertSee('选择身份后默认全选该身份的账号');
         $this->assertDatabaseHas('admin_activity_logs', [
             'action' => 'manual_publication_batch.launched',
             'target_type' => 'manual_publication_batch',
