@@ -120,6 +120,11 @@ final class SelfMediaFactConstraintGuard
         // 行首序号（2. / 3、/ 4)）与 HTML 段落内序号（<p>2. …）都是版式标记。
         $value = preg_replace('/(^|>)\s*\d+[.、)]\s+/mu', '$1', $value) ?? $value;
 
+        // emoji 键帽序号（1️⃣2️⃣3️⃣）与圈号序号（①②③）同样是版式标记：
+        // 改写模型常把母稿普通列表装饰成这种形式，其中的数字不是事实数字。
+        $value = preg_replace('/\d\x{FE0F}?\x{20E3}/u', '', $value) ?? $value;
+        $value = preg_replace('/[\x{2460}-\x{2473}\x{3251}-\x{325F}\x{32B1}-\x{32BF}]/u', '', $value) ?? $value;
+
         // 「TOP 2」「TOP2：」等榜单小标题同样是版式标记，不是事实数字。
         $value = preg_replace('/(?<![\pL\pN])TOP\s*\d+\s*[:：|｜]?\s*/iu', '', $value) ?? $value;
 
