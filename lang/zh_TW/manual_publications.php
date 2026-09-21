@@ -102,4 +102,9 @@ return [
         'target_url' => '目標地址', 'content' => '釋出內容', 'risk_status' => '風險狀態', 'duplicates' => '重複提醒數',
         'completion_url' => '實際釋出地址', 'result_note' => '結果備註', 'created_at' => '建立時間',
     ],
+    'readiness' => [
+        'ready' => '就緒', 'unbound' => '未綁定帳號',
+        'gap_inactive' => '帳號未啟用', 'gap_adapter' => '未啟用瀏覽器適配器',
+        'gap_editor_url' => '缺少編輯頁 URL', 'gap_identity' => '缺少帳號身份標識',
+    ],
 ];

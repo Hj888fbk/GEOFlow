@@ -94,7 +94,7 @@ class ManualPublicationController extends Controller
                 'article:id,title',
                 'persona:id,name',
                 'publications:id,manual_publication_batch_id,account_id,platform,status,platform_title,body_markdown,source_stale_at',
-                'publications.account:id,account_name,platform',
+                'publications.account:id,account_name,platform,is_active,browser_adapter_enabled,editor_url,profile_url,account_uid,homepage_identifier',
             ]);
         if (! $admin->isSuperAdmin()) {
             $batchQuery->whereHas('publications', fn (Builder $publications) => $publications->where('assigned_admin_id', $admin->id));

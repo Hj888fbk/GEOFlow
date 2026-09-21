@@ -73,7 +73,11 @@ class WindowExecutor {
     })()`);
   }
 
-  async fillTitle(adapter, value) { return this.fillFirst(adapter.titleSelectors, value, false); }
+  async fillTitle(adapter, value) {
+    // 无标题平台（如微博）：titleSelectors 为空时跳过填标题
+    if (!adapter.titleSelectors?.length) return;
+    return this.fillFirst(adapter.titleSelectors, value, false);
+  }
   async fillBody(adapter, value) { return this.fillFirst(adapter.bodySelectors, value, true); }
 
   async uploadImages(adapter, media) {
@@ -91,7 +95,18 @@ class WindowExecutor {
       return filePath;
     });
 
-    const accepted = await this.setFileInputPaths(adapter.imageInputSelectors, filePaths);
+    const mode = adapter.upload?.mode || 'input';
+    let accepted = false;
+    if (mode === 'button-then-input') {
+      const clicked = await this.exec(selectorClickScript(adapter.upload.buttonSelectors || []));
+      if (!clicked) throw coded('editor_dom_changed');
+      await delay(400);
+      accepted = await this.setFileInputPaths(adapter.imageInputSelectors, filePaths);
+    } else if (mode === 'filechooser') {
+      accepted = await this.setFilesViaFileChooser(adapter, filePaths);
+    } else {
+      accepted = await this.setFileInputPaths(adapter.imageInputSelectors, filePaths);
+    }
     if (!accepted) throw coded('editor_dom_changed');
 
     const uploadedUrls = await this.waitForRemoteImages(adapter, media.length);
@@ -234,15 +249,60 @@ class WindowExecutor {
     return false;
   }
 
+  // filechooser 模式：拦截文件选择框，等平台弹窗后用 backendNodeId 回填文件。
+  async setFilesViaFileChooser(adapter, filePaths) {
+    const triggerSelectors = adapter.upload?.triggerSelectors?.length ? adapter.upload.triggerSelectors : adapter.imageInputSelectors;
+    const debug = this.win.webContents.debugger;
+    if (!debug.isAttached()) debug.attach('1.3');
+    await debug.sendCommand('Page.enable');
+    await debug.sendCommand('Page.setInterceptFileChooserDialog', { enabled: true });
+    try {
+      const opened = new Promise((resolve) => {
+        const cleanup = () => { clearTimeout(timer); debug.removeListener('message', listener); };
+        const timer = setTimeout(() => { cleanup(); resolve(null); }, 8000);
+        const listener = (_event, method, params) => {
+          if (method !== 'Page.fileChooserOpened') return;
+          cleanup();
+          resolve(params || null);
+        };
+        debug.on('message', listener);
+      });
+      const clicked = await this.exec(selectorClickScript(triggerSelectors));
+      if (!clicked) return false;
+      const chooser = await opened;
+      if (!chooser?.backendNodeId) return false;
+      await debug.sendCommand('DOM.setFileInputFiles', { files: filePaths, backendNodeId: chooser.backendNodeId });
+      return true;
+    } finally {
+      try { await debug.sendCommand('Page.setInterceptFileChooserDialog', { enabled: false }); } catch { /* 调试器可能已断开 */ }
+    }
+  }
+
   async waitForRemoteImages(adapter, expectedCount) {
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      const urls = await this.exec(`(() => {
+    const ready = adapter.uploadReady || null;
+    const positiveText = ready?.positiveText || [];
+    const seenThenGone = ready?.seenThenGone || [];
+    const maxAttempts = ready?.maxAttempts || 40;
+    const intervalMs = ready?.intervalMs || 250;
+    let markerSeen = false;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const state = await this.exec(`(() => {
         const body = ${JSON.stringify(adapter.bodySelectors)}.map((selector) => document.querySelector(selector)).find(Boolean);
-        if (!body || 'value' in body) return [];
-        return [...body.querySelectorAll('img')].map((node) => node.currentSrc || node.src).filter((url) => /^https:\\/\\//i.test(url));
+        const urls = body && !('value' in body) ? [...body.querySelectorAll('img')].map((node) => node.currentSrc || node.src).filter((url) => /^https:\\/\\//i.test(url)) : [];
+        const text = String(document.body?.innerText || '');
+        return {
+          urls,
+          positive: ${JSON.stringify(positiveText)}.some((marker) => text.includes(marker)),
+          marker: ${JSON.stringify(seenThenGone)}.some((marker) => text.includes(marker)),
+        };
       })()`);
-      if (urls.length >= expectedCount) return urls.slice(-expectedCount);
-      await delay(250);
+      const urls = state?.urls || [];
+      if (state?.marker) markerSeen = true;
+      let readyOk = true;
+      if (positiveText.length) readyOk = readyOk && Boolean(state?.positive);
+      if (seenThenGone.length) readyOk = readyOk && markerSeen && !state?.marker;
+      if (urls.length >= expectedCount && readyOk) return urls.slice(-expectedCount);
+      await delay(intervalMs);
     }
     throw coded('draft_image_mismatch');
   }

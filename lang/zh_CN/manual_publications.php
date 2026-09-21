@@ -104,4 +104,9 @@ return [
         'target_url' => '目标地址', 'content' => '发布内容', 'risk_status' => '风险状态', 'duplicates' => '重复提醒数',
         'completion_url' => '实际发布地址', 'result_note' => '结果备注', 'created_at' => '创建时间',
     ],
+    'readiness' => [
+        'ready' => '就绪', 'unbound' => '未绑定账号',
+        'gap_inactive' => '账号未激活', 'gap_adapter' => '未启用浏览器适配器',
+        'gap_editor_url' => '缺少编辑页 URL', 'gap_identity' => '缺少账号身份标识',
+    ],
 ];

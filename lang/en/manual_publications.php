@@ -112,4 +112,9 @@ return [
         'target_url' => 'Target URL', 'content' => 'Content', 'risk_status' => 'Risk status', 'duplicates' => 'Duplicate warnings',
         'completion_url' => 'Published URL', 'result_note' => 'Result note', 'created_at' => 'Created at',
     ],
+    'readiness' => [
+        'ready' => 'Ready', 'unbound' => 'No account bound',
+        'gap_inactive' => 'Account inactive', 'gap_adapter' => 'Browser adapter not enabled',
+        'gap_editor_url' => 'Missing editor URL', 'gap_identity' => 'Missing account identity',
+    ],
 ];
