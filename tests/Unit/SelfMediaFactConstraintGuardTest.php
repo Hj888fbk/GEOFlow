@@ -53,6 +53,21 @@ final class SelfMediaFactConstraintGuardTest extends TestCase
         $this->assertNotContains('2026年', $numbers);
     }
 
+    public function test_emoji_and_circled_list_ordinals_are_not_treated_as_fact_numbers(): void
+    {
+        $guard = new SelfMediaFactConstraintGuard;
+
+        // 改写模型常把母稿普通列表装饰成 emoji 键帽/圈号序号，这些数字是版式标记。
+        $numbers = $guard->extractAllowedNumbers([
+            "检查顺序：\n1️⃣ 运行状态确认\n2️⃣ 安装位置\n3️⃣ 法兰连接\n① 外观\n② 支撑\n压力 1.6MPa",
+        ]);
+
+        $this->assertContains('1.6', $numbers);
+        $this->assertNotContains('1', $numbers);
+        $this->assertNotContains('2', $numbers);
+        $this->assertNotContains('3', $numbers);
+    }
+
     public function test_variant_without_contact_info_passes(): void
     {
         $guard = new SelfMediaFactConstraintGuard;
