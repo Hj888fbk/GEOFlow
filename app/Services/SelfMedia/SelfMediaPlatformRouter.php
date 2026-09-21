@@ -107,7 +107,7 @@ final class SelfMediaPlatformRouter
                 ],
                 self::INTENT_SHORT_UPDATE => [ManualPublicationAccount::PLATFORM_TOUTIAO],
             }
-            : $legacyPlatforms;
+        : $legacyPlatforms;
 
         return [
             'platforms' => $platforms,

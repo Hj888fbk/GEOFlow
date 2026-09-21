@@ -5,8 +5,11 @@ namespace Tests\Feature;
 use App\Models\Admin;
 use App\Models\Article;
 use App\Models\ArticleDistribution;
+use App\Models\Author;
+use App\Models\Category;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
+use App\Models\WebsitePublicationReceipt;
 use App\Services\SelfMedia\SelfMediaSourceHasher;
 use App\Services\SelfMedia\WebsitePublicationReadbackService;
 use App\Support\GeoFlow\ApiKeyCrypto;
@@ -137,7 +140,7 @@ final class WebsitePublicationReadbackTest extends TestCase
         // 幂等：再次轮询返回同一条回执，不产生重复记录。
         $again = app(WebsitePublicationReadbackService::class)->attemptReceipt($distribution->fresh());
         $this->assertNotNull($again);
-        $this->assertSame(1, \App\Models\WebsitePublicationReceipt::query()->where('article_id', $article->id)->count());
+        $this->assertSame(1, WebsitePublicationReceipt::query()->where('article_id', $article->id)->count());
     }
 
     public function test_existing_receipt_backfills_stale_distribution_url(): void
@@ -148,7 +151,7 @@ final class WebsitePublicationReadbackTest extends TestCase
         $hasher = app(SelfMediaSourceHasher::class);
         $hash = $hasher->hash($article);
 
-        \App\Models\WebsitePublicationReceipt::query()->create([
+        WebsitePublicationReceipt::query()->create([
             'article_id' => $article->id,
             'responsible_project_id' => 'HJ-WEB',
             'formal_url' => 'https://official.example.com/news/canonical/',
@@ -319,11 +322,11 @@ final class WebsitePublicationReadbackTest extends TestCase
 
     private function makeArticle(string $content): Article
     {
-        $categoryId = \App\Models\Category::query()->create([
+        $categoryId = Category::query()->create([
             'name' => '回读测试分类',
             'slug' => 'readback-cat-'.uniqid(),
         ])->id;
-        $authorId = \App\Models\Author::query()->create([
+        $authorId = Author::query()->create([
             'name' => '回读测试作者',
         ])->id;
 

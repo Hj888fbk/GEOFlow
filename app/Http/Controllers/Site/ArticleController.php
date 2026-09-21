@@ -6,13 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Services\Site\SiteScopedArticleQuery;
 use App\Services\Site\SiteUrlGenerator;
+use App\Support\GeoFlow\KeywordNormalizer;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\ArticleStickyAdPicker;
 use App\Support\Site\ArticleTextAdPicker;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemePreviewContext;
 use App\Support\Site\SiteThemeViewResolver;
-use App\Support\GeoFlow\KeywordNormalizer;
 use Illuminate\View\View;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 

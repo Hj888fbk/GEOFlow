@@ -12,6 +12,7 @@ use App\Models\WorkerHeartbeat;
 use App\Services\GeoFlow\AiExecutionContextFactory;
 use App\Services\GeoFlow\JobQueueService;
 use App\Services\GeoFlow\WorkerExecutionService;
+use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Arr;
@@ -207,7 +208,7 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
     private function logUnhandledFailure(int $taskId, Throwable $exception): void
     {
         try {
-            $sanitizer = app(\App\Support\GeoFlow\AiExecutionErrorSanitizer::class);
+            $sanitizer = app(AiExecutionErrorSanitizer::class);
             Log::error('GeoFlow task execution failed.', [
                 'task_id' => $taskId,
                 'task_run_id' => $this->taskRunId,
@@ -220,7 +221,7 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
         }
     }
 
-    private function safeDiagnosticMessage(\App\Support\GeoFlow\AiExecutionErrorSanitizer $sanitizer, Throwable $exception): string
+    private function safeDiagnosticMessage(AiExecutionErrorSanitizer $sanitizer, Throwable $exception): string
     {
         $message = $sanitizer->sanitize($exception, '');
         if ($message !== '') {

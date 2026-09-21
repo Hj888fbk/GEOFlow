@@ -174,9 +174,9 @@ class ArticleAiQualityEvidenceBuilder
     }
 
     /**
-     * @param list<array<string,mixed>> $factCandidates
-     * @param array<string,array<string,bool>> $factEvidenceKeys
-     * @param array<string,array<string,mixed>> $evidenceByKey
+     * @param  list<array<string,mixed>>  $factCandidates
+     * @param  array<string,array<string,bool>>  $factEvidenceKeys
+     * @param  array<string,array<string,mixed>>  $evidenceByKey
      * @return list<string>
      */
     private function orderedEvidenceKeys(array $factCandidates, array $factEvidenceKeys, array $evidenceByKey): array
