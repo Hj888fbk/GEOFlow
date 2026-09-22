@@ -14,7 +14,7 @@ const platforms = Object.freeze({
   // 微博：走头条文章编辑器（card.weibo.com/article/v5/editor），支持标题+长文+图片+草稿箱，
   // 与生产账号 editor_url 一致；普通微博首页发布器无标题且字数受限，不采用。
   // 以下选择器按微博公开页面结构的常识编写，全部待实测验证。
-  weibo: definition('微博', ['weibo.com', 'www.weibo.com', 'card.weibo.com'], 'https://card.weibo.com/article/v5/editor#/', [
+  weibo: definition('微博', ['weibo.com', 'www.weibo.com', 'card.weibo.com', 'passport.weibo.com', 'login.sina.com.cn', 'sina.com.cn'], 'https://card.weibo.com/article/v5/editor#/', [
     // 待实测验证：头条文章编辑器标题输入框
     'input[placeholder*="标题"]',
     'textarea[placeholder*="标题"]',
