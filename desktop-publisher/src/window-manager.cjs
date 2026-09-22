@@ -6,15 +6,20 @@ const os = require('node:os');
 const path = require('node:path');
 
 class AccountWindowManager {
-  constructor(BrowserWindow, session, registry) {
+  constructor(BrowserWindow, session, registry, options = {}) {
     this.BrowserWindow = BrowserWindow;
     this.session = session;
     this.registry = registry;
+    this.diagnosticsDir = options.diagnosticsDir || null;
     this.windows = new Map();
   }
 
+  accountKey(account) {
+    return `${account.instance || 'local'}:${account.id}`;
+  }
+
   async forAccount(account, adapter) {
-    const key = `${account.instance || 'local'}:${account.id}`;
+    const key = this.accountKey(account);
     let win = this.windows.get(key);
     if (!win || win.isDestroyed()) {
       const digest = crypto.createHash('sha256').update(key).digest('hex').slice(0, 20);
@@ -33,13 +38,25 @@ class AccountWindowManager {
     }
     const target = account.editor_url || adapter.editorUrl;
     if (!win.webContents.getURL()) await win.loadURL(this.registry.assertAllowedUrl(account.platform, target));
-    return new WindowExecutor(win);
+    return new WindowExecutor(win, { diagnosticsDir: this.diagnosticsDir });
+  }
+
+  // 工单结束后释放编辑器窗口。登录态保存在 persist: partition，销毁窗口不影响登录，
+  // 也不影响 renderer 登录标签页的 webview（独立 webContents，共享同一 partition 会话）。
+  release(account) {
+    const key = this.accountKey(account);
+    const win = this.windows.get(key);
+    this.windows.delete(key);
+    if (win && !win.isDestroyed()) {
+      try { win.destroy(); } catch { /* 窗口可能已在关闭流程中 */ }
+    }
   }
 }
 
 class WindowExecutor {
-  constructor(win) {
+  constructor(win, options = {}) {
     this.win = win;
+    this.diagnosticsDir = options.diagnosticsDir || null;
     this.mediaReceipts = [];
     this.temporaryMediaDirectory = null;
   }
@@ -76,9 +93,9 @@ class WindowExecutor {
   async fillTitle(adapter, value) {
     // 无标题平台（如微博）：titleSelectors 为空时跳过填标题
     if (!adapter.titleSelectors?.length) return;
-    return this.fillFirst(adapter.titleSelectors, value, false);
+    return this.fillFirst(adapter.titleSelectors, value, false, 'fill_title', adapter);
   }
-  async fillBody(adapter, value) { return this.fillFirst(adapter.bodySelectors, value, true); }
+  async fillBody(adapter, value) { return this.fillFirst(adapter.bodySelectors, value, true, 'fill_body', adapter); }
 
   async uploadImages(adapter, media) {
     this.mediaReceipts = [];
@@ -99,7 +116,7 @@ class WindowExecutor {
     let accepted = false;
     if (mode === 'button-then-input') {
       const clicked = await this.exec(selectorClickScript(adapter.upload.buttonSelectors || []));
-      if (!clicked) throw coded('editor_dom_changed');
+      if (!clicked) await this.failWithDiagnostics('editor_dom_changed', 'upload_button', adapter);
       await delay(400);
       accepted = await this.setFileInputPaths(adapter.imageInputSelectors, filePaths);
     } else if (mode === 'filechooser') {
@@ -107,7 +124,7 @@ class WindowExecutor {
     } else {
       accepted = await this.setFileInputPaths(adapter.imageInputSelectors, filePaths);
     }
-    if (!accepted) throw coded('editor_dom_changed');
+    if (!accepted) await this.failWithDiagnostics('editor_dom_changed', `upload_${mode}`, adapter);
 
     const uploadedUrls = await this.waitForRemoteImages(adapter, media.length);
     this.mediaReceipts = media.map((item, index) => ({
@@ -222,7 +239,7 @@ class WindowExecutor {
     })()`);
   }
 
-  async fillFirst(selectors, value, html) {
+  async fillFirst(selectors, value, html, stage = 'fill', adapter = null) {
     const result = await this.exec(`(() => {
       const element = ${JSON.stringify(selectors)}.map((selector) => document.querySelector(selector)).find(Boolean);
       if (!element) return false;
@@ -233,7 +250,53 @@ class WindowExecutor {
       element.dispatchEvent(new Event('change', { bubbles: true }));
       return true;
     })()`);
-    if (!result) throw coded('editor_dom_changed');
+    if (!result) await this.failWithDiagnostics('editor_dom_changed', stage, adapter);
+  }
+
+  // 结构性失败前采集诊断：只收集 DOM 结构信息（文件输入框、按钮文本、URL、标题），
+  // 不读取 cookie/token/页面正文；截图只存本地 diagnostics 目录，摘要随错误上报。
+  async failWithDiagnostics(code, stage, adapter) {
+    const error = coded(code);
+    try {
+      error.diagnostics = await this.collectDiagnostics(stage, adapter);
+    } catch { /* 诊断采集失败不掩盖原始错误 */ }
+    throw error;
+  }
+
+  async collectDiagnostics(stage, adapter) {
+    const info = await this.exec(`(() => {
+      const fileInputs = [...document.querySelectorAll('input[type="file"]')].map((node) => ({
+        accept: String(node.getAttribute('accept') || '').slice(0, 80),
+        visible: Boolean(node.offsetWidth || node.offsetHeight || node.getClientRects().length),
+      }));
+      const buttons = [...document.querySelectorAll('button')]
+        .map((node) => String(node.textContent || '').replace(/\\s+/g, ' ').trim())
+        .filter((text) => text && text.length <= 30 && /图片|上传|插入/.test(text))
+        .slice(0, 10);
+      return { url: String(location.href), title: String(document.title || '').slice(0, 120), fileInputs, buttons };
+    })()`);
+    let screenshotSaved = false;
+    if (this.diagnosticsDir && typeof this.win.webContents.capturePage === 'function') {
+      try {
+        const image = await this.win.webContents.capturePage();
+        const buffer = image?.toPNG ? image.toPNG() : image;
+        if (buffer?.length) {
+          this.saveDiagnosticScreenshot(stage, adapter, buffer);
+          screenshotSaved = true;
+        }
+      } catch { /* 截图失败不影响诊断摘要 */ }
+    }
+    return buildDiagnosticsSummary(stage, info, screenshotSaved);
+  }
+
+  saveDiagnosticScreenshot(stage, adapter, buffer) {
+    fs.mkdirSync(this.diagnosticsDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const platform = safeFileLabel(adapter?.label || 'unknown');
+    const filePath = path.join(this.diagnosticsDir, `${stamp}-${platform}-${safeFileLabel(stage)}.png`);
+    fs.writeFileSync(filePath, buffer);
+    pruneDiagnosticScreenshots(this.diagnosticsDir, 20);
+    return filePath;
   }
 
   async setFileInputPaths(selectors, filePaths) {
@@ -325,7 +388,44 @@ function extensionForMime(mimeType) {
 }
 
 function safeFilePart(value) { return String(value || 'image').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) || 'image'; }
+
+// 诊断截图文件名用：保留中日韩等 Unicode 字母（平台名是中文），去掉路径不安全字符
+function safeFileLabel(value) { return String(value || 'unknown').replace(/[^\p{L}\p{N}_-]/gu, '').slice(0, 40) || 'unknown'; }
+
+// 摘要限长 1000 字符，只含 stage/URL/标题/文件输入框结构/按钮文本，不含 cookie/token/正文
+function buildDiagnosticsSummary(stage, info, screenshotSaved) {
+  const fileInputs = Array.isArray(info?.fileInputs) ? info.fileInputs : [];
+  const buttons = Array.isArray(info?.buttons) ? info.buttons : [];
+  const inputsDetail = fileInputs.length
+    ? `(${fileInputs.map((input) => `${input.visible ? 'visible' : 'hidden'}:${input.accept || 'any'}`).join(',')})`
+    : '';
+  return [
+    `stage=${stage}`,
+    `url=${String(info?.url || 'unknown')}`,
+    `title=${String(info?.title || '')}`,
+    `file_inputs=${fileInputs.length}${inputsDetail}`,
+    `buttons=[${buttons.join('|')}]`,
+    `screenshot=${screenshotSaved ? 'saved' : 'unavailable'}`,
+  ].join(' ').slice(0, 1000);
+}
+
+// diagnostics 目录最多保留最近 keep 张截图，超出删最旧
+function pruneDiagnosticScreenshots(directory, keep = 20) {
+  let names;
+  try { names = fs.readdirSync(directory).filter((name) => name.endsWith('.png')); } catch { return; }
+  if (names.length <= keep) return;
+  const entries = names.map((name) => {
+    const filePath = path.join(directory, name);
+    let mtime = 0;
+    try { mtime = fs.statSync(filePath).mtimeMs; } catch { /* 读取失败按最旧处理 */ }
+    return { filePath, mtime };
+  }).sort((a, b) => a.mtime - b.mtime);
+  for (const entry of entries.slice(0, entries.length - keep)) {
+    try { fs.rmSync(entry.filePath, { force: true }); } catch { /* 删除失败下轮再清 */ }
+  }
+}
+
 function delay(milliseconds) { return new Promise((resolve) => setTimeout(resolve, milliseconds)); }
 function coded(code) { const error = new Error(code); error.code = code; return error; }
 
-module.exports = { AccountWindowManager, WindowExecutor, extensionForMime };
+module.exports = { AccountWindowManager, WindowExecutor, extensionForMime, buildDiagnosticsSummary, pruneDiagnosticScreenshots };

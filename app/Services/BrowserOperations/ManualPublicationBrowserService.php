@@ -33,6 +33,9 @@ final class ManualPublicationBrowserService
         'article_permission_required',
     ];
 
+    // 同账号连续结构性失败达到该次数才自动停用适配器，避免单次瞬时故障误停用。
+    public const AUTO_DISABLE_CONSECUTIVE_FAILURES = 3;
+
     public function __construct(private readonly ArticlePublicationQualityGate $publicationQualityGate) {}
 
     /** @param array{account_ids?:list<int>,batch_id?:int,article_id?:int} $filters */
@@ -461,17 +464,35 @@ final class ManualPublicationBrowserService
             if (! in_array($errorCode, self::AUTO_DISABLE_ERROR_CODES, true)) {
                 throw new ApiException('validation_failed', '该错误不属于可自动停用的结构性故障', 422);
             }
+            // 单次结构性故障多为瞬时问题（页面加载慢、选择器命中时机等），
+            // 连续 3 次同账号结构性失败才自动停用适配器，避免一次失败就停摆。
+            $autoDisable = false;
+            $consecutiveFailures = 1;
             if ($publication->account_id !== null) {
-                ManualPublicationAccount::query()->whereKey((int) $publication->account_id)->lockForUpdate()->update([
-                    'browser_adapter_enabled' => false,
-                ]);
+                $consecutiveFailures += ManualPublication::query()
+                    ->where('account_id', (int) $publication->account_id)
+                    ->where('id', '<', (int) $publication->id)
+                    ->whereIn('status', [ManualPublication::STATUS_FAILED])
+                    ->orderByDesc('id')
+                    ->limit(self::AUTO_DISABLE_CONSECUTIVE_FAILURES - 1)
+                    ->get(['execution_receipt'])
+                    ->takeWhile(fn (ManualPublication $item): bool => in_array((string) data_get($item->execution_receipt, 'error_code'), self::AUTO_DISABLE_ERROR_CODES, true))
+                    ->count();
+                $autoDisable = $consecutiveFailures >= self::AUTO_DISABLE_CONSECUTIVE_FAILURES;
+                if ($autoDisable) {
+                    ManualPublicationAccount::query()->whereKey((int) $publication->account_id)->lockForUpdate()->update([
+                        'browser_adapter_enabled' => false,
+                    ]);
+                }
             }
             $fromStatus = (string) $publication->status;
             $at = now();
             $publication->forceFill([
                 'status' => ManualPublication::STATUS_FAILED,
                 'status_changed_at' => $at,
-                'result_note' => '检测到平台结构或能力变化，账号适配器已自动停用。',
+                'result_note' => $autoDisable
+                    ? '连续多次检测到平台结构或能力变化，账号适配器已自动停用。'
+                    : sprintf('检测到平台结构或能力变化（连续第 %d 次），暂未停用适配器；连续 %d 次后将自动停用。', $consecutiveFailures, self::AUTO_DISABLE_CONSECUTIVE_FAILURES),
                 'execution_receipt' => [
                     'schema_version' => max(1, (int) ($publication->publication_payload['schema_version'] ?? 1)),
                     'outcome' => 'failed',
@@ -480,7 +501,9 @@ final class ManualPublicationBrowserService
                     'adapter_version' => (string) ($receipt['adapter_version'] ?? ''),
                     'target_origin' => (string) ($receipt['target_origin'] ?? ''),
                     'error_code' => $errorCode,
-                    'adapter_auto_disabled' => true,
+                    'adapter_auto_disabled' => $autoDisable,
+                    'consecutive_structural_failures' => $consecutiveFailures,
+                    'last_error_diagnostics' => mb_substr((string) ($receipt['diagnostics'] ?? ''), 0, 1000) ?: null,
                     'finished_at' => $receipt['finished_at'] ?? now()->toIso8601String(),
                 ],
                 'browser_claimed_by_token_id' => null,

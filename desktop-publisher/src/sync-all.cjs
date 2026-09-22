@@ -26,7 +26,14 @@ function createSyncRunner({ api, registry, windows, observer, queue, adapterVers
             const outcome = await queue.enqueue(account.id, () => runner.run(item, { ...account, instance: api.instance }));
             result = { accountId: account.id, publicationId: item.id, ...outcome };
           } catch (error) {
-            result = { status: 'action_required', accountId: account.id, publicationId: item.id, error: error.code || error.message };
+            result = {
+              status: 'action_required',
+              accountId: account.id,
+              publicationId: item.id,
+              error: error.code || error.message,
+              // 诊断摘要（结构性失败时由 window-manager 采集）：限长 1000，不含 cookie/token/正文
+              ...(error.diagnostics ? { diagnostics: String(error.diagnostics).slice(0, 1000) } : {}),
+            };
           }
           results.push(result);
           // 登录态失效或身份不一致时同账号剩余工单必然同样失败：跳过该账号，继续处理其他账号

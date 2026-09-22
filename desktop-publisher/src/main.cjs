@@ -38,7 +38,7 @@ if (!hasSingleInstanceLock) {
     credentials = new CredentialStore(safeStorage, app.getPath('userData'));
     const saved = credentials.load();
     api = new GeoFlowApiClient(net.fetch, saved.instance, saved.token, app.getVersion());
-    windows = new AccountWindowManager(BrowserWindow, session, registry);
+    windows = new AccountWindowManager(BrowserWindow, session, registry, { diagnosticsDir: path.join(app.getPath('userData'), 'diagnostics') });
     queue = new AccountTaskQueue();
     observer = new PublicationResultObserver(api, registry, app.getVersion());
     autoSyncSettings = { autoSyncEnabled: saved.autoSyncEnabled, autoSyncIntervalMinutes: saved.autoSyncIntervalMinutes };
