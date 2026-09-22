@@ -18,14 +18,15 @@ test('all eleven first-release adapters satisfy the draft-only contract', () => 
   assert.match(registry.digest, /^[a-f0-9]{64}$/);
 });
 
-test('weibo adapter is titleless but still satisfies the contract', () => {
+test('weibo adapter targets the article editor and satisfies the contract', () => {
   const registry = new AdapterRegistry();
   const adapter = registry.get('weibo');
-  assert.deepEqual([...adapter.titleSelectors], []);
+  assert.ok(adapter.titleSelectors.length > 0);
   assert.ok(adapter.bodySelectors.length > 0);
   assert.equal(adapter.upload.mode, 'input');
   assert.equal(Object.hasOwn(adapter, 'publishSelector'), false);
   assert.doesNotThrow(() => registry.assertAllowedUrl('weibo', 'https://weibo.com'));
+  assert.doesNotThrow(() => registry.assertAllowedUrl('weibo', 'https://card.weibo.com/article/v5/editor#/'));
 });
 
 test('contract rejects invalid upload strategies', () => {

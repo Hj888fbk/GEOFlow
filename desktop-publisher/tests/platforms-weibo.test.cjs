@@ -4,14 +4,14 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { platforms } = require('../src/platforms.cjs');
 
-test('weibo adapter targets the weibo.com composer and has no title field', () => {
+test('weibo adapter targets the card.weibo.com article editor with title field', () => {
   const weibo = platforms.weibo;
   assert.equal(weibo.label, '微博');
   assert.ok(weibo.hosts.includes('weibo.com'));
-  assert.ok(weibo.hosts.includes('www.weibo.com'));
-  assert.equal(weibo.editorUrl, 'https://weibo.com');
-  assert.deepEqual([...weibo.titleSelectors], []);
-  assert.ok(weibo.bodySelectors.some((selector) => selector.includes('分享新鲜事')));
+  assert.ok(weibo.hosts.includes('card.weibo.com'));
+  assert.equal(weibo.editorUrl, 'https://card.weibo.com/article/v5/editor#/');
+  assert.ok(weibo.titleSelectors.length > 0);
+  assert.ok(weibo.bodySelectors.length > 0);
   assert.ok(weibo.draftSelectors.length > 0);
 });
 
