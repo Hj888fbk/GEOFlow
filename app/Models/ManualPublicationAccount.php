@@ -168,7 +168,7 @@ class ManualPublicationAccount extends Model
             self::PLATFORM_DAYU => 'https://mp.dayu.com/',
             self::PLATFORM_JIANSHU => 'https://www.jianshu.com/writer',
             self::PLATFORM_DOUYIN => 'https://creator.douyin.com/creator-micro/content/publish',
-            self::PLATFORM_WEIBO => 'https://weibo.com',
+            self::PLATFORM_WEIBO => 'https://card.weibo.com/article/v5/editor#/',
         ];
     }
 }

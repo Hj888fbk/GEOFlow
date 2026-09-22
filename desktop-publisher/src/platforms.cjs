@@ -11,15 +11,18 @@ const platforms = Object.freeze({
   jianshu: definition('简书', ['jianshu.com'], 'https://www.jianshu.com/writer', ['input[placeholder*="标题"]'], ['textarea', '[contenteditable="true"]'], ['button:has-text("保存")']),
   csdn: definition('CSDN', ['csdn.net'], 'https://editor.csdn.net/md/', ['input[placeholder*="标题"]'], ['textarea', '[contenteditable="true"]'], ['button:has-text("保存草稿")']),
   douyin: definition('抖音文章', ['douyin.com', 'creator.douyin.com'], 'https://creator.douyin.com/creator-micro/content/publish', ['input[placeholder*="标题"]'], ['[contenteditable="true"]'], ['button:has-text("存草稿")', 'button:has-text("保存草稿")']),
-  // 微博（普通微博 weibo_post，非头条文章）：没有标题字段，只有正文+图片；
-  // 草稿机制与图文平台不同（发布器内置草稿箱）。titleSelectors 为空表示跳过填标题。
+  // 微博：走头条文章编辑器（card.weibo.com/article/v5/editor），支持标题+长文+图片+草稿箱，
+  // 与生产账号 editor_url 一致；普通微博首页发布器无标题且字数受限，不采用。
   // 以下选择器按微博公开页面结构的常识编写，全部待实测验证。
-  weibo: definition('微博', ['weibo.com', 'www.weibo.com'], 'https://weibo.com', [], [
-    // 待实测验证：微博首页发布器正文输入框（占位文案「分享新鲜事」）
-    'textarea[placeholder*="分享新鲜事"]',
-    'textarea[class*="Form_input" i]',
+  weibo: definition('微博', ['weibo.com', 'www.weibo.com', 'card.weibo.com'], 'https://card.weibo.com/article/v5/editor#/', [
+    // 待实测验证：头条文章编辑器标题输入框
+    'input[placeholder*="标题"]',
+    'textarea[placeholder*="标题"]',
   ], [
-    // 待实测验证：微博发布器「存草稿」入口；若无独立按钮，需实测草稿箱交互
+    // 待实测验证：头条文章编辑器正文（富文本编辑区）
+    '[contenteditable="true"]',
+  ], [
+    // 待实测验证：编辑器工具栏「存草稿」；草稿箱在 #/draft 路由
     'button:has-text("存草稿")',
     'text=存草稿',
   ], {
