@@ -39,3 +39,26 @@ test('fillBody script keeps innerHTML for rich text', async () => {
   await executor.fillBody({ bodySelectors: ['div[contenteditable]'] }, '<p>正文</p>');
   assert.ok(script.includes('if (true) element.innerHTML'));
 });
+
+test('waitForEditorReady polls until an editor element appears', async () => {
+  let calls = 0;
+  const win = {
+    webContents: {
+      executeJavaScript: async () => {
+        calls += 1;
+        return calls >= 3;
+      },
+    },
+  };
+  const executor = new WindowExecutor(win);
+  const ready = await executor.waitForEditorReady({ titleSelectors: ['input'], bodySelectors: [] }, 5000, 10);
+  assert.equal(ready, true);
+  assert.equal(calls, 3);
+});
+
+test('waitForEditorReady times out when the editor never renders', async () => {
+  const win = { webContents: { executeJavaScript: async () => false } };
+  const executor = new WindowExecutor(win);
+  const ready = await executor.waitForEditorReady({ titleSelectors: ['input'], bodySelectors: [] }, 50, 10);
+  assert.equal(ready, false);
+});

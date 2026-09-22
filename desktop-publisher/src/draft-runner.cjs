@@ -52,6 +52,9 @@ class DraftRunner {
       try {
         const media = await this.downloadMedia(payload.media_manifest || []);
         await executor.openEditor(this.registry.assertAllowedUrl(publication.platform, account.editor_url || adapter.editorUrl));
+        // SPA 编辑器需要时间渲染正文区域：先等标题/正文元素出现再填充。
+        // 超时后仍继续尝试填充——若始终未渲染，会在填充处带诊断失败。
+        await executor.waitForEditorReady?.(adapter);
         if (hasTitle) await executor.fillTitle(adapter, payload.title || '');
         await executor.fillBody(adapter, payload.body_html || payload.body_markdown || payload.body_plain || '');
         await executor.uploadImages(adapter, media);
