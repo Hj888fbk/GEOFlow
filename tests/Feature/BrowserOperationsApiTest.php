@@ -847,12 +847,85 @@ class BrowserOperationsApiTest extends TestCase
                 'error_code' => 'draft_heading_mismatch',
             ])->assertOk()
             ->assertJsonPath('data.publication.status', ManualPublication::STATUS_FAILED)
-            ->assertJsonPath('data.publication.account.browser_adapter_enabled', false);
-        $this->assertFalse($account->refresh()->browser_adapter_enabled);
-        $this->assertTrue($publication->refresh()->execution_receipt['adapter_auto_disabled']);
+            ->assertJsonPath('data.publication.account.browser_adapter_enabled', true);
+        // 单次结构性故障不再直接停用：连续失败达到阈值才停用。
+        $this->assertTrue($account->refresh()->browser_adapter_enabled);
+        $this->assertFalse($publication->refresh()->execution_receipt['adapter_auto_disabled']);
+        $this->assertSame(1, $publication->refresh()->execution_receipt['consecutive_structural_failures']);
         $this->withHeaders($ownerHeaders)->get($mediaUrl)
             ->assertStatus(409)
             ->assertJsonPath('error.code', 'claim_owned_by_another_client');
+    }
+
+    public function test_adapter_auto_disables_only_after_consecutive_structural_failures(): void
+    {
+        $admin = $this->admin();
+        $persona = ManualPublicationPersona::query()->create(['name' => '阈值身份']);
+        $account = ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+            'account_name' => '阈值账号',
+            'account_uid' => 'threshold-1',
+            'editor_url' => 'https://baijiahao.baidu.com/builder/rc/edit',
+            'browser_adapter_enabled' => true,
+        ]);
+        $token = $admin->createToken('Threshold Chrome', ['browser-operations:read', 'browser-operations:execute']);
+        $headers = $this->authenticatedHeaders($token->plainTextToken, '0.3.0');
+
+        $makePublication = function (int $index) use ($admin, $persona, $account): ManualPublication {
+            return ManualPublication::query()->create([
+                'type' => ManualPublication::TYPE_POST,
+                'persona_id' => $persona->id,
+                'account_id' => $account->id,
+                'assigned_admin_id' => $admin->id,
+                'platform' => ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+                'target_url' => $account->editor_url,
+                'content' => '正文',
+                'content_fingerprint' => hash('sha256', 'threshold-content-'.$index),
+                'identity_snapshot' => ['account' => ['account_uid' => 'threshold-1']],
+                'status' => ManualPublication::STATUS_READY,
+                'status_changed_at' => now(),
+                'revision' => 1,
+                'publication_payload' => [
+                    'schema_version' => 3,
+                    'target_action' => 'baijiahao_article',
+                    'required_extension_version' => '0.3.0',
+                    'draft_policy' => 'draft_only',
+                    'body_plain' => '正文',
+                ],
+            ]);
+        };
+
+        $failOnce = function (ManualPublication $publication, int $index) use ($headers): void {
+            $this->withHeaders($headers + ['X-Idempotency-Key' => 'threshold-claim-'.$index])
+                ->postJson('/api/v1/manual-publications/'.$publication->id.'/claim', ['revision' => 1])
+                ->assertOk();
+            $this->withHeaders($headers + ['X-Idempotency-Key' => 'threshold-fail-'.$index])
+                ->postJson('/api/v1/manual-publications/'.$publication->id.'/adapter-failure', [
+                    'revision' => 2,
+                    'adapter_version' => '0.3.0',
+                    'target_origin' => 'https://baijiahao.baidu.com',
+                    'finished_at' => now()->toIso8601String(),
+                    'error_code' => 'editor_dom_changed',
+                ])->assertOk();
+        };
+
+        $first = $makePublication(1);
+        $failOnce($first, 1);
+        $this->assertTrue($account->refresh()->browser_adapter_enabled);
+        $this->assertFalse($first->refresh()->execution_receipt['adapter_auto_disabled']);
+        $this->assertSame(1, $first->execution_receipt['consecutive_structural_failures']);
+
+        $second = $makePublication(2);
+        $failOnce($second, 2);
+        $this->assertTrue($account->refresh()->browser_adapter_enabled);
+        $this->assertSame(2, $second->refresh()->execution_receipt['consecutive_structural_failures']);
+
+        $third = $makePublication(3);
+        $failOnce($third, 3);
+        $this->assertFalse($account->refresh()->browser_adapter_enabled);
+        $this->assertTrue($third->refresh()->execution_receipt['adapter_auto_disabled']);
+        $this->assertSame(3, $third->execution_receipt['consecutive_structural_failures']);
     }
 
     public function test_desktop_protocol_v2_registers_client_and_binds_account_session(): void
