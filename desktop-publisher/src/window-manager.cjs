@@ -63,6 +63,23 @@ class WindowExecutor {
 
   async show() { this.win.show(); this.win.focus(); }
   async openEditor(url) { if (this.win.webContents.getURL() !== url) await this.win.loadURL(url); }
+
+  // 平台编辑器多为 SPA：导航完成后 JS 还需要数秒渲染正文区域。
+  // 填充前先轮询等待标题或正文元素出现，超时交给调用方走 editor_dom_changed 诊断。
+  async waitForEditorReady(adapter, timeoutMs = 15000, intervalMs = 500) {
+    const deadline = Date.now() + timeoutMs;
+    const probes = [...(adapter.titleSelectors || []), ...(adapter.bodySelectors || [])];
+    if (!probes.length) return true;
+    while (Date.now() < deadline) {
+      const ready = await this.exec(`(() => {
+        const selectors = ${JSON.stringify(probes)};
+        return selectors.some((selector) => Boolean(document.querySelector(selector)));
+      })()`).catch(() => false);
+      if (ready) return true;
+      await delay(intervalMs);
+    }
+    return false;
+  }
   currentUrl() { return this.win.webContents.getURL(); }
 
   async detectLogin(adapter) {

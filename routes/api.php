@@ -65,7 +65,9 @@ Route::prefix('v1')
                         ->where('mediaKey', '[A-Za-z0-9_-]{8,80}')
                         ->middleware('throttle:120,1');
                     Route::middleware('api.scope:browser-operations:execute')->group(function (): void {
-                        Route::middleware('throttle:30,1')->group(function (): void {
+                        // 一轮草稿同步每个工单约 3 次调用（claim/heartbeat/receipt），
+                        // 10+ 工单一轮就超过 30/min；与读取端点对齐到 120/min。
+                        Route::middleware('throttle:120,1')->group(function (): void {
                             Route::post('{manualPublicationId}/claim', [BrowserManualPublicationController::class, 'claim'])->whereNumber('manualPublicationId');
                             Route::post('{manualPublicationId}/heartbeat', [BrowserManualPublicationController::class, 'heartbeat'])->whereNumber('manualPublicationId');
                             Route::post('{manualPublicationId}/release', [BrowserManualPublicationController::class, 'release'])->whereNumber('manualPublicationId');
