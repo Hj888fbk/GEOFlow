@@ -259,6 +259,7 @@ final class BrowserManualPublicationController extends BaseApiController
             'error_code' => ['required', Rule::in(ManualPublicationBrowserService::AUTO_DISABLE_ERROR_CODES)],
             'target_origin' => ['required', 'url:http,https', 'max:255'],
             'finished_at' => ['required', 'date'],
+            'diagnostics' => ['nullable', 'string', 'max:1500'],
         ]);
         if ($validator->fails()) {
             throw new ApiException('validation_failed', '适配器失败回执格式无效', 422, ['field_errors' => $validator->errors()->toArray()]);

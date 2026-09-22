@@ -244,8 +244,14 @@ class WindowExecutor {
       const element = ${JSON.stringify(selectors)}.map((selector) => document.querySelector(selector)).find(Boolean);
       if (!element) return false;
       element.focus();
-      if (${html ? 'true' : 'false'} && element.isContentEditable) element.innerHTML = ${JSON.stringify(value)};
-      else element.value = ${JSON.stringify(value)};
+      // 富文本编辑器（网易号标题框等）没有 .value：contenteditable 一律走节点内容赋值，
+      // title 用 innerText（纯文本），body 用 innerHTML（保留排版）。
+      if (element.isContentEditable) {
+        if (${html ? 'true' : 'false'}) element.innerHTML = ${JSON.stringify(value)};
+        else element.innerText = ${JSON.stringify(value)};
+      } else {
+        element.value = ${JSON.stringify(value)};
+      }
       element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
       element.dispatchEvent(new Event('change', { bubbles: true }));
       return true;

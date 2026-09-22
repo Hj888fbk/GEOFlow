@@ -1,5 +1,34 @@
 'use strict';
 
+// 实测证据（网易号编辑器截图）：不少平台的标题/正文是 contenteditable 富文本而非 input/textarea，
+// 占位文案放在 placeholder 或 data-placeholder 属性上。平台专属选择器优先，以下候选按序兜底。
+// 正文兜底刻意把带「正文」占位提示的候选放在裸 contenteditable 之前，
+// 避免编辑器里标题也是 contenteditable 时正文被填进标题框。
+const TITLE_FALLBACK_SELECTORS = Object.freeze([
+  'textarea[placeholder*="标题"]',
+  '[contenteditable][placeholder*="标题"]',
+  '[contenteditable][data-placeholder*="标题"]',
+]);
+const BODY_FALLBACK_SELECTORS = Object.freeze([
+  '[contenteditable][data-placeholder*="正文"]',
+  '[contenteditable][placeholder*="正文"]',
+  '.DraftEditor-editorContainer [contenteditable="true"]',
+  '.ProseMirror[contenteditable="true"]',
+  '[data-contents="true"]',
+]);
+
+function augmentSelectors(selectors, fallbacks) {
+  const merged = [...selectors];
+  // 裸 [contenteditable="true"] 太容易先命中标题框：把兜底候选插到它前面，
+  // 让带「正文」占位提示的容器优先被选中；其余情况按序追加。
+  const bareIndex = merged.indexOf('[contenteditable="true"]');
+  const insertAt = bareIndex === -1 ? merged.length : bareIndex;
+  for (const fallback of fallbacks) {
+    if (!merged.includes(fallback)) merged.splice(insertAt, 0, fallback);
+  }
+  return merged;
+}
+
 const platforms = Object.freeze({
   sohu_media: definition('搜狐号', ['mp.sohu.com'], 'https://mp.sohu.com/mpfe/v4/contentManagement/news/addarticle', ['input[placeholder*="标题"]'], ['[contenteditable="true"]'], ['button:has-text("存草稿")', 'button:has-text("保存草稿")']),
   netease_media: definition('网易号', ['mp.163.com'], 'https://mp.163.com/', ['input[placeholder*="标题"]'], ['[contenteditable="true"]'], ['button:has-text("存草稿")', 'button:has-text("保存")']),
@@ -40,8 +69,8 @@ function definition(label, hosts, editorUrl, titleSelectors, bodySelectors, draf
     loginMarkers: Object.freeze(['input[type="password"]', 'text=登录', 'text=扫码登录']),
     captchaMarkers: Object.freeze(['iframe[src*="captcha"]', '[class*="captcha"]', 'text=安全验证', 'text=百度安全验证', 'text=请完成验证', 'text=实名验证']),
     identitySelectors: Object.freeze(['[data-account-id]', '[data-user-id]', '[data-uid]', 'a[href*="/profile/"]', 'a[href*="/user/"]', 'a[href*="/u/"]', 'a[href*="/people/"]']),
-    titleSelectors: Object.freeze(titleSelectors),
-    bodySelectors: Object.freeze(bodySelectors),
+    titleSelectors: Object.freeze(augmentSelectors(titleSelectors, TITLE_FALLBACK_SELECTORS)),
+    bodySelectors: Object.freeze(augmentSelectors(bodySelectors, BODY_FALLBACK_SELECTORS)),
     imageInputSelectors: Object.freeze(options.imageInputSelectors || ['input[type="file"][accept*="image"]']),
     upload: normalizeUpload(options.upload),
     draftSelectors: Object.freeze(draftSelectors),
