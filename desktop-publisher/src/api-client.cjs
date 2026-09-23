@@ -11,27 +11,58 @@ class GeoFlowApiClient {
   }
 
   async request(path, options = {}) {
-    const response = await this.fetch(`${this.instance}/api/v1/${path.replace(/^\//, '')}`, {
-      ...options,
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        'X-GEOFlow-Browser-Protocol': '2',
-        'X-GEOFlow-Client-Version': this.version,
-        ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
-        ...(options.idempotent ? { 'X-Idempotency-Key': crypto.randomUUID() } : {}),
-        ...(options.headers || {}),
-      },
-      body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body,
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const error = new Error(payload?.error?.message || `HTTP ${response.status}`);
-      error.code = payload?.error?.code || `http_${response.status}`;
-      error.status = response.status;
-      throw error;
+    const {
+      idempotent = false,
+      retryAttempts = 2,
+      headers: suppliedHeaders = {},
+      body,
+      ...fetchOptions
+    } = options;
+    const method = String(fetchOptions.method || 'GET').toUpperCase();
+    const canRetry = idempotent || method === 'GET' || method === 'HEAD';
+    const idempotencyKey = idempotent
+      ? (suppliedHeaders['X-Idempotency-Key'] || crypto.randomUUID())
+      : null;
+    const requestBody = body && typeof body !== 'string' ? JSON.stringify(body) : body;
+    const attempts = canRetry ? Math.max(0, Number(retryAttempts) || 0) : 0;
+
+    for (let attempt = 0; attempt <= attempts; attempt += 1) {
+      try {
+        const response = await this.fetch(`${this.instance}/api/v1/${path.replace(/^\//, '')}`, {
+          ...fetchOptions,
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-GEOFlow-Browser-Protocol': '2',
+            'X-GEOFlow-Client-Version': this.version,
+            ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+            ...(idempotencyKey ? { 'X-Idempotency-Key': idempotencyKey } : {}),
+            ...suppliedHeaders,
+          },
+          body: requestBody,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const error = new Error(payload?.error?.message || `HTTP ${response.status}`);
+          error.code = payload?.error?.code || `http_${response.status}`;
+          error.status = response.status;
+          if (attempt < attempts && isTransientStatus(response.status)) {
+            await retryDelay(attempt);
+            continue;
+          }
+          throw error;
+        }
+        return payload.data;
+      } catch (error) {
+        if (attempt < attempts && isTransientError(error)) {
+          await retryDelay(attempt);
+          continue;
+        }
+        throw error;
+      }
     }
-    return payload.data;
+
+    throw coded('request_retry_exhausted');
   }
 
   createDeviceAuthorization() {
@@ -49,7 +80,11 @@ class GeoFlowApiClient {
     return this.request('browser-operations/device-token', { method: 'POST', body: { device_code: deviceCode } });
   }
 
+  session() { return this.request('browser-operations/session'); }
   listAccounts() { return this.request('browser-operations/accounts'); }
+  listPersonas() { return this.request('browser-operations/personas'); }
+  createAccount(body) { return this.request('browser-operations/accounts', { method: 'POST', idempotent: true, body }); }
+  deleteAccount(accountId) { return this.request(`browser-operations/accounts/${Number(accountId)}`, { method: 'DELETE', idempotent: true }); }
   desktopUpdate() { return this.request('browser-operations/desktop-update'); }
   async download(url) {
     const response = await this.fetch(url, { headers: {
@@ -98,18 +133,31 @@ class GeoFlowApiClient {
     }
     throw coded('public_url_redirect_limit');
   }
-  listQueue(accountIds = []) { return this.request(`manual-publications?account_ids=${accountIds.join(',')}&per_page=50`); }
+  async listQueue(accountIds = []) {
+    const result = await this.request(`manual-publications?account_ids=${accountIds.join(',')}&per_page=50`);
+    if (!Array.isArray(result.items) || result.items.length === 0) {
+      const error = new Error('no_ready_publications');
+      error.code = 'no_ready_publications';
+      throw error;
+    }
+    return result;
+  }
   claim(item) { return this.request(`manual-publications/${item.id}/claim`, { method: 'POST', idempotent: true, body: { revision: item.revision } }); }
   release(itemId, revision) { return this.request(`manual-publications/${itemId}/release`, { method: 'POST', idempotent: true, body: { revision } }); }
   draftReceipt(itemId, receipt) { return this.request(`manual-publications/${itemId}/draft-receipt`, { method: 'POST', idempotent: true, body: receipt }); }
   finalReceipt(itemId, receipt) { return this.request(`manual-publications/${itemId}/receipt`, { method: 'POST', idempotent: true, body: receipt }); }
   adapterFailure(itemId, receipt) { return this.request(`manual-publications/${itemId}/adapter-failure`, { method: 'POST', idempotent: true, body: receipt }); }
   reportAccount(accountId, body) { return this.request(`browser-operations/accounts/${accountId}/status`, { method: 'POST', idempotent: true, body }); }
-  bindAccount(accountId, observedAccountHash, observedAccount = null) {
+  bindAccount(accountId, observedAccountHash, observedAccount = null, replaceExisting = false) {
     return this.request(`browser-operations/accounts/${accountId}/bind`, {
       method: 'POST',
       idempotent: true,
-      body: { confirmed: true, observed_account_hash: observedAccountHash, ...(observedAccount ? { observed_account: observedAccount } : {}) },
+      body: {
+        confirmed: true,
+        observed_account_hash: observedAccountHash,
+        replace_existing: Boolean(replaceExisting),
+        ...(observedAccount ? { observed_account: observedAccount } : {}),
+      },
     });
   }
 }
@@ -118,6 +166,19 @@ function normalizeInstance(value) {
   const url = new URL(value || 'http://127.0.0.1:28080');
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost', '::1'].includes(url.hostname))) throw new Error('insecure_geoflow_instance');
   return url.origin;
+}
+
+function isTransientStatus(status) {
+  // 429：接口限流是瞬时的，退避后重试（幂等端点可安全重放）。
+  return [429, 502, 503, 504].includes(Number(status));
+}
+
+function isTransientError(error) {
+  return !error?.status || isTransientStatus(error.status);
+}
+
+function retryDelay(attempt) {
+  return new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
 }
 
 function coded(code) { const error = new Error(code); error.code = code; return error; }

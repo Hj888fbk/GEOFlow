@@ -125,6 +125,8 @@ class ManualPublicationController extends Controller
             ->where(function (Builder $identity): void {
                 $identity->whereNotNull('profile_url')->orWhereNotNull('account_uid')->orWhereNotNull('homepage_identifier');
             });
+        $desktopPublisherVersion = (string) config('geoflow.desktop_publisher.version');
+        $desktopPublisherPath = base_path("dist/desktop-publisher/GEOFlow-Desktop-Publisher-{$desktopPublisherVersion}-win-x64.exe");
 
         return view('admin.manual-publications.index', [
             'pageTitle' => '发布中心',
@@ -163,9 +165,8 @@ class ManualPublicationController extends Controller
             'extensionSha256' => is_file(base_path('dist/browser-extension/geoflow-chrome-operator-0.3.1.zip'))
                 ? (hash_file('sha256', base_path('dist/browser-extension/geoflow-chrome-operator-0.3.1.zip')) ?: null)
                 : null,
-            'desktopPublisherVersion' => '0.1.0',
-            'desktopPublisherAvailable' => is_file(base_path('dist/desktop-publisher/GEOFlow-Desktop-Publisher-0.1.0-win-x64.exe'))
-                && is_file(base_path('dist/desktop-publisher/GEOFlow-Desktop-Publisher-0.1.0-win-x64.exe.sig')),
+            'desktopPublisherVersion' => $desktopPublisherVersion,
+            'desktopPublisherAvailable' => is_file($desktopPublisherPath) && is_file($desktopPublisherPath.'.sig'),
         ]);
     }
 

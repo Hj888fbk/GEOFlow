@@ -875,7 +875,6 @@ MD]);
             'platform' => ManualPublicationAccount::PLATFORM_CSDN,
             'account_name' => $name,
             'editor_url' => ManualPublicationAccount::editorUrlPresets()[ManualPublicationAccount::PLATFORM_CSDN],
-            'homepage_identifier' => $name,
             'browser_adapter_enabled' => true,
         ]));
         $receipt = app(WebsitePublicationReceiptService::class)->record($article, $this->receipt($article), $admin);
@@ -892,6 +891,11 @@ MD]);
         $this->assertSame($persona->id, $batch->persona_id);
         $this->assertEqualsCanonicalizing($accounts->pluck('id')->all(), $batch->target_account_ids);
         $this->assertSame(hash('sha256', $accounts->pluck('id')->sort()->implode('|')), $batch->account_selection_hash);
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.manual-publications.index', ['view' => 'launch']))
+            ->assertOk()
+            ->assertSee('同步前登录绑定')
+            ->assertSee('选择身份后默认全选该身份的账号');
         $this->assertDatabaseHas('admin_activity_logs', [
             'action' => 'manual_publication_batch.launched',
             'target_type' => 'manual_publication_batch',

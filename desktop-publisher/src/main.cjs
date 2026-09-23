@@ -2,14 +2,17 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const { app, BrowserWindow, ipcMain, net, Notification, safeStorage, session, shell } = require('electron');
 const { AdapterRegistry } = require('./adapter-registry.cjs');
 const { AccountTaskQueue } = require('./account-queue.cjs');
 const { GeoFlowApiClient, normalizeInstance } = require('./api-client.cjs');
 const { createAutoSyncScheduler } = require('./auto-sync.cjs');
+const { createConnectionHeartbeat } = require('./connection-heartbeat.cjs');
 const { CredentialStore } = require('./credential-store.cjs');
 const { findPublisherDeepLink, parsePublisherDeepLink } = require('./deep-link.cjs');
 const { observedAccountHash } = require('./draft-runner.cjs');
+const { LOGIN_PROBES, isAllowedLoginUrl } = require('./login-probes.cjs');
 const { PublicationResultObserver } = require('./publication-observer.cjs');
 const { createSyncRunner } = require('./sync-all.cjs');
 const { AccountWindowManager } = require('./window-manager.cjs');
@@ -22,6 +25,7 @@ let registry;
 let windows;
 let queue;
 let observer;
+let connectionHeartbeat;
 let syncRunner;
 let autoSyncScheduler;
 let autoSyncSettings;
@@ -51,8 +55,10 @@ if (!hasSingleInstanceLock) {
       adapterVersion: app.getVersion(),
       onRoundComplete: notifySyncResults,
     });
+    registerWebviewGuestHandlers();
     createMainWindow();
     registerIpc();
+    startConnectionHeartbeat();
     applyAutoSyncConfig();
     void openDeepLink(findPublisherDeepLink(process.argv));
   });
@@ -60,21 +66,24 @@ if (!hasSingleInstanceLock) {
 
 app.on('window-all-closed', () => app.quit());
 app.on('before-quit', () => {
+  connectionHeartbeat?.stop();
   autoSyncScheduler?.stop();
 });
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 1080,
-    height: 760,
-    minWidth: 820,
-    minHeight: 620,
+    width: 1280,
+    height: 840,
+    minWidth: 960,
+    minHeight: 640,
+    title: 'GEOFlow 发布助手',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
+      webviewTag: true,
     },
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -85,6 +94,57 @@ function createMainWindow() {
 function registerProtocolHandler() {
   if (process.defaultApp && process.argv[1]) app.setAsDefaultProtocolClient('geoflow-publisher', process.execPath, [path.resolve(process.argv[1])]);
   else app.setAsDefaultProtocolClient('geoflow-publisher');
+}
+
+function registerWebviewGuestHandlers() {
+  app.on('web-contents-created', (_event, contents) => {
+    if (contents.getType() !== 'webview') return;
+    contents.setWindowOpenHandler(({ url }) => {
+      if (isAllowedLoginUrl(url)) {
+        try { contents.loadURL(url); } catch { /* 忽略加载失败 */ }
+      } else {
+        mainWindow?.webContents.send('publisher:deep-link-error', 'navigation_blocked');
+      }
+      return { action: 'deny' };
+    });
+    contents.on('will-navigate', (event, url) => {
+      if (isAllowedLoginUrl(url)) return;
+      event.preventDefault();
+      mainWindow?.webContents.send('publisher:deep-link-error', 'navigation_blocked');
+    });
+  });
+}
+
+function accountPartition(accountId) {
+  const key = `${api.instance}:${Number(accountId)}`;
+  const digest = crypto.createHash('sha256').update(key).digest('hex').slice(0, 20);
+  return `persist:geoflow-${digest}`;
+}
+
+async function currentConnectionState() {
+  if (!api.token) return { connected: false, connectionStatus: 'unpaired', session: null };
+  try {
+    const sessionData = await api.session();
+    return { connected: true, connectionStatus: 'connected', session: sessionData };
+  } catch (error) {
+    if (error?.status === 401 || error?.code === 'client_repair_required') {
+      api.token = null;
+      credentials.save(api.instance, null);
+      return { connected: false, connectionStatus: 'unpaired', session: null };
+    }
+    return { connected: false, connectionStatus: 'offline', session: null };
+  }
+}
+
+function startConnectionHeartbeat() {
+  connectionHeartbeat?.stop();
+  connectionHeartbeat = createConnectionHeartbeat({
+    check: currentConnectionState,
+    onState: (state) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.webContents.send('publisher:connection-changed', state);
+    },
+  });
 }
 
 function applyAutoSyncConfig() {
@@ -128,9 +188,7 @@ async function openDeepLink(candidate) {
     const accountData = await api.listAccounts();
     const account = accountData.accounts.find((item) => item.id === link.accountId);
     if (!account) throw new Error('publisher_account_not_found');
-    const adapter = registry.get(account.platform);
-    const executor = await windows.forAccount({ ...account, instance: api.instance }, adapter);
-    await executor.show();
+    mainWindow.webContents.send('publisher:open-account-tab', account.id);
   } catch (error) {
     mainWindow.webContents.send('publisher:deep-link-error', error.code || error.message || 'publisher_deep_link_failed');
   } finally {
@@ -141,7 +199,14 @@ async function openDeepLink(candidate) {
 }
 
 function registerIpc() {
-  ipcMain.handle('publisher:state', async () => ({ instance: api.instance, connected: Boolean(api.token), version: app.getVersion(), registryDigest: registry.digest }));
+  ipcMain.handle('publisher:state', async () => ({
+    instance: api.instance,
+    ...(await currentConnectionState()),
+    version: app.getVersion(),
+    registryDigest: registry.digest,
+    webviewPreloadPath: path.join(__dirname, 'webview-preload.cjs'),
+  }));
+  ipcMain.handle('publisher:connection-state', () => currentConnectionState());
   ipcMain.handle('publisher:discover', async () => {
     const instance = normalizeInstance('http://127.0.0.1:28080');
     const response = await net.fetch(`${instance}/up`);
@@ -149,13 +214,21 @@ function registerIpc() {
     return { instance };
   });
   ipcMain.handle('publisher:set-instance', async (_event, instance) => {
-    api.instance = normalizeInstance(instance);
+    const nextInstance = normalizeInstance(instance);
+    if (nextInstance !== api.instance) api.token = null;
+    api.instance = nextInstance;
     credentials.save(api.instance, api.token);
     return { instance: api.instance };
   });
   ipcMain.handle('publisher:authorize', () => api.createDeviceAuthorization());
   ipcMain.handle('publisher:exchange', async (_event, deviceCode) => {
-    const result = await api.exchangeDeviceCode(deviceCode);
+    let result;
+    try {
+      result = await api.exchangeDeviceCode(deviceCode);
+    } catch (error) {
+      if (error?.code === 'authorization_pending') return { pending: true };
+      throw error;
+    }
     api.token = result.token;
     credentials.save(api.instance, api.token);
     return result;
@@ -167,6 +240,25 @@ function registerIpc() {
     return { opened: true };
   });
   ipcMain.handle('publisher:accounts', () => api.listAccounts());
+  ipcMain.handle('publisher:personas', () => api.listPersonas());
+  ipcMain.handle('publisher:create-account', async (_event, payload) => {
+    const body = {
+      persona_id: Number(payload?.persona_id),
+      platform: String(payload?.platform || ''),
+      account_name: String(payload?.account_name || '').slice(0, 160),
+    };
+    if (!Number.isSafeInteger(body.persona_id) || body.persona_id < 1 || !body.platform || !body.account_name.trim()) {
+      throw new Error('account_payload_invalid');
+    }
+    return api.createAccount(body);
+  });
+  ipcMain.handle('publisher:delete-account', async (_event, accountId) => {
+    const id = Number(accountId);
+    if (!Number.isSafeInteger(id) || id < 1) throw new Error('publisher_account_invalid');
+    return api.deleteAccount(id);
+  });
+  ipcMain.handle('publisher:probe-configs', async () => LOGIN_PROBES);
+  ipcMain.handle('publisher:account-partition', async (_event, accountId) => accountPartition(accountId));
   ipcMain.handle('publisher:check-update', () => api.desktopUpdate());
   ipcMain.handle('publisher:install-update', async (_event, metadata) => {
     if (!metadata?.available || !metadata.download_url || !metadata.sha256 || !metadata.signature) throw new Error('update_unavailable');
@@ -178,23 +270,10 @@ function registerIpc() {
     if (openError) throw new Error(`update_launch_failed:${openError}`);
     return { launched: true };
   });
-  ipcMain.handle('publisher:open-login', async (_event, account) => {
-    const adapter = registry.get(account.platform);
-    const executor = await windows.forAccount({ ...account, instance: api.instance }, adapter);
-    await executor.show();
-    return { opened: true };
-  });
-  ipcMain.handle('publisher:bind-account', async (_event, account) => {
-    const adapter = registry.get(account.platform);
-    const executor = await windows.forAccount({ ...account, instance: api.instance }, adapter);
-    const login = await executor.detectLogin(adapter);
-    if (login.captcha || !login.loggedIn) {
-      await executor.show();
-      throw new Error(login.captcha ? 'captcha_required' : 'login_required');
-    }
-    const observedHash = observedAccountHash(login.observedAccount);
-    if (!observedHash) throw new Error('account_identity_not_detected');
-    await api.bindAccount(account.id, observedHash, login.observedAccount);
+  ipcMain.handle('publisher:bind-account', async (_event, account, observed, replaceExisting) => {
+    const hash = observedAccountHash(observed);
+    if (!hash) throw new Error('account_identity_not_detected');
+    await api.bindAccount(Number(account.id), hash, observed, Boolean(replaceExisting));
     return { bound: true };
   });
   ipcMain.handle('publisher:sync-all', (_event, accountIds) => syncRunner.runSyncAll(accountIds));

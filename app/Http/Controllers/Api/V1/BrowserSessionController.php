@@ -64,13 +64,14 @@ final class BrowserSessionController extends BaseApiController
         $path = $this->desktopPublisherPath();
         $signaturePath = $path.'.sig';
         $available = is_file($path) && is_file($signaturePath);
+        $version = (string) config('geoflow.desktop_publisher.version');
 
         return $this->success($request, [
             'protocol_version' => 2,
             'desktop_update' => [
                 'available' => $available,
-                'version' => '0.1.0',
-                'platform' => 'win32-x64',
+                'version' => $version,
+                'platform' => (string) config('geoflow.desktop_publisher.platform', 'win32-x64'),
                 'sha256' => $available ? (hash_file('sha256', $path) ?: null) : null,
                 'signature' => $available ? trim((string) file_get_contents($signaturePath)) : null,
                 'download_url' => $available ? url('/api/v1/browser-operations/desktop-update/package') : null,
@@ -92,6 +93,8 @@ final class BrowserSessionController extends BaseApiController
 
     private function desktopPublisherPath(): string
     {
-        return base_path('dist/desktop-publisher/GEOFlow-Desktop-Publisher-0.1.0-win-x64.exe');
+        $version = (string) config('geoflow.desktop_publisher.version');
+
+        return base_path("dist/desktop-publisher/GEOFlow-Desktop-Publisher-{$version}-win-x64.exe");
     }
 }

@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 
-const PINNED_TARGETS_PUBLIC_KEY = '55d4a459c2dccaf6fde024a6e81b55e428665549adee23c4cc8391a0462d5d29';
+const PINNED_TARGETS_PUBLIC_KEY = '580648874c4ebfeb7b90b173c5830100bb8440975e4e42fa39dfeaa65c6321b8';
 
 function verifyUpdatePackage(filePath, expectedSha256, signatureHex, publicKeyHex = PINNED_TARGETS_PUBLIC_KEY) {
   const bytes = fs.readFileSync(filePath);

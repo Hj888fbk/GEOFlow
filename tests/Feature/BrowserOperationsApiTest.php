@@ -146,6 +146,115 @@ class BrowserOperationsApiTest extends TestCase
             ->assertJsonPath('error.code', 'upgrade_required');
     }
 
+    public function test_desktop_session_heartbeat_refreshes_only_after_authenticated_protocol_validation(): void
+    {
+        $admin = $this->admin();
+        $token = $admin->createToken('Desktop heartbeat', [
+            'browser-operations:read', 'browser-operations:execute',
+        ]);
+        $staleLastSeenAt = now()->subMinutes(10);
+        $client = BrowserOperatorClient::query()->create([
+            'personal_access_token_id' => $token->accessToken->id,
+            'client_type' => BrowserOperatorClient::TYPE_DESKTOP,
+            'client_name' => 'Desktop Heartbeat Test',
+            'client_version' => '0.3.1',
+            'capabilities' => ['accounts:v1', 'draft-sync:v2'],
+            'last_seen_at' => $staleLastSeenAt,
+        ]);
+        $validHeaders = $this->authenticatedHeaders($token->plainTextToken, '0.3.2');
+
+        $this->withHeaders($validHeaders)
+            ->getJson('/api/v1/browser-operations/session')
+            ->assertOk()
+            ->assertJsonPath('data.client.version', '0.3.2');
+
+        $client->refresh();
+        $this->assertSame('0.3.2', $client->client_version);
+        $this->assertTrue($client->last_seen_at->greaterThan($staleLastSeenAt));
+
+        $client->forceFill([
+            'client_version' => 'unchanged-after-rejection',
+            'last_seen_at' => $staleLastSeenAt,
+        ])->save();
+        $rejectionLastSeenAt = $client->refresh()->last_seen_at->copy();
+
+        $this->withHeaders(array_replace($validHeaders, [
+            'Authorization' => 'Bearer invalid-token',
+        ]))->getJson('/api/v1/browser-operations/session')->assertUnauthorized();
+        $this->withHeaders(array_replace($validHeaders, [
+            'X-GEOFlow-Browser-Protocol' => '99',
+        ]))->getJson('/api/v1/browser-operations/session')->assertStatus(426);
+
+        $client->refresh();
+        $this->assertSame('unchanged-after-rejection', $client->client_version);
+        $this->assertTrue($client->last_seen_at->equalTo($rejectionLastSeenAt));
+    }
+
+    public function test_desktop_update_requires_a_complete_configured_package_pair(): void
+    {
+        $admin = $this->admin();
+        $token = $admin->createToken('Desktop update', [
+            'browser-operations:read', 'browser-operations:execute',
+        ]);
+        $headers = $this->authenticatedHeaders($token->plainTextToken, '0.3.2');
+        $version = '9.9.9-contract-test';
+        config()->set('geoflow.desktop_publisher.version', $version);
+        $path = base_path("dist/desktop-publisher/GEOFlow-Desktop-Publisher-{$version}-win-x64.exe");
+        $signaturePath = $path.'.sig';
+        $signature = str_repeat('a', 128);
+        $bytes = 'signed desktop publisher test package';
+
+        if (! is_dir(dirname($path))) {
+            mkdir(dirname($path), 0777, true);
+        }
+
+        @unlink($path);
+        @unlink($signaturePath);
+
+        try {
+            $this->withHeaders($headers)->getJson('/api/v1/browser-operations/desktop-update')
+                ->assertOk()
+                ->assertJsonPath('data.desktop_update.available', false)
+                ->assertJsonPath('data.desktop_update.version', $version)
+                ->assertJsonPath('data.desktop_update.sha256', null)
+                ->assertJsonPath('data.desktop_update.signature', null)
+                ->assertJsonPath('data.desktop_update.download_url', null);
+            $this->withHeaders($headers)->get('/api/v1/browser-operations/desktop-update/package')->assertNotFound();
+
+            file_put_contents($path, $bytes);
+            $this->withHeaders($headers)->getJson('/api/v1/browser-operations/desktop-update')
+                ->assertOk()
+                ->assertJsonPath('data.desktop_update.available', false);
+
+            unlink($path);
+            file_put_contents($signaturePath, $signature."\n");
+            $this->withHeaders($headers)->getJson('/api/v1/browser-operations/desktop-update')
+                ->assertOk()
+                ->assertJsonPath('data.desktop_update.available', false);
+
+            file_put_contents($path, $bytes);
+            $sha256 = hash('sha256', $bytes);
+            $this->withHeaders($headers)->getJson('/api/v1/browser-operations/desktop-update')
+                ->assertOk()
+                ->assertJsonPath('data.desktop_update.available', true)
+                ->assertJsonPath('data.desktop_update.version', $version)
+                ->assertJsonPath('data.desktop_update.platform', 'win32-x64')
+                ->assertJsonPath('data.desktop_update.sha256', $sha256)
+                ->assertJsonPath('data.desktop_update.signature', $signature)
+                ->assertJsonPath('data.desktop_update.download_url', url('/api/v1/browser-operations/desktop-update/package'));
+
+            $this->withHeaders($headers)->get('/api/v1/browser-operations/desktop-update/package')
+                ->assertOk()
+                ->assertHeader('Content-Type', 'application/vnd.microsoft.portable-executable')
+                ->assertHeader('X-Content-SHA256', $sha256)
+                ->assertHeader('X-GEOFlow-Package-Signature', $signature)
+                ->assertDownload(basename($path));
+        } finally {
+            @unlink($path);
+            @unlink($signaturePath);
+        }
+    }
+
     public function test_browser_token_can_claim_heartbeat_and_complete_an_assigned_publication(): void
     {
         $admin = $this->admin();
@@ -1017,6 +1126,53 @@ class BrowserOperationsApiTest extends TestCase
         ]);
     }
 
+    public function test_desktop_account_binding_can_explicitly_replace_a_wrong_saved_identity(): void
+    {
+        $admin = $this->admin('super_admin');
+        $token = $admin->createToken('Desktop account repair', ['browser-operations:read', 'browser-operations:execute']);
+        BrowserOperatorClient::query()->create([
+            'personal_access_token_id' => $token->accessToken->id,
+            'client_type' => BrowserOperatorClient::TYPE_DESKTOP,
+            'client_name' => 'Desktop Test',
+            'client_version' => '0.3.0',
+            'capabilities' => ['accounts:v1'],
+        ]);
+        $persona = ManualPublicationPersona::query()->create(['name' => '修复绑定身份']);
+        $account = ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+            'account_name' => '待修复 CSDN',
+            'editor_url' => ManualPublicationAccount::editorUrlPresets()[ManualPublicationAccount::PLATFORM_CSDN],
+            'homepage_identifier' => '--',
+            'browser_adapter_enabled' => true,
+        ]);
+        $headers = $this->authenticatedHeaders($token->plainTextToken, '0.3.0');
+        $observed = 'hengjia-rubber';
+        $payload = [
+            'confirmed' => true,
+            'observed_account_hash' => hash('sha256', 'homepage:'.$observed),
+            'observed_account' => [
+                'type' => 'homepage_identifier',
+                'value' => $observed,
+            ],
+        ];
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'repair-account-without-confirmation'])
+            ->postJson('/api/v1/browser-operations/accounts/'.$account->id.'/bind', $payload)
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'account_mismatch');
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'repair-account-confirmed'])
+            ->postJson('/api/v1/browser-operations/accounts/'.$account->id.'/bind', $payload + ['replace_existing' => true])
+            ->assertOk()
+            ->assertJsonPath('data.session.status', ManualPublicationAccountSession::STATUS_AUTHORIZED);
+
+        $account->refresh();
+        $this->assertSame($observed, $account->homepage_identifier);
+        $this->assertNull($account->profile_url);
+        $this->assertNull($account->account_uid);
+    }
+
     public function test_one_client_can_claim_different_accounts_but_only_one_active_work_order_per_account(): void
     {
         $admin = $this->admin();
@@ -1051,6 +1207,213 @@ class BrowserOperationsApiTest extends TestCase
         $this->withHeaders($headers + ['X-Idempotency-Key' => 'claim-same-account'])->postJson('/api/v1/manual-publications/'.$sameAccount->id.'/claim', ['revision' => 1])
             ->assertStatus(409)
             ->assertJsonPath('error.code', 'account_concurrency_limit');
+    }
+
+    public function test_desktop_client_can_list_personas_and_create_account(): void
+    {
+        $admin = $this->admin('super_admin');
+        $token = $admin->createToken('Desktop account manage', ['browser-operations:read', 'browser-operations:execute']);
+        BrowserOperatorClient::query()->create([
+            'personal_access_token_id' => $token->accessToken->id,
+            'client_type' => BrowserOperatorClient::TYPE_DESKTOP,
+            'client_name' => 'Desktop Test',
+            'client_version' => '0.3.0',
+            'capabilities' => ['accounts:v1'],
+        ]);
+        $persona = ManualPublicationPersona::query()->create(['name' => '管理身份']);
+        $headers = $this->authenticatedHeaders($token->plainTextToken, '0.3.0');
+
+        $this->withHeaders($headers)->getJson('/api/v1/browser-operations/personas')
+            ->assertOk()
+            ->assertJsonPath('data.personas.0.id', $persona->id)
+            ->assertJsonPath('data.personas.0.name', '管理身份');
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'create-account-1'])
+            ->postJson('/api/v1/browser-operations/accounts', [
+                'persona_id' => $persona->id,
+                'platform' => ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+                'account_name' => '新百家号',
+            ])
+            ->assertStatus(201)
+            ->assertJsonPath('data.account.account_name', '新百家号')
+            ->assertJsonPath('data.account.platform', ManualPublicationAccount::PLATFORM_BAIJIAHAO);
+
+        $account = ManualPublicationAccount::query()->where('account_name', '新百家号')->firstOrFail();
+        $this->assertTrue((bool) $account->is_active);
+        $this->assertTrue((bool) $account->browser_adapter_enabled);
+        $this->assertSame(ManualPublicationAccount::editorUrlPresets()[ManualPublicationAccount::PLATFORM_BAIJIAHAO], $account->editor_url);
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'create-account-1'])
+            ->postJson('/api/v1/browser-operations/accounts', [
+                'persona_id' => $persona->id,
+                'platform' => ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+                'account_name' => '新百家号',
+            ])
+            ->assertStatus(201)
+            ->assertJsonPath('data.account.id', $account->id);
+        $this->assertSame(1, ManualPublicationAccount::query()->where('account_name', '新百家号')->count());
+
+        // 同身份同平台同名 -> 409 幂等防重
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'create-account-2'])
+            ->postJson('/api/v1/browser-operations/accounts', [
+                'persona_id' => $persona->id,
+                'platform' => ManualPublicationAccount::PLATFORM_BAIJIAHAO,
+                'account_name' => '新百家号',
+            ])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'account_exists');
+
+        // 非法平台 -> 422
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'create-account-3'])
+            ->postJson('/api/v1/browser-operations/accounts', [
+                'persona_id' => $persona->id,
+                'platform' => 'not_a_platform',
+                'account_name' => 'x',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'validation_failed');
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'create-account-4'])
+            ->postJson('/api/v1/browser-operations/accounts', [
+                'persona_id' => $persona->id,
+                'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+                'account_name' => '   ',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'validation_failed');
+    }
+
+    public function test_non_super_desktop_client_cannot_manage_accounts_or_replace_identity(): void
+    {
+        $admin = $this->admin();
+        $token = $admin->createToken('Desktop restricted account manage', ['browser-operations:read', 'browser-operations:execute']);
+        BrowserOperatorClient::query()->create([
+            'personal_access_token_id' => $token->accessToken->id,
+            'client_type' => BrowserOperatorClient::TYPE_DESKTOP,
+            'client_name' => 'Restricted Desktop',
+            'client_version' => '0.3.0',
+            'capabilities' => ['accounts:v1'],
+        ]);
+        $persona = ManualPublicationPersona::query()->create(['name' => '受限身份']);
+        $account = ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+            'account_name' => '受限账号',
+            'homepage_identifier' => 'old-identity',
+        ]);
+        $headers = $this->authenticatedHeaders($token->plainTextToken, '0.3.0');
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'restricted-create'])
+            ->postJson('/api/v1/browser-operations/accounts', [
+                'persona_id' => $persona->id,
+                'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+                'account_name' => '不能创建',
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'forbidden');
+
+        $newIdentity = 'new-identity';
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'restricted-replace'])
+            ->postJson('/api/v1/browser-operations/accounts/'.$account->id.'/bind', [
+                'confirmed' => true,
+                'replace_existing' => true,
+                'observed_account_hash' => hash('sha256', 'homepage:'.$newIdentity),
+                'observed_account' => [
+                    'type' => 'homepage_identifier',
+                    'value' => $newIdentity,
+                ],
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'forbidden');
+
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'restricted-delete'])
+            ->deleteJson('/api/v1/browser-operations/accounts/'.$account->id)
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'forbidden');
+        $this->assertSame('old-identity', $account->refresh()->homepage_identifier);
+        $this->assertTrue((bool) $account->is_active);
+    }
+
+    public function test_desktop_client_can_delete_account_but_not_with_in_flight_publication(): void
+    {
+        $admin = $this->admin('super_admin');
+        $token = $admin->createToken('Desktop account delete', ['browser-operations:read', 'browser-operations:execute']);
+        $client = BrowserOperatorClient::query()->create([
+            'personal_access_token_id' => $token->accessToken->id,
+            'client_type' => BrowserOperatorClient::TYPE_DESKTOP,
+            'client_name' => 'Desktop Test',
+            'client_version' => '0.3.0',
+            'capabilities' => ['accounts:v1'],
+        ]);
+        $persona = ManualPublicationPersona::query()->create(['name' => '删除身份']);
+        $headers = $this->authenticatedHeaders($token->plainTextToken, '0.3.0');
+
+        $blocked = ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+            'account_name' => '有工单的账号',
+        ]);
+        ManualPublication::query()->create([
+            'type' => ManualPublication::TYPE_POST,
+            'persona_id' => $persona->id,
+            'account_id' => $blocked->id,
+            'assigned_admin_id' => $admin->id,
+            'platform' => ManualPublicationAccount::PLATFORM_CSDN,
+            'target_url' => 'https://editor.csdn.net/md/',
+            'content' => '正文',
+            'content_fingerprint' => hash('sha256', 'delete-guard'),
+            'identity_snapshot' => [],
+            'status' => ManualPublication::STATUS_READY,
+            'status_changed_at' => now(),
+            'revision' => 1,
+            'publication_payload' => ['schema_version' => 1, 'body_plain' => '正文'],
+        ]);
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'delete-blocked'])
+            ->deleteJson('/api/v1/browser-operations/accounts/'.$blocked->id)
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'account_has_active_publications');
+        $this->assertTrue((bool) $blocked->refresh()->is_active);
+
+        $free = ManualPublicationAccount::query()->create([
+            'persona_id' => $persona->id,
+            'platform' => ManualPublicationAccount::PLATFORM_JIANSHU,
+            'account_name' => '可删账号',
+        ]);
+        ManualPublicationAccountSession::query()->create([
+            'browser_operator_client_id' => $client->id,
+            'manual_publication_account_id' => $free->id,
+            'status' => ManualPublicationAccountSession::STATUS_AUTHORIZED,
+            'checked_at' => now(),
+        ]);
+        $otherToken = $admin->createToken('Second desktop client', ['browser-operations:read', 'browser-operations:execute']);
+        $otherClient = BrowserOperatorClient::query()->create([
+            'personal_access_token_id' => $otherToken->accessToken->id,
+            'client_type' => BrowserOperatorClient::TYPE_DESKTOP,
+            'client_name' => 'Second Desktop',
+            'client_version' => '0.3.0',
+            'capabilities' => ['accounts:v1'],
+        ]);
+        ManualPublicationAccountSession::query()->create([
+            'browser_operator_client_id' => $otherClient->id,
+            'manual_publication_account_id' => $free->id,
+            'status' => ManualPublicationAccountSession::STATUS_AUTHORIZED,
+            'checked_at' => now(),
+        ]);
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'delete-free'])
+            ->deleteJson('/api/v1/browser-operations/accounts/'.$free->id)
+            ->assertOk()
+            ->assertJsonPath('data.deleted', true);
+        $this->withHeaders($headers + ['X-Idempotency-Key' => 'delete-free'])
+            ->deleteJson('/api/v1/browser-operations/accounts/'.$free->id)
+            ->assertOk()
+            ->assertJsonPath('data.deleted', true);
+        $this->assertFalse((bool) $free->refresh()->is_active);
+        $this->assertDatabaseMissing('manual_publication_account_sessions', [
+            'manual_publication_account_id' => $free->id,
+        ]);
+        $this->withHeaders($headers)->getJson('/api/v1/browser-operations/accounts')
+            ->assertOk()
+            ->assertJsonMissing(['account_name' => '可删账号']);
     }
 
     /** @return array<string,string> */

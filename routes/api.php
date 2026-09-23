@@ -47,7 +47,10 @@ Route::prefix('v1')
                     Route::get('desktop-update', [BrowserSessionController::class, 'desktopUpdate'])->middleware('throttle:30,1');
                     Route::get('desktop-update/package', [BrowserSessionController::class, 'desktopUpdatePackage'])->middleware('throttle:10,1');
                     Route::get('accounts', [BrowserPublicationAccountController::class, 'index'])->middleware('throttle:120,1');
+                    Route::get('personas', [BrowserPublicationAccountController::class, 'personas'])->middleware('throttle:60,1');
                     Route::middleware(['api.scope:browser-operations:execute', 'throttle:30,1'])->group(function (): void {
+                        Route::post('accounts', [BrowserPublicationAccountController::class, 'store']);
+                        Route::delete('accounts/{accountId}', [BrowserPublicationAccountController::class, 'destroy'])->whereNumber('accountId');
                         Route::post('accounts/{accountId}/bind', [BrowserPublicationAccountController::class, 'bind'])->whereNumber('accountId');
                         Route::post('accounts/{accountId}/status', [BrowserPublicationAccountController::class, 'status'])->whereNumber('accountId');
                     });

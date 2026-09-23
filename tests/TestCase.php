@@ -34,9 +34,16 @@ abstract class TestCase extends BaseTestCase
 
         $app = parent::createApplication();
 
-        $app['config']->set('database.default', 'sqlite');
-        $app['config']->set('database.connections.sqlite.database', ':memory:');
-        $app['config']->set('database.connections.pgsql.url', null);
+        if (env('GEOFLOW_TEST_PGSQL') === '1') {
+            // 本机/CI 用真 PostgreSQL 跑迁移（sqlite 无法承受 ->change() 迁移）：
+            // docker run ... -e GEOFLOW_TEST_PGSQL=1 -e DB_HOST=... -e DB_DATABASE=geo_flow_test ...
+            $app['config']->set('database.default', 'pgsql');
+            $app['config']->set('database.connections.pgsql.url', null);
+        } else {
+            $app['config']->set('database.default', 'sqlite');
+            $app['config']->set('database.connections.sqlite.database', ':memory:');
+            $app['config']->set('database.connections.pgsql.url', null);
+        }
         $app->singleton(HostResolver::class, FakeHostResolver::class);
 
         return $app;
@@ -47,11 +54,16 @@ abstract class TestCase extends BaseTestCase
         $variables = [
             'ADMIN_BASE_PATH' => 'geo_admin',
             'APP_ENV' => 'testing',
-            'DB_CONNECTION' => 'sqlite',
-            'DB_DATABASE' => ':memory:',
-            'DB_URL' => '',
             'SITE_NAME' => 'GEOFlow',
         ];
+        if (env('GEOFLOW_TEST_PGSQL') !== '1') {
+            $variables['DB_CONNECTION'] = 'sqlite';
+            $variables['DB_DATABASE'] = ':memory:';
+            $variables['DB_URL'] = '';
+        } else {
+            $variables['DB_CONNECTION'] = 'pgsql';
+            $variables['DB_URL'] = '';
+        }
 
         foreach ($variables as $key => $value) {
             $_ENV[$key] = $value;

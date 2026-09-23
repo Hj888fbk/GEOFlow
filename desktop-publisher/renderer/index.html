@@ -1,21 +1,82 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'">
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:">
   <title>GEOFlow 发布助手</title>
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <main class="shell">
-    <header><div><p class="eyebrow">GEOFLOW DESKTOP</p><h1>发布助手</h1><p class="muted">保存各平台草稿，最终发布由你确认。</p></div><span id="connection" class="badge">检查中</span></header>
-    <section class="card instance"><div><h2>GEOFlow 实例</h2><p id="instance" class="muted"></p></div><button id="discover" class="secondary">检测本机</button></section>
-    <section id="pairing" class="card hidden"><h2>首次连接</h2><p class="muted">在 GEOFlow 后台确认设备码。授权后令牌只保存在 Windows 系统凭据保护区。</p><div class="pair"><strong id="user-code">—</strong><button id="approve" class="secondary">打开确认页</button></div><button id="poll" class="primary">我已确认，完成连接</button></section>
-    <section class="card"><div class="section-title"><div><h2>平台账号</h2><p class="muted">每个实例与账号使用独立登录会话。</p></div><button id="refresh" class="secondary">刷新</button></div><div id="accounts" class="accounts"><p class="empty">连接后显示账号。</p></div></section>
-    <section id="update-card" class="card hidden"><div class="section-title"><div><h2>发布助手有新版本</h2><p id="update-version" class="muted"></p></div><button id="install-update" class="secondary">校验并安装</button></div></section>
-    <footer><div id="message" class="muted">等待操作</div><button id="sync" class="primary" disabled>一键同步全部草稿</button></footer>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-name">GEOFlow 发布助手</span>
+      <span id="version" class="brand-version"></span>
+    </div>
+    <div class="topbar-right">
+      <span id="instance" class="instance"></span>
+      <span id="connection" class="badge badge-gray">未连接</span>
+      <button id="discover" class="btn">连接本机 GEOFlow</button>
+    </div>
+  </header>
+
+  <section id="pairing" class="card pairing hidden">
+    <div class="pairing-text">
+      <strong>配对码：<span id="user-code">…</span></strong>
+      <p>点「打开审批页面」确认一次，发布助手会自动完成连接。</p>
+    </div>
+    <div class="pairing-actions">
+      <button id="approve" class="btn">打开审批页面</button>
+    </div>
+  </section>
+
+  <section id="update-card" class="card update hidden">
+    <span id="update-version"></span>
+    <button id="install-update" class="btn btn-primary">下载并安装更新</button>
+  </section>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <h2>账号管理</h2>
+        <button id="refresh" class="btn btn-small">刷新</button>
+      </div>
+      <div class="syncbar">
+        <button id="sync" class="btn btn-primary" disabled>同步全部已审核草稿</button>
+        <p class="sync-hint">自动处理全部已绑定账号，无需再勾选。</p>
+        <div class="autosync">
+          <label class="autosync-toggle"><input type="checkbox" id="autosync-enabled"> 自动同步</label>
+          <label class="autosync-interval">每 <input type="number" id="autosync-interval" min="1" max="1440" step="1"> 分钟</label>
+          <button id="autosync-save" class="btn btn-small">保存</button>
+        </div>
+      </div>
+      <div id="groups" class="groups"></div>
+    </aside>
+
+    <section class="workarea">
+      <div id="tabs" class="tabs"></div>
+      <div id="webview-host" class="webview-host">
+        <div id="empty-tip" class="empty-tip">
+          <p>在左侧点「登录并绑定」，这里会打开对应平台。</p>
+          <p>登录后助手会自动识别账号，你只需核对一次。</p>
+        </div>
+      </div>
+      <div class="logwrap">
+        <div class="loghead"><span>运行记录</span><button id="clear-log" class="btn btn-small">清空</button></div>
+        <div id="log" class="log"></div>
+      </div>
+    </section>
   </main>
-  <script src="./app.js"></script>
+
+  <div id="modal-mask" class="modal-mask hidden">
+    <div class="modal" role="dialog">
+      <div id="modal-title" class="modal-title"></div>
+      <div id="modal-body" class="modal-body"></div>
+      <div id="modal-actions" class="modal-actions"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
 </body>
 </html>

@@ -217,7 +217,13 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             }
 
             if ($routeName === 'admin.manual-publications.settings.desktop.download') {
-                $response->assertNotFound();
+                $this->assertContains($response->getStatusCode(), [200, 404], $routeName);
+                if ($response->isOk()) {
+                    $this->assertStringContainsString(
+                        'attachment;',
+                        (string) $response->headers->get('content-disposition'),
+                    );
+                }
 
                 continue;
             }

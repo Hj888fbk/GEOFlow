@@ -1,6 +1,6 @@
 {
   "name": "geoflow-desktop-publisher",
-  "version": "0.1.0",
+  "version": "0.3.2",
   "private": true,
   "description": "GEOFlow Windows desktop draft publisher",
   "main": "src/main.cjs",

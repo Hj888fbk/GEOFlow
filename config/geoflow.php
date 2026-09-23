@@ -378,6 +378,11 @@ return [
         'max_concurrent_claims_per_token' => max(1, (int) env('GEOFLOW_BROWSER_MAX_CONCURRENT_CLAIMS', 1)),
     ],
 
+    'desktop_publisher' => [
+        'version' => '0.3.2',
+        'platform' => 'win32-x64',
+    ],
+
     // 自媒体工作单：reopen（failed/skipped/cancelled → ready）次数上限，防止无限重试循环
     'manual_publications' => [
         'max_reopens' => max(1, (int) env('GEOFLOW_MAX_MANUAL_PUBLICATION_REOPENS', 5)),

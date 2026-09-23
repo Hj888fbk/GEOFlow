@@ -48,13 +48,13 @@
             <div class="grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
                 <section>
                     <div class="flex items-center justify-between gap-4">
-                        <div><h2 class="text-lg font-semibold text-gray-900">1. 选择已通过官网回读的文章</h2><p class="mt-1 text-sm text-gray-500">仅显示 HTTP 200、内容哈希和官网回读均通过的文章。</p></div>
+                        <div><h2 class="text-lg font-semibold text-gray-900">选择文章</h2><p class="mt-1 text-sm text-gray-500">已自动选中最新一篇通过官网回读的文章，也可更换。</p></div>
                         <span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{{ $eligibleReceipts->count() }} 篇可用</span>
                     </div>
                     <div class="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
                         @forelse($eligibleReceipts as $receipt)
                             <label class="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 hover:border-blue-300 hover:bg-blue-50/40">
-                                <input type="radio" name="website_publication_receipt_id" value="{{ $receipt->id }}" required @checked((string) old('website_publication_receipt_id') === (string) $receipt->id || $eligibleReceipts->count() === 1) class="mt-1 border-gray-300 text-blue-600">
+                                <input type="radio" name="website_publication_receipt_id" value="{{ $receipt->id }}" required @checked((string) old('website_publication_receipt_id') === (string) $receipt->id || (old('website_publication_receipt_id') === null && $loop->first)) class="mt-1 border-gray-300 text-blue-600">
                                 <span class="min-w-0"><span class="block truncate text-sm font-semibold text-gray-900">{{ $receipt->article?->title }}</span><span class="mt-1 block truncate text-xs text-gray-500">{{ $receipt->formal_url }}</span></span>
                             </label>
                         @empty
@@ -70,14 +70,14 @@
                 </section>
 
                 <section>
-                    <h2 class="text-lg font-semibold text-gray-900">2. 选择身份与账号</h2>
-                    <p class="mt-1 text-sm text-gray-500">可同时选择同一平台的多个账号；单身份和单账号会自动选中。</p>
+                    <h2 class="text-lg font-semibold text-gray-900">发布账号</h2>
+                    <p class="mt-1 text-sm text-gray-500">选择身份后默认全选该身份的账号；未绑定账号在同步草稿前登录一次即可。</p>
                     <label class="mt-4 block text-sm font-medium text-gray-700">发布身份</label>
                     <select id="launch-persona" name="persona_id" required class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm">
                         <option value="">请选择身份</option>
                         @foreach($personas as $persona)<option value="{{ $persona->id }}" @selected((string) old('persona_id') === (string) $persona->id || $personas->count() === 1)>{{ $persona->name }}</option>@endforeach
                     </select>
-                    <div class="mt-4 flex items-center justify-between gap-3"><span class="text-sm font-medium text-gray-700">目标账号</span><button id="select-ready-accounts" type="button" class="text-sm font-semibold text-blue-700 hover:text-blue-900">一键选择全部已就绪账号</button></div>
+                    <div class="mt-4 flex items-center justify-between gap-3"><span class="text-sm font-medium text-gray-700">目标账号</span><button id="select-ready-accounts" type="button" class="text-sm font-semibold text-blue-700 hover:text-blue-900">重新全选</button></div>
                     <div id="launch-accounts" class="mt-2 max-h-80 space-y-2 overflow-y-auto pr-1">
                         @foreach($accounts as $account)
                             @php
@@ -87,16 +87,16 @@
                                 if (blank($account->profile_url) && blank($account->account_uid) && blank($account->homepage_identifier)) { $readinessGaps[] = __('admin.manual_publications.readiness.gap_identity'); }
                                 $ready = $readinessGaps === [];
                             @endphp
-                            <label data-persona="{{ $account->persona_id }}" data-ready="{{ $ready ? '1' : '0' }}" class="launch-account flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2 {{ $ready ? '' : 'opacity-60' }}">
-                                <input type="checkbox" name="account_ids[]" value="{{ $account->id }}" @checked(in_array($account->id, array_map('intval', (array) old('account_ids', [])), true)) @disabled(!$ready) class="rounded border-gray-300 text-blue-600">
+                            <label data-persona="{{ $account->persona_id }}" data-ready="{{ $ready ? '1' : '0' }}" class="launch-account flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2">
+                                <input type="checkbox" name="account_ids[]" value="{{ $account->id }}" @checked(in_array($account->id, array_map('intval', (array) old('account_ids', [])), true)) class="rounded border-gray-300 text-blue-600">
                                 <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-gray-900">{{ $account->account_name }}</span><span class="block text-xs text-gray-500">{{ __('admin.manual_publications.platform.'.$account->platform) }}</span></span>
-                                <span class="shrink-0 text-right"><span class="block text-xs font-semibold {{ $ready ? 'text-emerald-700' : 'text-amber-700' }}">{{ $ready ? '就绪' : '待绑定' }}</span>@if(! $ready)<span class="mt-0.5 block text-xs text-amber-600">{{ implode('、', $readinessGaps) }}</span>@endif</span>
+                                <span class="shrink-0 text-right"><span class="block text-xs font-semibold {{ $ready ? 'text-emerald-700' : 'text-amber-700' }}">{{ $ready ? '可同步' : '同步前登录绑定' }}</span>@if(! $ready)<span class="mt-0.5 block text-xs text-amber-600">{{ implode('、', $readinessGaps) }}</span>@endif</span>
                             </label>
                         @endforeach
                     </div>
                 </section>
             </div>
-            <div class="mt-6 flex flex-col gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:items-center sm:justify-between"><p class="text-xs leading-5 text-gray-500">提交后立即进入生成队列。生成完成后只需审核一次，发布助手只保存草稿，不会点击最终发布。</p><button @disabled($eligibleReceipts->isEmpty()) class="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300">生成并发起发布</button></div>
+            <div class="mt-6 flex flex-col gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:items-center sm:justify-between"><p class="text-xs leading-5 text-gray-500">点一次后自动生成全部平台稿件。生成完成只需批量审核一次，助手只保存草稿，不会点击最终发布。</p><button @disabled($eligibleReceipts->isEmpty()) class="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300">生成全部平台草稿</button></div>
         </form>
     @elseif($view === 'history')
         <div class="mt-6 space-y-6">
@@ -201,21 +201,26 @@
 document.addEventListener('DOMContentLoaded', () => {
     const persona = document.getElementById('launch-persona');
     const rows = [...document.querySelectorAll('.launch-account')];
-    const visibleReadyInputs = () => rows.filter((row) => !row.hidden && row.dataset.ready === '1').map((row) => row.querySelector('input'));
+    const visibleInputs = () => rows.filter((row) => !row.hidden).map((row) => row.querySelector('input'));
     const syncAccounts = () => {
         rows.forEach((row) => {
             row.hidden = !persona?.value || row.dataset.persona !== persona.value;
             if (row.hidden) row.querySelector('input').checked = false;
         });
-        const candidates = visibleReadyInputs();
-        if (candidates.length === 1) candidates[0].checked = true;
+        const candidates = visibleInputs();
+        if (candidates.length > 0 && !candidates.some((input) => input.checked)) {
+            candidates.forEach((input) => { input.checked = true; });
+        }
     };
     persona?.addEventListener('change', syncAccounts);
-    document.getElementById('select-ready-accounts')?.addEventListener('click', () => visibleReadyInputs().forEach((input) => { input.checked = true; }));
+    document.getElementById('select-ready-accounts')?.addEventListener('click', () => visibleInputs().forEach((input) => { input.checked = true; }));
     const drawerAll = document.getElementById('drawer-select-all');
     const drawerPlatforms = [...document.querySelectorAll('.drawer-platform')];
     drawerAll?.addEventListener('change', () => drawerPlatforms.forEach((input) => { input.checked = drawerAll.checked; }));
     syncAccounts();
+    @if($selectedBatch && in_array($selectedBatch->status, [\App\Models\ManualPublicationBatch::STATUS_PLANNED, \App\Models\ManualPublicationBatch::STATUS_GENERATING], true))
+        window.setTimeout(() => window.location.reload(), 2500);
+    @endif
 });
 </script>
 @endpush

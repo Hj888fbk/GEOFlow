@@ -9,6 +9,7 @@
 .gemini
 vendor
 node_modules
+desktop-publisher/node_modules
 .env
 .env.*
 !.env.example
@@ -20,6 +21,11 @@ docker-compose*.yml
 docker-data
 storage
 tests
+
+# 运行镜像只包含当前桌面助手安装包与更新签名。
+dist/desktop-publisher/*
+!dist/desktop-publisher/GEOFlow-Desktop-Publisher-0.3.2-win-x64.exe
+!dist/desktop-publisher/GEOFlow-Desktop-Publisher-0.3.2-win-x64.exe.sig
 
 # Vite 会在镜像构建阶段重新生成指纹资源，不复用宿主机产物。
 public/build

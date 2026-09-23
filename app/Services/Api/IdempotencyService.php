@@ -184,7 +184,7 @@ class IdempotencyService
     public static function maybeReplayJson(Request $request, string $routeKey): ?JsonResponse
     {
         $key = self::validatedKey($request);
-        if ($key === null || ! in_array($request->method(), ['POST', 'PATCH'], true)) {
+        if ($key === null || ! in_array($request->method(), ['POST', 'PATCH', 'DELETE'], true)) {
             return null;
         }
 
@@ -205,7 +205,7 @@ class IdempotencyService
     public static function remember(Request $request, string $routeKey, array $envelope, int $status): void
     {
         $key = self::validatedKey($request);
-        if ($key === null || ! in_array($request->method(), ['POST', 'PATCH'], true)) {
+        if ($key === null || ! in_array($request->method(), ['POST', 'PATCH', 'DELETE'], true)) {
             return;
         }
 
@@ -227,7 +227,7 @@ class IdempotencyService
             return $operationGuard !== null ? $operationGuard($callback) : $callback();
         };
         $key = self::validatedKey($request);
-        if ($key === null || ! in_array($request->method(), ['POST', 'PATCH'], true)) {
+        if ($key === null || ! in_array($request->method(), ['POST', 'PATCH', 'DELETE'], true)) {
             return $runGuarded($operation);
         }
 

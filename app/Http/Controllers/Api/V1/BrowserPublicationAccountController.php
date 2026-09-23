@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api\V1;
 use App\Exceptions\ApiException;
 use App\Models\Admin;
 use App\Models\BrowserOperatorClient;
+use App\Models\ManualPublication;
 use App\Models\ManualPublicationAccount;
 use App\Models\ManualPublicationAccountSession;
+use App\Models\ManualPublicationPersona;
 use App\Services\Api\IdempotencyService;
 use App\Support\AdminActivityLogger;
 use Illuminate\Http\JsonResponse;
@@ -38,11 +40,145 @@ final class BrowserPublicationAccountController extends BaseApiController
         ]);
     }
 
+    public function personas(Request $request): JsonResponse
+    {
+        [$admin, $client] = $this->actor($request);
+        $personas = ManualPublicationPersona::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (ManualPublicationPersona $persona): array => ['id' => (int) $persona->id, 'name' => (string) $persona->name])
+            ->all();
+
+        return $this->success($request, ['personas' => $personas]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $this->requireIdempotencyKey($request);
+        $validator = Validator::make($request->all(), [
+            'persona_id' => ['required', 'integer', Rule::exists('manual_publication_personas', 'id')->where('is_active', true)],
+            'platform' => ['required', Rule::in(ManualPublicationAccount::DRAFT_SYNC_PLATFORMS)],
+            'account_name' => ['required', 'string', 'max:160'],
+        ]);
+        if ($validator->fails()) {
+            throw new ApiException('validation_failed', '账号信息格式无效', 422, [
+                'field_errors' => $validator->errors()->toArray(),
+            ]);
+        }
+        $data = $validator->validated();
+        [$admin, $client] = $this->actor($request);
+        $this->requireSuperAdmin($admin);
+
+        return IdempotencyService::executeJson($request, 'browser-accounts.store', function () use ($request, $admin, $data): JsonResponse {
+            $account = DB::transaction(function () use ($admin, $data): ManualPublicationAccount {
+                $name = trim((string) $data['account_name']);
+                if ($name === '') {
+                    throw new ApiException('validation_failed', '账号名称不能为空', 422, [
+                        'field_errors' => ['account_name' => ['账号名称不能为空。']],
+                    ]);
+                }
+                ManualPublicationPersona::query()
+                    ->whereKey((int) $data['persona_id'])
+                    ->where('is_active', true)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                $exists = ManualPublicationAccount::query()
+                    ->where('persona_id', (int) $data['persona_id'])
+                    ->where('platform', (string) $data['platform'])
+                    ->where('account_name', $name)
+                    ->where('is_active', true)
+                    ->lockForUpdate()
+                    ->exists();
+                if ($exists) {
+                    throw new ApiException('account_exists', '该身份下同名同平台账号已存在', 409);
+                }
+
+                return ManualPublicationAccount::query()->create([
+                    'persona_id' => (int) $data['persona_id'],
+                    'platform' => (string) $data['platform'],
+                    'custom_platform' => null,
+                    'account_name' => $name,
+                    'profile_url' => null,
+                    'editor_url' => ManualPublicationAccount::editorUrlPresets()[(string) $data['platform']] ?? null,
+                    'account_uid' => null,
+                    'homepage_identifier' => null,
+                    'browser_adapter_enabled' => true,
+                    'notes' => null,
+                    'is_active' => true,
+                    'created_by_admin_id' => $admin->getKey(),
+                ]);
+            }, 3);
+            AdminActivityLogger::log($admin, 'browser_publication_account.created', [
+                'request_method' => $request->method(),
+                'page' => $request->path(),
+                'target_type' => 'manual_publication_account',
+                'target_id' => (int) $account->id,
+                'ip_address' => (string) ($request->ip() ?? ''),
+                'details' => ['platform' => (string) $account->platform],
+            ]);
+
+            return $this->success($request, ['account' => $this->accountResource($account->fresh(['persona']))], 201);
+        });
+    }
+
+    public function destroy(Request $request, int $accountId): JsonResponse
+    {
+        $this->requireIdempotencyKey($request);
+        [$admin, $client] = $this->actor($request);
+        $this->requireSuperAdmin($admin);
+
+        return IdempotencyService::executeJson($request, 'browser-accounts.'.$accountId.'.destroy', function () use ($request, $admin, $client, $accountId): JsonResponse {
+            DB::transaction(function () use ($accountId): void {
+                $account = ManualPublicationAccount::query()
+                    ->whereKey($accountId)
+                    ->where('is_active', true)
+                    ->lockForUpdate()
+                    ->first();
+                if (! $account instanceof ManualPublicationAccount) {
+                    throw new ApiException('account_not_found', '发布账号不存在或已停用', 404);
+                }
+                $activeStatuses = [
+                    ManualPublication::STATUS_DRAFT,
+                    ManualPublication::STATUS_READY,
+                    ManualPublication::STATUS_IN_PROGRESS,
+                    ManualPublication::STATUS_DRAFT_FILLED,
+                    ManualPublication::STATUS_OUTCOME_UNKNOWN,
+                ];
+                $inFlight = ManualPublication::query()
+                    ->where('account_id', $account->id)
+                    ->whereIn('status', $activeStatuses)
+                    ->lockForUpdate()
+                    ->exists();
+                if ($inFlight) {
+                    throw new ApiException('account_has_active_publications', '该账号还有进行中的发布工单，请到发布中心处理完再删除', 409);
+                }
+                $account->forceFill(['is_active' => false])->save();
+                ManualPublicationAccountSession::query()
+                    ->where('manual_publication_account_id', $account->id)
+                    ->delete();
+            }, 3);
+            AdminActivityLogger::log($admin, 'browser_publication_account.deleted', [
+                'request_method' => $request->method(),
+                'page' => $request->path(),
+                'target_type' => 'manual_publication_account',
+                'target_id' => $accountId,
+                'ip_address' => (string) ($request->ip() ?? ''),
+                'details' => ['client_id' => (int) $client->id],
+            ]);
+
+            return $this->success($request, ['deleted' => true]);
+        });
+    }
+
     public function bind(Request $request, int $accountId): JsonResponse
     {
         $this->requireIdempotencyKey($request);
         $data = $this->validateSessionPayload($request, binding: true);
         [$admin, $client] = $this->actor($request);
+        if ((bool) ($data['replace_existing'] ?? false)) {
+            $this->requireSuperAdmin($admin);
+        }
 
         return IdempotencyService::executeJson($request, 'browser-accounts.'.$accountId.'.bind', function () use ($request, $admin, $client, $accountId, $data): JsonResponse {
             $session = DB::transaction(function () use ($client, $accountId, $data): ManualPublicationAccountSession {
@@ -54,7 +190,7 @@ final class BrowserPublicationAccountController extends BaseApiController
                 if (! $account instanceof ManualPublicationAccount) {
                     throw new ApiException('account_not_found', '发布账号不存在或已停用', 404);
                 }
-                $this->bindObservedIdentityWhenEmpty($account, $data);
+                $this->bindObservedIdentity($account, $data);
                 $this->assertObservedAccount($account, (string) $data['observed_account_hash']);
 
                 return ManualPublicationAccountSession::query()->updateOrCreate([
@@ -73,7 +209,10 @@ final class BrowserPublicationAccountController extends BaseApiController
                 'target_type' => 'manual_publication_account',
                 'target_id' => $accountId,
                 'ip_address' => (string) ($request->ip() ?? ''),
-                'details' => ['client_id' => (int) $client->id],
+                'details' => [
+                    'client_id' => (int) $client->id,
+                    'identity_replaced' => (bool) ($data['replace_existing'] ?? false),
+                ],
             ]);
 
             return $this->success($request, ['session' => $this->sessionResource($session)]);
@@ -135,6 +274,13 @@ final class BrowserPublicationAccountController extends BaseApiController
         return [$admin, $client];
     }
 
+    private function requireSuperAdmin(Admin $admin): void
+    {
+        if (! $admin->isSuperAdmin()) {
+            throw new ApiException('forbidden', '只有超级管理员可以维护发布账号', 403);
+        }
+    }
+
     /** @return array<string,mixed> */
     private function validateSessionPayload(Request $request, bool $binding = false): array
     {
@@ -145,6 +291,7 @@ final class BrowserPublicationAccountController extends BaseApiController
             'observed_account' => ['nullable', 'array:type,value'],
             'observed_account.type' => ['required_with:observed_account', Rule::in(['profile_url', 'account_uid', 'homepage_identifier'])],
             'observed_account.value' => ['required_with:observed_account', 'string', 'max:1000'],
+            'replace_existing' => [$binding ? 'sometimes' : 'nullable', 'boolean'],
             'last_error_code' => ['nullable', 'string', 'max:80'],
         ]);
         if ($validator->fails()) {
@@ -161,11 +308,12 @@ final class BrowserPublicationAccountController extends BaseApiController
     }
 
     /** @param array<string,mixed> $data */
-    private function bindObservedIdentityWhenEmpty(ManualPublicationAccount $account, array $data): void
+    private function bindObservedIdentity(ManualPublicationAccount $account, array $data): void
     {
-        if (trim((string) $account->profile_url) !== ''
+        $hasExistingIdentity = trim((string) $account->profile_url) !== ''
             || trim((string) $account->account_uid) !== ''
-            || trim((string) $account->homepage_identifier) !== '') {
+            || trim((string) $account->homepage_identifier) !== '';
+        if ($hasExistingIdentity && ! (bool) ($data['replace_existing'] ?? false)) {
             return;
         }
         $observed = $data['observed_account'] ?? null;
@@ -174,7 +322,9 @@ final class BrowserPublicationAccountController extends BaseApiController
         }
         $type = (string) ($observed['type'] ?? '');
         $value = trim((string) ($observed['value'] ?? ''));
-        if ($value === '' || preg_match('/password|cookie|session|bearer|token|secret/i', $value) === 1) {
+        if ($value === ''
+            || preg_match('/[\p{L}\p{N}]/u', $value) !== 1
+            || preg_match('/password|cookie|session|bearer|token|secret/i', $value) === 1) {
             throw new ApiException('invalid_account_identity', '公开账号标识无效', 422);
         }
         if ($type === 'profile_url') {
@@ -191,7 +341,12 @@ final class BrowserPublicationAccountController extends BaseApiController
         if (! hash_equals(hash('sha256', $proof), strtolower((string) $data['observed_account_hash']))) {
             throw new ApiException('account_mismatch', '确认的公开账号标识与检测结果不一致', 409);
         }
-        $account->forceFill([$type => $value])->save();
+        $account->forceFill([
+            'profile_url' => null,
+            'account_uid' => null,
+            'homepage_identifier' => null,
+            $type => $value,
+        ])->save();
     }
 
     private function validatedProfileUrl(ManualPublicationAccount $account, string $value): string

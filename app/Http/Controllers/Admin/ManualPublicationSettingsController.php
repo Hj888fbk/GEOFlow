@@ -61,7 +61,8 @@ class ManualPublicationSettingsController extends Controller
 
     public function downloadDesktopPublisher(): BinaryFileResponse
     {
-        $path = base_path('dist/desktop-publisher/GEOFlow-Desktop-Publisher-0.1.0-win-x64.exe');
+        $version = (string) config('geoflow.desktop_publisher.version');
+        $path = base_path("dist/desktop-publisher/GEOFlow-Desktop-Publisher-{$version}-win-x64.exe");
         abort_unless(is_file($path) && is_file($path.'.sig'), 404);
 
         return response()->download($path, basename($path), [

@@ -40,9 +40,9 @@ class OperationRegistryTest extends TestCase
             ->values()
             ->all();
 
-        // Browser operations now include the desktop account lifecycle endpoints
-        // (list, bind and status) and desktop update metadata/package routes.
-        $this->assertCount(18, $browserRoutes);
+        // Browser operations include desktop account lifecycle, persona discovery,
+        // session and desktop update metadata/package routes.
+        $this->assertCount(21, $browserRoutes);
         $this->assertCount(1, $websitePublicationReceiptRoutes);
         $this->assertCount(35, $apiRoutes);
         $this->assertSame($apiRoutes, OperationRegistry::routeSignatures());
